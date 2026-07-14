@@ -190,6 +190,7 @@ RODAPÉ FIXO
     </style>
     """, unsafe_allow_html=True)
 
+
 def logo_header():
 
     st.markdown("""
