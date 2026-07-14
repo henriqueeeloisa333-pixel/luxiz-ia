@@ -72,7 +72,7 @@ def render():
 
     if historico:
 
-        for item, prioridade, data_hora in historico:
+        for item, prioridade, data_hora, usuario in historico:
 
             data_utc = data_hora.replace(
                 tzinfo=timezone.utc
