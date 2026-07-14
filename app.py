@@ -455,5 +455,3 @@ st.markdown(
     "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0</p>",
     unsafe_allow_html=True
 )
-    "Luxiz IA • Versão 1.0 • Desenvolvido por Luxiz IA"
-)
