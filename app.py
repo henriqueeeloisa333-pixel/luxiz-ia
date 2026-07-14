@@ -94,9 +94,7 @@ st.session_state.tema = "claro" if tema_claro else "escuro"
 # ESTILO
 # =====================================================
 
-estilos.aplicar_fundo(
-    tema=st.session_state.tema
-)
+estilos.aplicar_fundo()
 
 # =====================================================
 # LOGIN
@@ -457,6 +455,5 @@ st.markdown(
     "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0</p>",
     unsafe_allow_html=True
 )
-st.caption(
     "Luxiz IA • Versão 1.0 • Desenvolvido por Luxiz IA"
 )
