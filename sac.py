@@ -26,8 +26,16 @@ def render():
         )
         return
 
+    # banco.ler_historico_sac() retorna:
+    # (mes_ano, reclamacoes, meta, atualizado_por, atualizado_em)
+    # aqui usamos só as 3 primeiras colunas para o gráfico/tabela principal
+    dados_resumidos = [
+        (linha[0], linha[1], linha[2])
+        for linha in dados
+    ]
+
     df = pd.DataFrame(
-        dados,
+        dados_resumidos,
         columns=[
             "Mês",
             "Reclamações",
