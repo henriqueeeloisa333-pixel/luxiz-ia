@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import banco
 import estilos
 
@@ -7,6 +6,8 @@ import dashboard
 import remanejamento
 import sac
 import administrativo
+
+from datetime import datetime
 
 # =====================================================
 # CONFIGURAÇÃO
@@ -18,28 +19,34 @@ st.set_page_config(
     layout="wide"
 )
 
-st_autorefresh(
-    interval=80000,
-    key="luxiz_refresh"
-)
+# =====================================================
+# RODAPÉ DE STATUS (fragmento com autorefresh isolado)
+# =====================================================
+# Antes o st_autorefresh recarregava o app INTEIRO a cada 80s
+# (e cada clique/tecla digitada também disparava um rerun completo,
+# incluindo idas ao banco). Agora só este pedacinho do rodapé
+# atualiza sozinho a cada 80s, sem afetar o resto da tela.
 
-from datetime import datetime
+@st.fragment(run_every=80)
+def render_status_footer():
 
-st.markdown(
-    f"""
-    <div class="footer-luxiz">
-        <span class="online">🟢 Sistema Online</span>
-        &nbsp;&nbsp;|&nbsp;&nbsp;
-        <span class="cloud">☁️ Supabase Conectado</span>
-        &nbsp;&nbsp;|&nbsp;&nbsp;
-        <span class="refresh">🔄 Atualização Automática</span>
-        &nbsp;&nbsp;|&nbsp;&nbsp;
-        Última sincronização:
-        {datetime.now().strftime('%H:%M:%S')}
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    st.markdown(
+        f"""
+        <div class="footer-luxiz">
+            <span class="online">🟢 Sistema Online</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span class="cloud">☁️ Supabase Conectado</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span class="refresh">🔄 Atualização Automática</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            Última sincronização:
+            {datetime.now().strftime('%H:%M:%S')}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+render_status_footer()
 
 # =====================================================
 # BANCO
@@ -63,11 +70,33 @@ if "tipo_usuario" not in st.session_state:
 if "trocar_senha" not in st.session_state:
     st.session_state.trocar_senha = False
 
+if "tema" not in st.session_state:
+    st.session_state.tema = "escuro"
+
+# =====================================================
+# SELETOR DE TEMA (discreto, canto superior direito)
+# =====================================================
+
+_, col_tema = st.columns([9, 1])
+
+with col_tema:
+
+    tema_claro = st.toggle(
+        "☀️" if st.session_state.tema == "escuro" else "🌙",
+        value=(st.session_state.tema == "claro"),
+        key="toggle_tema",
+        help="Alternar entre modo claro e escuro"
+    )
+
+st.session_state.tema = "claro" if tema_claro else "escuro"
+
 # =====================================================
 # ESTILO
 # =====================================================
 
-estilos.aplicar_fundo()
+estilos.aplicar_fundo(
+    tema=st.session_state.tema
+)
 
 # =====================================================
 # LOGIN
@@ -75,10 +104,7 @@ estilos.aplicar_fundo()
 
 if not st.session_state.logado:
 
-    st.markdown("""
-    # ✨ Luxiz IA
-    ### Centro Inteligente de Operações
-    """)
+    estilos.logo_header()
 
     st.write("")
     st.write("")
@@ -210,10 +236,7 @@ col1, col2 = st.columns([7,2])
 
 with col1:
 
-    st.title("✨ Luxiz IA")
-    st.caption(
-        "Centro Inteligente de Operações"
-    )
+    estilos.logo_header()
 
 with col2:
 
@@ -360,61 +383,66 @@ with aba_inicio:
 
     st.divider()
 
-    st.caption(
-        "Desenvolvido por Luxiz IA"
-    )
+    estilos.rodape()
 
-# =====================================================
-# DASHBOARD
-# =====================================================
-
-with aba_dashboard:
+@st.fragment(run_every=80)
+def render_aba_dashboard():
 
     dashboard.render()
 
     st.write("")
-    st.caption(
-        "Desenvolvido por Luxiz IA"
-    )
+    estilos.rodape()
+
+with aba_dashboard:
+    render_aba_dashboard()
 
 # =====================================================
 # REMANEJAMENTO
 # =====================================================
 
-with aba_remanejamento:
+@st.fragment(run_every=80)
+def render_aba_remanejamento():
 
     remanejamento.render()
 
     st.write("")
-    st.caption(
-        "Desenvolvido por Luxiz IA"
-    )
+    estilos.rodape()
+
+with aba_remanejamento:
+    render_aba_remanejamento()
 
 # =====================================================
 # SAC
 # =====================================================
 
-with aba_sac:
+@st.fragment(run_every=80)
+def render_aba_sac():
 
     sac.render()
 
     st.write("")
-    st.caption(
-        "Desenvolvido por Luxiz IA"
-    )
+    estilos.rodape()
+
+with aba_sac:
+    render_aba_sac()
 
 # =====================================================
 # ADMINISTRATIVO
 # =====================================================
+# Sem run_every: esta aba é cheia de formulários e inputs.
+# O fragmento aqui serve só para isolar cliques/digitação
+# nesta aba, evitando que eles recarreguem o app inteiro.
 
-with aba_admin:
+@st.fragment
+def render_aba_admin():
 
     administrativo.render()
 
     st.write("")
-    st.caption(
-        "Desenvolvido por Luxiz IA"
-    )
+    estilos.rodape()
+
+with aba_admin:
+    render_aba_admin()
 
 # =====================================================
 # RODAPÉ
@@ -423,6 +451,12 @@ with aba_admin:
 st.write("")
 st.divider()
 
+estilos.rodape()
+
+st.markdown(
+    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0</p>",
+    unsafe_allow_html=True
+)
 st.caption(
     "Luxiz IA • Versão 1.0 • Desenvolvido por Luxiz IA"
 )
