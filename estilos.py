@@ -189,3 +189,24 @@ RODAPÉ FIXO
 
     </style>
     """, unsafe_allow_html=True)
+
+def logo_header():
+
+    st.markdown("""
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:5px;">
+        <span style="font-size:32px;">✨</span>
+        <span style="font-size:28px;font-weight:800;color:white;">Luxiz IA</span>
+    </div>
+    <div style="color:#94a3b8;font-size:15px;margin-bottom:15px;">
+        Centro Inteligente de Operações
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def rodape():
+
+    st.markdown("""
+    <div class="luxiz-footer">
+        Desenvolvido por Luxiz IA
+    </div>
+    """, unsafe_allow_html=True)
