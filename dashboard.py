@@ -156,26 +156,44 @@ def render():
                         nota / 5
                     )
 
-                    st.caption(
-                        f"📈 Tendência: {tendencia}"
-                    )
-
                     if historico:
 
-                        valores = [
-                            item[0]
-                            for item in reversed(historico)
-                        ]
+                        ultimo_usuario = historico[0][3]
 
-                        st.line_chart(
-                            valores,
-                            height=120
-                        )
+                        if ultimo_usuario:
+
+                            st.caption(
+                                f"👤 Última atualização por {ultimo_usuario}"
+                            )
+
+                        if tendencia == "Em queda":
+
+                            st.warning(
+                                "📉 Notas em queda para a dupla."
+                            )
+
+                        elif tendencia == "Melhorando":
+
+                            st.success(
+                                "📈 Notas em alta para a dupla."
+                            )
+
+                        elif tendencia == "Estável":
+
+                            st.caption(
+                                "➡️ Notas estáveis para a dupla."
+                            )
+
+                        else:
+
+                            st.caption(
+                                "🕐 Ainda sem tendência (poucas atualizações)."
+                            )
 
                     else:
 
                         st.info(
-                            "Aguardando histórico suficiente para gerar gráfico."
+                            "Aguardando histórico suficiente."
                         )
 
     st.divider()
