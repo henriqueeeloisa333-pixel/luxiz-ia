@@ -1,6 +1,6 @@
-streamlit
+streamlit>=1.37
+spaces
 psycopg2-binary
-streamlit-autorefresh
 pandas
 plotly
 numpy
