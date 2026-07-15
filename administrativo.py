@@ -3,6 +3,72 @@ import banco
 import time
 
 
+# =====================================================
+# DIÁLOGOS DE CONFIRMAÇÃO DE EXCLUSÃO
+# =====================================================
+
+@st.dialog("Confirmar exclusão")
+def confirmar_exclusao_remanejamento(id_item, nome_item):
+
+    st.write(
+        f"Tem certeza que deseja excluir **{nome_item}**?"
+    )
+
+    st.caption(
+        "Essa ação não pode ser desfeita."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button(
+            "✅ Confirmar exclusão",
+            use_container_width=True,
+            key=f"confirma_del_remanejamento_{id_item}"
+        ):
+            banco.excluir_remanejamento(id_item)
+            st.rerun()
+
+    with c2:
+        if st.button(
+            "❌ Cancelar",
+            use_container_width=True,
+            key=f"cancela_del_remanejamento_{id_item}"
+        ):
+            st.rerun()
+
+
+@st.dialog("Confirmar exclusão de usuário")
+def confirmar_exclusao_usuario(nome_usuario):
+
+    st.write(
+        f"Tem certeza que deseja excluir o usuário **{nome_usuario}**?"
+    )
+
+    st.caption(
+        "Essa ação não pode ser desfeita."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button(
+            "✅ Confirmar exclusão",
+            use_container_width=True,
+            key=f"confirma_del_usuario_{nome_usuario}"
+        ):
+            banco.excluir_usuario(nome_usuario)
+            st.rerun()
+
+    with c2:
+        if st.button(
+            "❌ Cancelar",
+            use_container_width=True,
+            key=f"cancela_del_usuario_{nome_usuario}"
+        ):
+            st.rerun()
+
+
 def render():
 
     banco.inicializar_banco()
@@ -142,7 +208,8 @@ def render():
             banco.salvar_dados(
                 rua,
                 nota,
-                dupla
+                dupla,
+                usuario=usuario_logado
             )
 
             st.success(
@@ -187,7 +254,8 @@ def render():
 
                 banco.adicionar_remanejamento(
                     novo_item,
-                    prioridade
+                    prioridade,
+                    usuario=usuario_logado
                 )
 
                 st.success(
@@ -237,11 +305,10 @@ def render():
                     key=f"del_{item['id']}"
                 ):
 
-                    banco.excluir_remanejamento(
-                        item["id"]
+                    confirmar_exclusao_remanejamento(
+                        item["id"],
+                        item["nome"]
                     )
-
-                    st.rerun()
 
     # =====================================================
     # SAC
@@ -277,7 +344,8 @@ def render():
 
                 banco.atualizar_sac_mensal(
                     reclamacoes,
-                    meta
+                    meta,
+                    usuario=usuario_logado
                 )
 
                 st.success(
@@ -356,8 +424,6 @@ def render():
                         key=f"user_{uid}"
                     ):
 
-                        banco.excluir_usuario(
+                        confirmar_exclusao_usuario(
                             nome
                         )
-
-                        st.rerun()
