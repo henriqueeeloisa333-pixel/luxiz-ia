@@ -66,44 +66,6 @@ def render():
         )
     st.divider()
 
-    st.subheader("🕒 Últimos Remanejamentos")
-
-    historico = banco.ler_historico_remanejamento()
-
-    if historico:
-
-        for item, prioridade, data_hora, usuario in historico:
-
-            data_utc = data_hora.replace(
-                tzinfo=timezone.utc
-            )
-
-            horario_local = data_utc.astimezone(
-                ZoneInfo("America/Campo_Grande")
-            )
-
-            if prioridade == "Alta":
-                emoji = "🔴"
-
-            elif prioridade == "Média":
-                emoji = "🟡"
-
-            else:
-                emoji = "🟢"
-
-            st.caption(
-                f"{emoji} {item} | {prioridade} | "
-                f"{horario_local.strftime('%d/%m/%Y %H:%M:%S')}"
-            )
-
-    else:
-
-        st.info(
-            "Nenhum histórico encontrado."
-        )
-
-    st.divider()
-
     # =====================================================
     # PRIORIDADES
     # =====================================================
@@ -166,6 +128,12 @@ def render():
                         descricao
                     )
 
+                    if item.get("criado_por"):
+
+                        st.caption(
+                            f"👤 Criado por {item['criado_por']}"
+                        )
+
                     st.progress(
                         progresso
                     )
@@ -203,3 +171,48 @@ def render():
         st.success(
             "Nenhuma prioridade pendente."
         )
+
+    st.divider()
+
+    # =====================================================
+    # HISTÓRICO
+    # =====================================================
+
+    with st.popover("🕒 Histórico de Remanejamentos"):
+
+        historico = banco.ler_historico_remanejamento()
+
+        if historico:
+
+            for item, prioridade, data_hora, usuario_item in historico:
+
+                data_utc = data_hora.replace(
+                    tzinfo=timezone.utc
+                )
+
+                horario_local = data_utc.astimezone(
+                    ZoneInfo("America/Campo_Grande")
+                )
+
+                if prioridade == "Alta":
+                    emoji = "🔴"
+
+                elif prioridade == "Média":
+                    emoji = "🟡"
+
+                else:
+                    emoji = "🟢"
+
+                responsavel = usuario_item or "desconhecido"
+
+                st.caption(
+                    f"{emoji} {item} | {prioridade} | "
+                    f"{horario_local.strftime('%d/%m/%Y %H:%M:%S')} | "
+                    f"por {responsavel}"
+                )
+
+        else:
+
+            st.info(
+                "Nenhum histórico encontrado."
+            )
