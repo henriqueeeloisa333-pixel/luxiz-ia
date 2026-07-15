@@ -94,7 +94,9 @@ st.session_state.tema = "claro" if tema_claro else "escuro"
 # ESTILO
 # =====================================================
 
-estilos.aplicar_fundo()
+estilos.aplicar_fundo(
+    tema=st.session_state.tema
+)
 
 # =====================================================
 # LOGIN
