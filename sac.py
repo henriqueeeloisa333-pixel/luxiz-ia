@@ -26,20 +26,17 @@ def render():
         )
         return
 
-    # banco.ler_historico_sac() retorna:
-    # (mes_ano, reclamacoes, meta, atualizado_por, atualizado_em)
-    # aqui usamos só as 3 primeiras colunas para o gráfico/tabela principal
-    dados_resumidos = [
-        (linha[0], linha[1], linha[2])
-        for linha in dados
-    ]
+    tema = st.session_state.get("tema", "escuro")
+    cor_fonte = "white" if tema == "escuro" else "#111827"
 
     df = pd.DataFrame(
-        dados_resumidos,
+        dados,
         columns=[
             "Mês",
             "Reclamações",
-            "Meta"
+            "Meta",
+            "Atualizado por",
+            "Atualizado em"
         ]
     )
 
@@ -115,7 +112,7 @@ def render():
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font_color="white",
+        font_color=cor_fonte,
         height=500,
         legend_title="Indicadores"
     )
@@ -158,7 +155,7 @@ def render():
         fig_bar.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font_color="white",
+            font_color=cor_fonte,
             barmode="group",
             height=350
         )
@@ -201,6 +198,7 @@ def render():
 
         fig_gauge.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
+            font_color=cor_fonte,
             height=350
         )
 
