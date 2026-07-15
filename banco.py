@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import psycopg2
 from datetime import datetime
@@ -24,7 +25,7 @@ SENHA_FUNDADOR = st.secrets["fundador"]["senha"]
 
 # ==================================================
 # CONEXÃO
-# ==================================================
+# =================================================
 
 def conectar():
 
