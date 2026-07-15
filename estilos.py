@@ -1,213 +1,540 @@
 import streamlit as st
 
 
-def aplicar_fundo(logado=False):
+def aplicar_fundo(tema="escuro"):
 
-    st.markdown("""
-    <style>
+    if tema == "claro":
 
-    /* =====================================================
-       FUNDO PRINCIPAL
-    ===================================================== */
+        st.markdown("""
+        <style>
 
-    .stApp{
-        background:
-            radial-gradient(circle at top left,#312e81 0%,transparent 35%),
-            radial-gradient(circle at top right,#0ea5e9 0%,transparent 35%),
-            radial-gradient(circle at bottom right,#7c3aed 0%,transparent 30%),
-            linear-gradient(
-                135deg,
-                #010617,
-                #020b24,
-                #010617
+        /* =====================================================
+           FUNDO PRINCIPAL (CLARO)
+        ===================================================== */
+
+        .stApp{
+            background:
+                radial-gradient(circle at top left,#e0e7ff 0%,transparent 35%),
+                radial-gradient(circle at top right,#bae6fd 0%,transparent 35%),
+                radial-gradient(circle at bottom right,#ede9fe 0%,transparent 30%),
+                linear-gradient(
+                    135deg,
+                    #f8fafc,
+                    #f1f5f9,
+                    #f8fafc
+                );
+            color:#111827;
+        }
+
+        header{
+            visibility:hidden;
+        }
+
+        footer{
+            visibility:hidden;
+        }
+
+        .block-container{
+            padding-top:2rem;
+            padding-bottom:2rem;
+            max-width:95%;
+        }
+
+        /* =====================================================
+           SIDEBAR
+        ===================================================== */
+
+        section[data-testid="stSidebar"]{
+            background:rgba(255,255,255,.95);
+            border-right:1px solid rgba(0,0,0,.06);
+        }
+
+        section[data-testid="stSidebar"] *{
+            color:#111827 !important;
+        }
+
+        /* =====================================================
+           INPUTS
+        ===================================================== */
+
+        .stTextInput input,
+        .stNumberInput input{
+            border-radius:12px;
+            background:rgba(0,0,0,0.03);
+            color:#111827;
+            border:1px solid rgba(0,0,0,0.12);
+        }
+
+        .stTextInput input:focus,
+        .stNumberInput input:focus{
+            border:1px solid #0284c7;
+            box-shadow:0 0 10px rgba(2,132,199,.25);
+        }
+
+        /* =====================================================
+           BOTÕES
+        ===================================================== */
+
+        .stButton button{
+            width:100%;
+            height:50px;
+            border:none;
+            border-radius:12px;
+            color:white;
+            font-weight:700;
+            background:linear-gradient(
+                90deg,
+                #0284c7,
+                #2563eb
             );
-        color:white;
-    }
+            transition:.3s;
+        }
 
-    header{
-        visibility:hidden;
-    }
+        .stButton button:hover{
+            transform:translateY(-2px);
+            box-shadow:
+                0 0 20px rgba(2,132,199,.25);
+        }
 
-    footer{
-        visibility:hidden;
-    }
+        /* =====================================================
+           KPIs
+        ===================================================== */
 
-    .block-container{
-        padding-top:2rem;
-        padding-bottom:2rem;
-        max-width:95%;
-    }
+        div[data-testid="metric-container"],
+        div[data-testid="stMetric"]{
+            background:rgba(0,0,0,.03);
+            border:1px solid rgba(0,0,0,.08);
+            border-radius:18px;
+            padding:15px;
+            backdrop-filter:blur(20px);
+            box-shadow:
+                0 0 15px rgba(0,0,0,.05);
+        }
 
-    /* =====================================================
-       SIDEBAR
-    ===================================================== */
+        div[data-testid="metric-container"] label,
+        div[data-testid="stMetricLabel"],
+        div[data-testid="stMetricLabel"] *{
+            color:#4b5563 !important;
+            font-size:13px !important;
+        }
 
-    section[data-testid="stSidebar"]{
-        background:rgba(5,10,25,.95);
-        border-right:1px solid rgba(255,255,255,.05);
-    }
+        div[data-testid="metric-container"] [data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"] *{
+            font-size:28px !important;
+            color:#111827 !important;
+        }
 
-    section[data-testid="stSidebar"] *{
-        color:white !important;
-    }
+        /* =====================================================
+           TABELAS
+        ===================================================== */
 
-    /* =====================================================
-       INPUTS
-    ===================================================== */
+        .stDataFrame{
+            border-radius:20px;
+            overflow:hidden;
+        }
 
-    .stTextInput input,
-    .stNumberInput input{
-        border-radius:12px;
-        background:rgba(255,255,255,0.05);
-        color:white;
-        border:1px solid rgba(255,255,255,0.08);
-    }
+        /* =====================================================
+           TABS
+        ===================================================== */
 
-    .stTextInput input:focus,
-    .stNumberInput input:focus{
-        border:1px solid #00c8ff;
-        box-shadow:0 0 10px rgba(0,200,255,.4);
-    }
+        .stTabs [data-baseweb="tab"]{
+            font-size:16px;
+            font-weight:600;
+            color:#4b5563;
+        }
 
-    /* =====================================================
-       BOTÕES
-    ===================================================== */
+        .stTabs [aria-selected="true"]{
+            color:#0284c7 !important;
+        }
 
-    .stButton button{
-        width:100%;
-        height:50px;
-        border:none;
-        border-radius:12px;
-        color:white;
-        font-weight:700;
-        background:linear-gradient(
-            90deg,
-            #00c8ff,
-            #3b82f6
-        );
-        transition:.3s;
-    }
+        /* =====================================================
+           RODAPÉ LUXIZ IA
+        ===================================================== */
 
-    .stButton button:hover{
-        transform:translateY(-2px);
-        box-shadow:
-            0 0 20px rgba(0,200,255,.35);
-    }
+        .luxiz-footer{
+            text-align:center;
+            margin-top:25px;
+            color:#64748b;
+            font-size:13px;
+            opacity:0.8;
+        }
 
-    /* =====================================================
-       KPIs
-    ===================================================== */
+        /* ========================================
+        RODAPÉ FIXO
+        ======================================== */
 
-    div[data-testid="metric-container"]{
-        background:rgba(255,255,255,.04);
-        border:1px solid rgba(255,255,255,.08);
-        border-radius:18px;
-        padding:15px;
-        backdrop-filter:blur(20px);
-        box-shadow:
-            0 0 20px rgba(0,0,0,.15);
-    }
+        .footer-luxiz {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(255,255,255,0.95);
+            border-top: 1px solid rgba(0,0,0,0.08);
+            backdrop-filter: blur(15px);
+            padding: 8px 20px;
+            text-align: center;
+            font-size: 13px;
+            color: #374151;
+            z-index: 999999;
+        }
 
-    div[data-testid="metric-container"] label{
-        color:#9ca3af !important;
-        font-size:13px !important;
-    }
+        .footer-luxiz span.online {
+            color: #16a34a;
+            font-weight: 700;
+        }
 
-    div[data-testid="metric-container"] [data-testid="stMetricValue"]{
-        font-size:28px !important;
-        color:white !important;
-    }
+        .footer-luxiz span.cloud {
+            color: #0284c7;
+            font-weight: 700;
+        }
 
-    /* =====================================================
-       TABELAS
-    ===================================================== */
+        .footer-luxiz span.refresh {
+            color: #ca8a04;
+            font-weight: 700;
+        }
 
-    .stDataFrame{
-        border-radius:20px;
-        overflow:hidden;
-    }
+        /* =====================================================
+           LOGO / CABEÇALHO
+        ===================================================== */
 
-    /* =====================================================
-       TABS
-    ===================================================== */
+        .luxiz-logo{
+            text-align:left;
+            margin-bottom:10px;
+        }
 
-    .stTabs [data-baseweb="tab"]{
-        font-size:16px;
-        font-weight:600;
-        color:#d1d5db;
-    }
+        .luxiz-logo h1{
+            font-size:2.4rem;
+            font-weight:800;
+            letter-spacing:.5px;
+            margin:0;
+            background:linear-gradient(90deg,#0284c7,#7c3aed,#0284c7);
+            background-size:200% auto;
+            -webkit-background-clip:text;
+            -webkit-text-fill-color:transparent;
+            background-clip:text;
+        }
 
-    .stTabs [aria-selected="true"]{
-        color:#00c8ff !important;
-    }
+        .luxiz-logo p{
+            margin:2px 0 0 0;
+            font-size:.8rem;
+            font-weight:600;
+            letter-spacing:2.5px;
+            text-transform:uppercase;
+            color:#64748b;
+        }
 
-    /* =====================================================
-       RODAPÉ LUXIZ IA
-    ===================================================== */
+        /* =====================================================
+           RODAPÉ "DESENVOLVIDO POR"
+        ===================================================== */
 
-    .luxiz-footer{
-        text-align:center;
-        margin-top:25px;
-        color:#94a3b8;
-        font-size:13px;
-        opacity:0.8;
-    }
+        .luxiz-dev-footer{
+            text-align:center;
+            margin-top:18px;
+            padding-top:14px;
+            border-top:1px solid rgba(0,0,0,.08);
+        }
 
-    /* ========================================
-RODAPÉ FIXO
-======================================== */
+        .luxiz-dev-footer .marca{
+            font-size:.85rem;
+            font-weight:700;
+            letter-spacing:.5px;
+            background:linear-gradient(90deg,#0284c7,#7c3aed);
+            -webkit-background-clip:text;
+            -webkit-text-fill-color:transparent;
+            background-clip:text;
+        }
 
-.footer-luxiz {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background: rgba(5,10,25,0.95);
-    border-top: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(15px);
-    padding: 8px 20px;
-    text-align: center;
-    font-size: 13px;
-    color: #d1d5db;
-    z-index: 999999;
-}
+        .luxiz-dev-footer .sub{
+            font-size:.72rem;
+            color:#94a3b8;
+            margin-top:2px;
+        }
 
-.footer-luxiz span.online {
-    color: #22c55e;
-    font-weight: 700;
-}
+        </style>
+        """, unsafe_allow_html=True)
 
-.footer-luxiz span.cloud {
-    color: #38bdf8;
-    font-weight: 700;
-}
+    else:
 
-.footer-luxiz span.refresh {
-    color: #facc15;
-    font-weight: 700;
-}
+        st.markdown("""
+        <style>
 
-    </style>
-    """, unsafe_allow_html=True)
+        /* =====================================================
+           FUNDO PRINCIPAL (ESCURO)
+        ===================================================== */
+
+        .stApp{
+            background:
+                radial-gradient(circle at top left,#312e81 0%,transparent 35%),
+                radial-gradient(circle at top right,#0ea5e9 0%,transparent 35%),
+                radial-gradient(circle at bottom right,#7c3aed 0%,transparent 30%),
+                linear-gradient(
+                    135deg,
+                    #010617,
+                    #020b24,
+                    #010617
+                );
+            color:white;
+        }
+
+        header{
+            visibility:hidden;
+        }
+
+        footer{
+            visibility:hidden;
+        }
+
+        .block-container{
+            padding-top:2rem;
+            padding-bottom:2rem;
+            max-width:95%;
+        }
+
+        /* =====================================================
+           SIDEBAR
+        ===================================================== */
+
+        section[data-testid="stSidebar"]{
+            background:rgba(5,10,25,.95);
+            border-right:1px solid rgba(255,255,255,.05);
+        }
+
+        section[data-testid="stSidebar"] *{
+            color:white !important;
+        }
+
+        /* =====================================================
+           INPUTS
+        ===================================================== */
+
+        .stTextInput input,
+        .stNumberInput input{
+            border-radius:12px;
+            background:rgba(255,255,255,0.05);
+            color:white;
+            border:1px solid rgba(255,255,255,0.08);
+        }
+
+        .stTextInput input:focus,
+        .stNumberInput input:focus{
+            border:1px solid #00c8ff;
+            box-shadow:0 0 10px rgba(0,200,255,.4);
+        }
+
+        /* =====================================================
+           BOTÕES
+        ===================================================== */
+
+        .stButton button{
+            width:100%;
+            height:50px;
+            border:none;
+            border-radius:12px;
+            color:white;
+            font-weight:700;
+            background:linear-gradient(
+                90deg,
+                #00c8ff,
+                #3b82f6
+            );
+            transition:.3s;
+        }
+
+        .stButton button:hover{
+            transform:translateY(-2px);
+            box-shadow:
+                0 0 20px rgba(0,200,255,.35);
+        }
+
+        /* =====================================================
+           KPIs
+        ===================================================== */
+
+        div[data-testid="metric-container"],
+        div[data-testid="stMetric"]{
+            background:rgba(255,255,255,.04);
+            border:1px solid rgba(255,255,255,.08);
+            border-radius:18px;
+            padding:15px;
+            backdrop-filter:blur(20px);
+            box-shadow:
+                0 0 20px rgba(0,0,0,.15);
+        }
+
+        div[data-testid="metric-container"] label,
+        div[data-testid="stMetricLabel"],
+        div[data-testid="stMetricLabel"] *{
+            color:#9ca3af !important;
+            font-size:13px !important;
+        }
+
+        div[data-testid="metric-container"] [data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"] *{
+            font-size:28px !important;
+            color:white !important;
+        }
+
+        /* =====================================================
+           TABELAS
+        ===================================================== */
+
+        .stDataFrame{
+            border-radius:20px;
+            overflow:hidden;
+        }
+
+        /* =====================================================
+           TABS
+        ===================================================== */
+
+        .stTabs [data-baseweb="tab"]{
+            font-size:16px;
+            font-weight:600;
+            color:#d1d5db;
+        }
+
+        .stTabs [aria-selected="true"]{
+            color:#00c8ff !important;
+        }
+
+        /* =====================================================
+           RODAPÉ LUXIZ IA
+        ===================================================== */
+
+        .luxiz-footer{
+            text-align:center;
+            margin-top:25px;
+            color:#94a3b8;
+            font-size:13px;
+            opacity:0.8;
+        }
+
+        /* ========================================
+        RODAPÉ FIXO
+        ======================================== */
+
+        .footer-luxiz {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(5,10,25,0.95);
+            border-top: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(15px);
+            padding: 8px 20px;
+            text-align: center;
+            font-size: 13px;
+            color: #d1d5db;
+            z-index: 999999;
+        }
+
+        .footer-luxiz span.online {
+            color: #22c55e;
+            font-weight: 700;
+        }
+
+        .footer-luxiz span.cloud {
+            color: #38bdf8;
+            font-weight: 700;
+        }
+
+        .footer-luxiz span.refresh {
+            color: #facc15;
+            font-weight: 700;
+        }
+
+        /* =====================================================
+           LOGO / CABEÇALHO
+        ===================================================== */
+
+        .luxiz-logo{
+            text-align:left;
+            margin-bottom:10px;
+        }
+
+        .luxiz-logo h1{
+            font-size:2.4rem;
+            font-weight:800;
+            letter-spacing:.5px;
+            margin:0;
+            background:linear-gradient(90deg,#00c8ff,#a855f7,#00c8ff);
+            background-size:200% auto;
+            -webkit-background-clip:text;
+            -webkit-text-fill-color:transparent;
+            background-clip:text;
+        }
+
+        .luxiz-logo p{
+            margin:2px 0 0 0;
+            font-size:.8rem;
+            font-weight:600;
+            letter-spacing:2.5px;
+            text-transform:uppercase;
+            color:#94a3b8;
+        }
+
+        /* =====================================================
+           RODAPÉ "DESENVOLVIDO POR"
+        ===================================================== */
+
+        .luxiz-dev-footer{
+            text-align:center;
+            margin-top:18px;
+            padding-top:14px;
+            border-top:1px solid rgba(255,255,255,.08);
+        }
+
+        .luxiz-dev-footer .marca{
+            font-size:.85rem;
+            font-weight:700;
+            letter-spacing:.5px;
+            background:linear-gradient(90deg,#00c8ff,#a855f7);
+            -webkit-background-clip:text;
+            -webkit-text-fill-color:transparent;
+            background-clip:text;
+        }
+
+        .luxiz-dev-footer .sub{
+            font-size:.72rem;
+            color:#64748b;
+            margin-top:2px;
+        }
+
+        </style>
+        """, unsafe_allow_html=True)
 
 
-def logo_header():
+# =====================================================
+# LOGO / CABEÇALHO PADRÃO
+# =====================================================
 
-    st.markdown("""
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:5px;">
-        <span style="font-size:32px;">✨</span>
-        <span style="font-size:28px;font-weight:800;color:white;">Luxiz IA</span>
-    </div>
-    <div style="color:#94a3b8;font-size:15px;margin-bottom:15px;">
-        Centro Inteligente de Operações
-    </div>
-    """, unsafe_allow_html=True)
+def logo_header(subtitulo="Centro Inteligente de Operações"):
 
+    st.markdown(
+        f"""
+        <div class="luxiz-logo">
+            <h1>✨ Luxiz IA</h1>
+            <p>{subtitulo}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# =====================================================
+# RODAPÉ "DESENVOLVIDO POR"
+# =====================================================
 
 def rodape():
 
-    st.markdown("""
-    <div class="luxiz-footer">
-        Desenvolvido por Luxiz IA
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="luxiz-dev-footer">
+            <div class="marca">✨ Luxiz IA</div>
+            <div class="sub">Centro Inteligente de Operações</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
