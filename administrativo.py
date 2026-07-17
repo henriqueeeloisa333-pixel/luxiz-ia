@@ -1,6 +1,5 @@
 import streamlit as st
 import banco
-import time
 
 
 # =====================================================
@@ -26,8 +25,10 @@ def confirmar_exclusao_remanejamento(id_item, nome_item):
             use_container_width=True,
             key=f"confirma_del_remanejamento_{id_item}"
         ):
-            banco.excluir_remanejamento(id_item)
-            st.rerun()
+            with st.spinner(f"✨ Luxiz IA atualizando: excluindo '{nome_item}'..."):
+                banco.excluir_remanejamento(id_item)
+            st.toast(f"✨ Luxiz IA: '{nome_item}' excluído.")
+            st.rerun(scope="fragment")
 
     with c2:
         if st.button(
@@ -35,7 +36,7 @@ def confirmar_exclusao_remanejamento(id_item, nome_item):
             use_container_width=True,
             key=f"cancela_del_remanejamento_{id_item}"
         ):
-            st.rerun()
+            st.rerun(scope="fragment")
 
 
 @st.dialog("Confirmar exclusão de usuário")
@@ -57,8 +58,10 @@ def confirmar_exclusao_usuario(nome_usuario):
             use_container_width=True,
             key=f"confirma_del_usuario_{nome_usuario}"
         ):
-            banco.excluir_usuario(nome_usuario)
-            st.rerun()
+            with st.spinner(f"✨ Luxiz IA atualizando: excluindo usuário '{nome_usuario}'..."):
+                banco.excluir_usuario(nome_usuario)
+            st.toast(f"✨ Luxiz IA: usuário '{nome_usuario}' excluído.")
+            st.rerun(scope="fragment")
 
     with c2:
         if st.button(
@@ -66,7 +69,74 @@ def confirmar_exclusao_usuario(nome_usuario):
             use_container_width=True,
             key=f"cancela_del_usuario_{nome_usuario}"
         ):
-            st.rerun()
+            st.rerun(scope="fragment")
+
+
+@st.dialog("Confirmar exclusão de registro")
+def confirmar_exclusao_analise_tecnica(id_registro, nome_registro):
+
+    st.write(
+        f"Tem certeza que deseja excluir o registro de **{nome_registro}**?"
+    )
+
+    st.caption(
+        "Essa ação não pode ser desfeita."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button(
+            "✅ Confirmar exclusão",
+            use_container_width=True,
+            key=f"confirma_del_analise_{id_registro}"
+        ):
+            with st.spinner(f"✨ Luxiz IA atualizando: excluindo registro de {nome_registro}..."):
+                banco.excluir_analise_tecnica(id_registro)
+            st.toast(f"✨ Luxiz IA: registro de {nome_registro} excluído.")
+            st.rerun(scope="fragment")
+
+    with c2:
+        if st.button(
+            "❌ Cancelar",
+            use_container_width=True,
+            key=f"cancela_del_analise_{id_registro}"
+        ):
+            st.rerun(scope="fragment")
+
+
+@st.dialog("Confirmar exclusão em lote")
+def confirmar_exclusao_multipla_analise_tecnica(ids_selecionados):
+
+    st.write(
+        f"Tem certeza que deseja excluir **{len(ids_selecionados)}** "
+        "registro(s) selecionado(s)?"
+    )
+
+    st.caption(
+        "Essa ação não pode ser desfeita."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button(
+            "✅ Confirmar exclusão",
+            use_container_width=True,
+            key="confirma_del_lote_analise"
+        ):
+            with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} registro(s)..."):
+                banco.excluir_analise_tecnica_lote(ids_selecionados)
+            st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} registro(s) excluído(s).")
+            st.rerun(scope="fragment")
+
+    with c2:
+        if st.button(
+            "❌ Cancelar",
+            use_container_width=True,
+            key="cancela_del_lote_analise"
+        ):
+            st.rerun(scope="fragment")
 
 
 def render():
@@ -205,19 +275,16 @@ def render():
             "💾 Salvar Dashboard"
         ):
 
-            banco.salvar_dados(
-                rua,
-                nota,
-                dupla,
-                usuario=usuario_logado
-            )
+            with st.spinner(f"✨ Luxiz IA atualizando: Dashboard da {rua}..."):
+                banco.salvar_dados(
+                    rua,
+                    nota,
+                    dupla,
+                    usuario=usuario_logado
+                )
 
-            st.success(
-                "Dados atualizados."
-            )
-
-            time.sleep(1)
-            st.rerun()
+            st.toast(f"✨ Luxiz IA: Dashboard da {rua} atualizado.")
+            st.rerun(scope="fragment")
 
     # =====================================================
     # REMANEJAMENTO
@@ -252,18 +319,15 @@ def render():
 
             if novo_item:
 
-                banco.adicionar_remanejamento(
-                    novo_item,
-                    prioridade,
-                    usuario=usuario_logado
-                )
+                with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{novo_item}'..."):
+                    banco.adicionar_remanejamento(
+                        novo_item,
+                        prioridade,
+                        usuario=usuario_logado
+                    )
 
-                st.success(
-                    "Prioridade adicionada."
-                )
-
-                time.sleep(1)
-                st.rerun()
+                st.toast(f"✨ Luxiz IA: '{novo_item}' adicionado.")
+                st.rerun(scope="fragment")
 
         st.divider()
 
@@ -342,18 +406,145 @@ def render():
 
             if salvar:
 
-                banco.atualizar_sac_mensal(
-                    reclamacoes,
-                    meta,
-                    usuario=usuario_logado
+                with st.spinner("✨ Luxiz IA atualizando: dados do SAC..."):
+                    banco.atualizar_sac_mensal(
+                        reclamacoes,
+                        meta,
+                        usuario=usuario_logado
+                    )
+
+                st.toast("✨ Luxiz IA: SAC atualizado.")
+                st.rerun(scope="fragment")
+
+        st.divider()
+
+        st.subheader(
+            "🔍 Análise Técnica"
+        )
+
+        st.caption(
+            "Registre quem cometeu o erro, o tipo de erro e a data da ocorrência."
+        )
+
+        TIPOS_ERRO_SAC = [
+            "Pigmentação",
+            "Inversão",
+            "Mandou produto a mais",
+            "Mandou produto a menos",
+            "Não enviou componentes",
+            "Remanejou na doca errada"
+        ]
+
+        with st.form(
+            "form_analise_tecnica"
+        ):
+
+            col1, col2, col3 = st.columns([2, 2, 1])
+
+            with col1:
+                nome_erro = st.text_input(
+                    "Nome"
                 )
 
-                st.success(
-                    "Dados salvos."
+            with col2:
+                tipo_erro = st.selectbox(
+                    "O que errou",
+                    TIPOS_ERRO_SAC
                 )
 
-                time.sleep(1)
-                st.rerun()
+            with col3:
+                data_erro = st.date_input(
+                    "Data"
+                )
+
+            descricao_erro = st.text_area(
+                "Descrição do ocorrido"
+            )
+
+            registrar = st.form_submit_button(
+                "➕ Registrar Análise Técnica"
+            )
+
+            if registrar:
+
+                if nome_erro:
+
+                    with st.spinner(f"✨ Luxiz IA atualizando: registrando ocorrência de {nome_erro}..."):
+                        banco.adicionar_analise_tecnica(
+                            nome_erro,
+                            tipo_erro,
+                            data_erro,
+                            descricao=descricao_erro,
+                            usuario=usuario_logado
+                        )
+
+                    st.toast(f"✨ Luxiz IA: ocorrência de {nome_erro} registrada.")
+                    st.rerun(scope="fragment")
+
+                else:
+
+                    st.warning(
+                        "Informe o nome antes de registrar."
+                    )
+
+        st.divider()
+
+        registros_tecnica = banco.ler_analise_tecnica()
+
+        if registros_tecnica:
+
+            st.caption(
+                "Marque as caixinhas para excluir vários de uma vez, "
+                "ou clique em ❌ para excluir um lançamento só:"
+            )
+
+            ids_selecionados = []
+
+            for registro in registros_tecnica:
+
+                c0, c1, c2 = st.columns([0.6, 7.4, 1])
+
+                with c0:
+
+                    marcado = st.checkbox(
+                        "selecionar",
+                        key=f"select_analise_{registro['id']}",
+                        label_visibility="collapsed"
+                    )
+
+                    if marcado:
+                        ids_selecionados.append(registro["id"])
+
+                with c1:
+
+                    st.caption(
+                        f"👤 {registro['nome']} • {registro['tipo_erro']} • "
+                        f"{registro['data_erro'].strftime('%d/%m/%Y')}"
+                    )
+
+                with c2:
+
+                    if st.button(
+                        "❌",
+                        key=f"del_analise_{registro['id']}"
+                    ):
+
+                        confirmar_exclusao_analise_tecnica(
+                            registro["id"],
+                            registro["nome"]
+                        )
+
+            if ids_selecionados:
+
+                st.write("")
+
+                if st.button(
+                    f"🗑️ Excluir {len(ids_selecionados)} selecionado(s)"
+                ):
+
+                    confirmar_exclusao_multipla_analise_tecnica(
+                        ids_selecionados
+                    )
 
     # =====================================================
     # USUÁRIOS
@@ -382,16 +573,14 @@ def render():
 
                 try:
 
-                    banco.criar_usuario(
-                        novo_usuario,
-                        senha_usuario
-                    )
+                    with st.spinner(f"✨ Luxiz IA atualizando: criando usuário '{novo_usuario}'..."):
+                        banco.criar_usuario(
+                            novo_usuario,
+                            senha_usuario
+                        )
 
-                    st.success(
-                        "Usuário criado com sucesso."
-                    )
-
-                    st.rerun()
+                    st.toast(f"✨ Luxiz IA: usuário '{novo_usuario}' criado.")
+                    st.rerun(scope="fragment")
 
                 except Exception as erro:
 
