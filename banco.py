@@ -5,27 +5,32 @@ from datetime import datetime
 
 
 # ==================================================
-# CONFIGURAÇÃO SUPABASE (via st.secrets)
+# CONFIGURAÇÃO SUPABASE
 # ==================================================
 
-HOST = st.secrets["supabase"]["host"]
-PORT = st.secrets["supabase"]["port"]
-DATABASE = st.secrets["supabase"]["database"]
+HOST = os.getenv("SUPABASE_HOST")
+PORT = os.getenv("SUPABASE_PORT")
+DATABASE = os.getenv("SUPABASE_DATABASE")
 
-USER = st.secrets["supabase"]["user"]
-PASSWORD = st.secrets["supabase"]["password"]
+USER = os.getenv("SUPABASE_USER")
+PASSWORD = os.getenv("SUPABASE_PASSWORD")
+
 
 # ==================================================
-# FUNDADOR (via st.secrets)
+# FUNDADOR (SECRETS)
 # ==================================================
 
-USUARIO_FUNDADOR = st.secrets["fundador"]["usuario"]
+USUARIO_FUNDADOR = os.getenv(
+    "FUNDADOR_USUARIO"
+)
 
-SENHA_FUNDADOR = st.secrets["fundador"]["senha"]
+SENHA_FUNDADOR = os.getenv(
+    "FUNDADOR_SENHA"
+)
 
 # ==================================================
 # CONEXÃO
-# =================================================
+# ==================================================
 
 def conectar():
 
@@ -34,12 +39,21 @@ def conectar():
         port=PORT,
         database=DATABASE,
         user=USER,
-        password=PASSWORD
+        password=PASSWORD,
+        connect_timeout=10
     )   
 
 def inicializar_banco():
 
-    conn = conectar()
+    print("🔎 Iniciando conexão com o banco...", flush=True)
+    print(f"HOST={HOST!r} PORT={PORT!r} DATABASE={DATABASE!r} USER={USER!r}", flush=True)
+
+    try:
+        conn = conectar()
+        print("✅ Conectado com sucesso.", flush=True)
+    except Exception as e:
+        print(f"❌ ERRO AO CONECTAR: {e}", flush=True)
+        raise
     cursor = conn.cursor()
 
     # ==============================
@@ -94,6 +108,22 @@ def inicializar_banco():
         mes_ano TEXT PRIMARY KEY,
         reclamacoes INTEGER,
         meta INTEGER
+    )
+    """)
+
+    # ==============================
+    # ANÁLISE TÉCNICA (SAC)
+    # ==============================
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS analise_tecnica (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        tipo_erro TEXT NOT NULL,
+        data_erro DATE NOT NULL,
+        descricao TEXT,
+        registrado_por TEXT,
+        data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
@@ -160,6 +190,7 @@ def inicializar_banco():
     cursor.execute("ALTER TABLE historico_remanejamento ADD COLUMN IF NOT EXISTS usuario TEXT")
     cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
     cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS descricao TEXT")
 
     conn.commit()
     conn.close()
@@ -571,6 +602,123 @@ def total_reclamacoes():
     return total
 
 # ==================================================
+# ANÁLISE TÉCNICA (SAC)
+# ==================================================
+
+def adicionar_analise_tecnica(
+    nome,
+    tipo_erro,
+    data_erro,
+    descricao=None,
+    usuario=None
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO analise_tecnica
+    (
+        nome,
+        tipo_erro,
+        data_erro,
+        descricao,
+        registrado_por
+    )
+    VALUES (%s, %s, %s, %s, %s)
+    """, (
+        nome,
+        tipo_erro,
+        data_erro,
+        descricao,
+        usuario
+    ))
+
+    conn.commit()
+    conn.close()
+
+    ler_analise_tecnica.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_analise_tecnica():
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT
+        id,
+        nome,
+        tipo_erro,
+        data_erro,
+        descricao,
+        registrado_por
+    FROM analise_tecnica
+    ORDER BY data_erro DESC
+    """)
+
+    dados = []
+
+    for row in cursor.fetchall():
+
+        dados.append({
+            "id": row[0],
+            "nome": row[1],
+            "tipo_erro": row[2],
+            "data_erro": row[3],
+            "descricao": row[4],
+            "registrado_por": row[5]
+        })
+
+    conn.close()
+
+    return dados
+
+
+def excluir_analise_tecnica(
+    id_registro
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM analise_tecnica
+    WHERE id = %s
+    """, (
+        id_registro,
+    ))
+
+    conn.commit()
+    conn.close()
+
+    ler_analise_tecnica.clear()
+
+
+def excluir_analise_tecnica_lote(
+    ids_registros
+):
+
+    if not ids_registros:
+        return
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM analise_tecnica
+    WHERE id = ANY(%s)
+    """, (
+        ids_registros,
+    ))
+
+    conn.commit()
+    conn.close()
+
+    ler_analise_tecnica.clear()
+
+# ==================================================
 # USUÁRIOS
 # ==================================================
 
@@ -723,4 +871,4 @@ def resetar_senha(
     conn.commit()
     conn.close()
 
-    return True
+    return True 
