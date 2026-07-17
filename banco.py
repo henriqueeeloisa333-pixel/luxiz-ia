@@ -8,12 +8,12 @@ from datetime import datetime
 # CONFIGURAÇÃO SUPABASE
 # ==================================================
 
-HOST = "aws-1-sa-east-1.pooler.supabase.com"
-PORT = 5432
-DATABASE = "postgres"
+HOST = os.getenv("SUPABASE_HOST")
+PORT = os.getenv("SUPABASE_PORT")
+DATABASE = os.getenv("SUPABASE_DATABASE")
 
-USER = "postgres.pisddcbghxqylosviiow"
-PASSWORD = "Lg78963@@97#"
+USER = os.getenv("SUPABASE_USER")
+PASSWORD = os.getenv("SUPABASE_PASSWORD")
 
 # ==================================================
 # FUNDADOR (SECRETS)
