@@ -3,6 +3,7 @@ import banco
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from collections import Counter
 
 
 def render():
@@ -265,3 +266,126 @@ O número de reclamações ultrapassou
 significativamente a meta.
 """
         )
+
+    st.divider()
+
+    # ==================================
+    # ANÁLISE TÉCNICA
+    # ==================================
+
+    st.subheader(
+        "🔍 Análise Técnica"
+    )
+
+    st.caption(
+        "Ocorrências registradas por pessoa."
+    )
+
+    usuario_atual = st.session_state.get("usuario", "")
+
+    nome_restrito = None
+
+    if usuario_atual.startswith("Separador.") or usuario_atual.startswith("Conferente."):
+
+        nome_restrito = usuario_atual.split(".", 1)[1].strip().title()
+
+    registros = banco.ler_analise_tecnica()
+
+    if nome_restrito:
+
+        registros = [
+            registro for registro in registros
+            if registro["nome"].strip().title() == nome_restrito
+        ]
+
+    if not registros:
+
+        if nome_restrito:
+
+            st.info(
+                "Nenhuma ocorrência registrada para você ainda."
+            )
+
+        else:
+
+            st.info(
+                "Nenhum registro de análise técnica ainda."
+            )
+
+    else:
+
+        por_pessoa = {}
+
+        for registro in registros:
+
+            nome_normalizado = registro["nome"].strip().title()
+
+            por_pessoa.setdefault(
+                nome_normalizado,
+                []
+            ).append(registro)
+
+        nomes = sorted(
+            por_pessoa.keys()
+        )
+
+        cols = st.columns(3)
+
+        for indice, nome in enumerate(nomes):
+
+            erros_pessoa = por_pessoa[nome]
+
+            total_erros = len(erros_pessoa)
+
+            contagem_tipos = Counter(
+                erro["tipo_erro"] for erro in erros_pessoa
+            )
+
+            tipo_mais_comum, qtd_mais_comum = contagem_tipos.most_common(1)[0]
+
+            with cols[indice % 3]:
+
+                with st.container(border=True):
+
+                    st.markdown(
+                        f"### 👤 {nome}"
+                    )
+
+                    st.metric(
+                        "Total de Erros",
+                        total_erros
+                    )
+
+                    st.warning(
+                        f"📌 Ponto de melhoria: **{tipo_mais_comum}** "
+                        f"({qtd_mais_comum}x). Recomenda-se reforço nesse ponto."
+                    )
+
+                    with st.popover(
+                        "📋 Saber mais"
+                    ):
+
+                        st.caption(
+                            f"Histórico de ocorrências de {nome}:"
+                        )
+
+                        erros_ordenados = sorted(
+                            erros_pessoa,
+                            key=lambda e: e["data_erro"],
+                            reverse=True
+                        )
+
+                        with st.container(height=250):
+
+                            for erro in erros_ordenados:
+
+                                st.caption(
+                                    f"• {erro['tipo_erro']} — "
+                                    f"{erro['data_erro'].strftime('%d/%m/%Y')}"
+                                )
+
+                                if erro.get("descricao"):
+
+                                    st.caption(
+                                        f"   ↳ _{erro['descricao']}_"
+                                    )
