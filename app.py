@@ -1,873 +1,518 @@
-import os
 import streamlit as st
-import psycopg2
+import banco
+import estilos
+
+import dashboard
+import remanejamento
+import sac
+import administrativo
+
 from datetime import datetime
 
+# =====================================================
+# CONFIGURAÇÃO
+# =====================================================
 
-# ==================================================
-# CONFIGURAÇÃO SUPABASE
-# ==================================================
-
-HOST = "aws-1-sa-east-1.pooler.supabase.com"
-PORT = 5432
-DATABASE = "postgres"
-
-USER = "postgres.pisddcbghxqylosviiow"
-PASSWORD = "Lg78963@@97#"
-
-# ==================================================
-# FUNDADOR (SECRETS)
-# ==================================================
-
-USUARIO_FUNDADOR = os.getenv(
-    "FUNDADOR_USUARIO"
+st.set_page_config(
+    page_title="Luxiz IA",
+    page_icon="✨",
+    layout="wide"
 )
 
-SENHA_FUNDADOR = os.getenv(
-    "FUNDADOR_SENHA"
+# =====================================================
+# RODAPÉ DE STATUS (fragmento com autorefresh isolado)
+# =====================================================
+# Antes o st_autorefresh recarregava o app INTEIRO a cada 80s
+# (e cada clique/tecla digitada também disparava um rerun completo,
+# incluindo idas ao banco). Agora só este pedacinho do rodapé
+# atualiza sozinho a cada 80s, sem afetar o resto da tela.
+
+@st.fragment(run_every=120)
+def render_status_footer():
+
+    st.markdown(
+        f"""
+        <div class="footer-luxiz">
+            <span class="online">🟢 Sistema Online</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span class="cloud">☁️ Supabase Conectado</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span class="refresh">🔄 Atualização Automática</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            Última sincronização:
+            {datetime.now().strftime('%H:%M:%S')}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+render_status_footer()
+
+# =====================================================
+# BANCO
+# =====================================================
+
+banco.inicializar_banco()
+
+# =====================================================
+# SESSION STATE
+# =====================================================
+
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+
+if "usuario" not in st.session_state:
+    st.session_state.usuario = ""
+
+if "tipo_usuario" not in st.session_state:
+    st.session_state.tipo_usuario = "usuario"
+
+if "trocar_senha" not in st.session_state:
+    st.session_state.trocar_senha = False
+
+if "tema" not in st.session_state:
+    st.session_state.tema = "escuro"
+
+# =====================================================
+# SELETOR DE TEMA (discreto, canto superior direito)
+# =====================================================
+
+_, col_tema = st.columns([9, 1])
+
+with col_tema:
+
+    tema_claro = st.toggle(
+        "☀️" if st.session_state.tema == "escuro" else "🌙",
+        value=(st.session_state.tema == "claro"),
+        key="toggle_tema",
+        help="Alternar entre modo claro e escuro"
+    )
+
+st.session_state.tema = "claro" if tema_claro else "escuro"
+
+# =====================================================
+# ESTILO
+# =====================================================
+
+estilos.aplicar_fundo(
+    tema=st.session_state.tema
 )
 
-# ==================================================
-# CONEXÃO
-# ==================================================
+# =====================================================
+# LOGIN
+# =====================================================
 
-def conectar():
+if not st.session_state.logado:
 
-    return psycopg2.connect(
-        host=HOST,
-        port=PORT,
-        database=DATABASE,
-        user=USER,
-        password=PASSWORD,
-        connect_timeout=10
-    )   
+    estilos.logo_header()
 
-def inicializar_banco():
+    st.write("")
+    st.write("")
 
-    print("🔎 Iniciando conexão com o banco...", flush=True)
-    print(f"HOST={HOST!r} PORT={PORT!r} DATABASE={DATABASE!r} USER={USER!r}", flush=True)
+    col1, col2, col3 = st.columns([1, 1, 1])
 
-    try:
-        conn = conectar()
-        print("✅ Conectado com sucesso.", flush=True)
-    except Exception as e:
-        print(f"❌ ERRO AO CONECTAR: {e}", flush=True)
-        raise
-    cursor = conn.cursor()
+    with col2:
 
-    # ==============================
-    # NOTAS
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS notas (
-        rua TEXT PRIMARY KEY,
-        nota REAL,
-        dupla TEXT
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS historico_notas (
-        id BIGSERIAL PRIMARY KEY,
-        rua TEXT NOT NULL,
-        nota REAL,
-        dupla TEXT,
-        data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # REMANEJAMENTO
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS remanejamento (
-        id BIGSERIAL PRIMARY KEY,
-        item TEXT NOT NULL,
-        prioridade TEXT DEFAULT 'Normal'
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS historico_remanejamento (
-        id BIGSERIAL PRIMARY KEY,
-        item TEXT NOT NULL,
-        prioridade TEXT,
-        data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # SAC
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sac_historico (
-        mes_ano TEXT PRIMARY KEY,
-        reclamacoes INTEGER,
-        meta INTEGER
-    )
-    """)
-
-    # ==============================
-    # ANÁLISE TÉCNICA (SAC)
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS analise_tecnica (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        tipo_erro TEXT NOT NULL,
-        data_erro DATE NOT NULL,
-        descricao TEXT,
-        registrado_por TEXT,
-        data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # USUÁRIOS
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios (
-        id BIGSERIAL PRIMARY KEY,
-        usuario TEXT UNIQUE,
-        senha TEXT,
-        tipo TEXT DEFAULT 'usuario',
-        trocar_senha INTEGER DEFAULT 1
-    )
-    """)
-
-    # ==============================
-    # CRIA FUNDADOR
-    # ==============================
-
-    cursor.execute("""
-    SELECT usuario
-    FROM usuarios
-    WHERE usuario = %s
-    """, (
-        USUARIO_FUNDADOR,
-    ))
-
-    fundador = cursor.fetchone()
-
-    if not fundador:
-
-        cursor.execute("""
-        INSERT INTO usuarios
-            (
-            usuario,
-            senha,
-            tipo,
-            trocar_senha
+        usuario = st.text_input(
+            "Usuário"
         )
-        VALUES (%s, %s, %s, %s)
-        """, (
-            USUARIO_FUNDADOR,
-            SENHA_FUNDADOR,
-            "fundador",
-            0
-        ))
 
-    conn.commit()
-    conn.close()    
+        senha = st.text_input(
+            "Senha",
+            type="password"
+        )
 
-    # ==============================
-    # MIGRAÇÃO: colunas de auditoria
-    # (seguro rodar mesmo com o banco já existente)
-    # ==============================
+        if st.button(
+            "Entrar",
+            use_container_width=True
+        ):
 
-    conn = conectar()
-    cursor = conn.cursor()
+            resultado = banco.autenticar(
+                usuario,
+                senha
+            )
 
-    cursor.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
-    cursor.execute("ALTER TABLE historico_notas ADD COLUMN IF NOT EXISTS usuario TEXT")
-    cursor.execute("ALTER TABLE remanejamento ADD COLUMN IF NOT EXISTS criado_por TEXT")
-    cursor.execute("ALTER TABLE historico_remanejamento ADD COLUMN IF NOT EXISTS usuario TEXT")
-    cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
-    cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS descricao TEXT")
+            if resultado:
 
-    conn.commit()
-    conn.close()
+                st.session_state.logado = True
+                st.session_state.usuario = usuario
 
-# ==================================================
-# DASHBOARD
-# ==================================================
+                # retorno:
+                # (id, tipo, trocar_senha)
 
-@st.cache_data(ttl=30)
-def ler_notas():
+                st.session_state.tipo_usuario = resultado[1]
+                st.session_state.trocar_senha = resultado[2]
 
-    conn = conectar()
-    cursor = conn.cursor()
+                st.rerun()
 
-    cursor.execute("""
-    SELECT
-        rua,
-        nota
-    FROM notas
-    """)
+            else:
 
-    dados = {
-        row[0]: float(row[1]) if row[1] is not None else 0
-        for row in cursor.fetchall()
-    }
+                st.error(
+                    "Usuário ou senha inválidos."
+                )
 
-    conn.close()
+        st.write("")
 
-    return dados
+        with st.expander(
+            "❓ Para que serve o Luxiz IA?"
+        ):
 
+            st.markdown("""
 
-@st.cache_data(ttl=30)
-def ler_duplas():
+# ✨ Sobre o Luxiz IA
 
-    conn = conectar()
-    cursor = conn.cursor()
+O **Luxiz IA** foi desenvolvido para auxiliar líderes, supervisores, coordenadores e gestores na administração operacional diária de armazéns e centros logísticos.
 
-    cursor.execute("""
-    SELECT
-        rua,
-        dupla
-    FROM notas
-    """)
+---
 
-    dados = {
-        row[0]: row[1]
-        for row in cursor.fetchall()
-    }
+## 📊 Dashboard Organizacional
 
-    conn.close()
+O Dashboard foi criado para gerar motivação e engajamento das equipes.
 
-    return dados
+Sabemos da dificuldade de manter um armazém organizado diariamente, principalmente em operações com alto volume e grande movimentação.
 
+Por isso, o líder realiza inspeções presenciais em cada rua, setor ou área operacional e atribui uma nota conforme a organização, limpeza e padrão operacional encontrado.
 
-@st.cache_data(ttl=30)
-def ler_tudo():
+Isso cria:
 
-    conn = conectar()
-    cursor = conn.cursor()
+- maior senso de responsabilidade;
+- incentivo saudável entre equipes;
+- melhoria contínua;
+- acompanhamento visual da evolução operacional;
+- reconhecimento das melhores equipes.
 
-    cursor.execute("""
-    SELECT
-        rua,
-        nota,
-        dupla
-    FROM notas
-    """)
+---
 
-    dados = {}
+## ⚡ Central de Remanejamento
 
-    for row in cursor.fetchall():
+A Central de Remanejamento foi criada para monitorar prioridades operacionais em tempo real.
 
-        dados[row[0]] = {
-            "nota": float(row[1]) if row[1] is not None else 0,
-            "dupla": row[2]
-        }
+Exemplos:
 
-    conn.close()
+- docas prioritárias;
+- coletas urgentes;
+- itens pendentes;
+- separações críticas;
+- carregamentos prioritários;
+- atividades administrativas.
 
-    return dados
+Ferramenta ideal para:
 
+- faturistas;
+- administrativo;
+- supervisores;
+- gestores operacionais.
 
-def salvar_dados(
-    rua,
-    nota,
-    dupla,
-    usuario=None
-):
+---
 
-    conn = conectar()
-    cursor = conn.cursor()
+## 😊 Central SAC
 
-    # Atualiza o painel atual
-    cursor.execute("""
-    INSERT INTO notas
-    (
-        rua,
-        nota,
-        dupla,
-        atualizado_por
+A Central SAC permite controlar reclamações, falhas operacionais e ocorrências logísticas.
+
+O objetivo é definir uma meta mensal e trabalhar continuamente para permanecer dentro dela.
+
+Isso permite:
+
+- medir a qualidade operacional;
+- acompanhar tendências;
+- identificar gargalos;
+- agir preventivamente;
+- reduzir reincidências.
+
+---
+
+## 🎯 Objetivo do Luxiz IA
+
+Transformar indicadores operacionais em informações simples, rápidas e visuais, auxiliando líderes e gestores na tomada de decisão diária.
+            """)
+
+    st.stop()
+
+# =====================================================
+# CABEÇALHO
+# =====================================================
+
+col1, col2 = st.columns([7,2])
+
+with col1:
+
+    estilos.logo_header()
+
+with col2:
+
+    st.success("🟢 Online")
+
+    st.caption(
+        f"☁️ Sincronizado com o servidor\n\n"
+        f"Última atualização: "
+        f"{datetime.now().strftime('%H:%M:%S')}"
     )
-    VALUES (%s, %s, %s, %s)
 
-    ON CONFLICT (rua)
-    DO UPDATE SET
-        nota = EXCLUDED.nota,
-        dupla = EXCLUDED.dupla,
-        atualizado_por = EXCLUDED.atualizado_por
-    """, (
-        rua,
-        nota,
-        dupla,
-        usuario
-    ))
+    if st.button(
+        "🚪 Sair",
+        use_container_width=True
+    ):
 
-    # Salva histórico
-    cursor.execute("""
-    INSERT INTO historico_notas
-    (
-        rua,
-        nota,
-        dupla,
-        usuario
+        st.session_state.clear()
+        st.rerun()
+
+# =====================================================
+# PERFIL
+# =====================================================
+
+tipo = st.session_state.tipo_usuario
+
+usuario_atual = st.session_state.usuario
+
+eh_separador = usuario_atual.startswith("Separador.")
+eh_conferente = usuario_atual.startswith("Conferente.")
+
+acesso_restrito = eh_separador or eh_conferente
+
+if tipo == "fundador":
+    badge = "👑 Fundador"
+
+elif tipo == "gestao":
+    badge = "🛡️ Gestão"
+
+elif eh_separador:
+    badge = "📦 Separador"
+
+elif eh_conferente:
+    badge = "🔎 Conferente"
+
+else:
+    badge = "👤 Usuário"
+
+st.success(
+    f"Bem-vindo, {st.session_state.usuario} • {badge}"
+)
+
+with st.popover("🆕 Novidades da versão 1.0.2"):
+
+    st.markdown(
+        """
+**O que há de novo no Luxiz IA:**
+
+- 🕒 O histórico de Remanejamentos foi movido para um botão discreto no final da página, deixando a tela mais limpa.
+- ✨ Feedback visual em tempo real: ao salvar, adicionar ou excluir algo, o sistema mostra "Luxiz IA atualizando..." e confirma com um aviso rápido na tela.
+- ⏱️ Atualização automática das telas ajustada para a cada 120 segundos, reduzindo o "piscar" da tela.
+- 🔍 Nova seção **Análise Técnica** no SAC: registre ocorrências por pessoa (nome, tipo de erro, data e descrição), veja um card individual por pessoa com o total de erros e um ponto de melhoria automático.
+- 🗑️ Agora é possível excluir vários registros de Análise Técnica de uma vez, usando as caixinhas de seleção.
+- 🏷️ Mostra nessa nova atualização "Quem alterou" também foi acrescentado **Horarios e datas**.
+- 👥 Novos perfis de acesso: **Separador** e **Conferente**, com visão restrita ao Dashboard e ao SAC — e, na Análise Técnica, cada um vê apenas o próprio card.
+        """
     )
-    VALUES (%s, %s, %s, %s)
-    """, (
-        rua,
-        nota,
-        dupla,
-        usuario
-    ))
 
-    conn.commit()
-    conn.close()
+# =====================================================
+# ABAS PRINCIPAIS
+# =====================================================
 
-    # limpa o cache para refletir o dado novo imediatamente
-    ler_notas.clear()
-    ler_duplas.clear()
-    ler_tudo.clear()
-    ler_historico_rua.clear()
+if acesso_restrito:
 
+    labels_abas = [
+        "📊 Dashboard",
+        "😊 SAC"
+    ]
 
-@st.cache_data(ttl=30)
-def ler_historico_rua(
-    rua,
-    limite=10
-):
+else:
 
-    conn = conectar()
-    cursor = conn.cursor()
+    labels_abas = [
+        "🏠 Início",
+        "📊 Dashboard",
+        "⚡ Remanejamento",
+        "😊 SAC",
+        "⚙️ Administrativo"
+    ]
 
-    cursor.execute("""
-    SELECT
-        nota,
-        dupla,
-        data_atualizacao,
-        usuario
-    FROM historico_notas
-    WHERE rua = %s
-    ORDER BY data_atualizacao DESC
-    LIMIT %s
-    """, (
-        rua,
-        limite
-    ))
+tabs_criadas = st.tabs(
+    labels_abas
+)
 
-    dados = cursor.fetchall()
+tab_map = dict(
+    zip(
+        labels_abas,
+        tabs_criadas
+    )
+)
 
-    conn.close()
+aba_inicio = tab_map.get("🏠 Início")
+aba_dashboard = tab_map["📊 Dashboard"]
+aba_remanejamento = tab_map.get("⚡ Remanejamento")
+aba_sac = tab_map["😊 SAC"]
+aba_admin = tab_map.get("⚙️ Administrativo")
 
-    return dados
+# =====================================================
+# INÍCIO
+# =====================================================
 
-# ==================================================
+def render_conteudo_inicio():
+
+    st.info(
+        "Utilize as abas superiores para navegar pelo sistema."
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric(
+            "5S",
+            "Online"
+        )
+
+    with c2:
+        st.metric(
+            "Remanejamento",
+            "Online"
+        )
+
+    with c3:
+        st.metric(
+            "SAC",
+            "Online"
+        )
+
+    with c4:
+        st.metric(
+            "Administrativo",
+            "Online"
+        )
+
+    st.divider()
+
+    st.subheader(
+        "Resumo da Plataforma"
+    )
+
+    st.markdown("""
+- ✅ Dashboard operacional em tempo real
+- ✅ Gestão inteligente de remanejamentos
+- ✅ Monitoramento do SAC
+- ✅ Administração centralizada
+- ✅ Indicadores estratégicos
+- ✅ Ambiente corporativo inteligente
+    """)
+
+    st.divider()
+
+    st.subheader(
+        "Permissões do Perfil"
+    )
+
+    if tipo == "fundador":
+
+        st.success("""
+### 👑 Fundador
+
+- Criar usuários
+- Criar gestores
+- Excluir usuários
+- Excluir gestores
+- Resetar senhas
+- Controle total do sistema
+        """)
+
+    elif tipo == "gestao":
+
+        st.info("""
+### 🛡️ Gestão
+
+- Criar usuários
+- Excluir usuários comuns
+- Resetar senhas
+- Gerenciar operação
+        """)
+
+    else:
+
+        st.warning("""
+### 👤 Usuário
+
+- Dashboard
+- SAC
+- Remanejamento
+- Administrativo operacional
+        """)
+
+    st.divider()
+
+    estilos.rodape()
+
+if aba_inicio:
+    with aba_inicio:
+        render_conteudo_inicio()
+
+@st.fragment(run_every=120)
+def render_aba_dashboard():
+
+    dashboard.render()
+
+    st.write("")
+    estilos.rodape()
+
+with aba_dashboard:
+    render_aba_dashboard()
+
+# =====================================================
 # REMANEJAMENTO
-# ==================================================
+# =====================================================
 
-@st.cache_data(ttl=30)
-def ler_remanejamentos():
+@st.fragment(run_every=120)
+def render_aba_remanejamento():
 
-    conn = conectar()
-    cursor = conn.cursor()
+    remanejamento.render()
 
-    cursor.execute("""
-    SELECT
-        id,
-        item,
-        prioridade,
-        criado_por
-    FROM remanejamento
-    ORDER BY
-        CASE prioridade
-            WHEN 'Alta' THEN 1
-            WHEN 'Média' THEN 2
-            ELSE 3
-        END,
-        id DESC
-    """)
+    st.write("")
+    estilos.rodape()
 
-    dados = []
+if aba_remanejamento:
+    with aba_remanejamento:
+        render_aba_remanejamento()
 
-    for row in cursor.fetchall():
-
-        dados.append({
-            "id": row[0],
-            "nome": row[1],
-            "prioridade": row[2],
-            "criado_por": row[3]
-        })
-
-    conn.close()
-
-    return dados
-
-
-def adicionar_remanejamento(
-    item,
-    prioridade="Normal",
-    usuario=None
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    INSERT INTO remanejamento
-    (
-        item,
-        prioridade,
-        criado_por
-    )
-    VALUES (%s, %s, %s)
-    """, (
-        item,
-        prioridade,
-        usuario
-    ))
-
-    cursor.execute("""
-    INSERT INTO historico_remanejamento
-    (
-        item,
-        prioridade,
-        usuario
-    )
-    VALUES (%s, %s, %s)
-    """, (
-        item,
-        prioridade,
-        usuario
-    ))
-
-    conn.commit()
-    conn.close()
-
-    ler_remanejamentos.clear()
-    ler_historico_remanejamento.clear()
-
-
-def excluir_remanejamento(
-    id_item
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    DELETE FROM remanejamento
-    WHERE id = %s
-    """, (
-        id_item,
-    ))
-
-    conn.commit()
-    conn.close()
-
-    ler_remanejamentos.clear()
-
-
-def total_remanejamentos():
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT COUNT(*)
-    FROM remanejamento
-    """)
-
-    total = cursor.fetchone()[0]
-
-    conn.close()
-
-    return total
-
-@st.cache_data(ttl=30)
-def ler_historico_remanejamento(
-    limite=20
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT
-        item,
-        prioridade,
-        data_hora,
-        usuario
-    FROM historico_remanejamento
-    ORDER BY data_hora DESC
-    LIMIT %s
-    """, (limite,))
-
-    dados = cursor.fetchall()
-
-    conn.close()
-
-    return dados
-
-# ==================================================
+# =====================================================
 # SAC
-# ==================================================
+# =====================================================
 
-def atualizar_sac_mensal(
-    reclamacoes,
-    meta,
-    usuario=None
-):
+@st.fragment(run_every=120)
+def render_aba_sac():
 
-    mes_ano = datetime.now().strftime(
-        "%Y-%m"
-    )
+    sac.render()
 
-    conn = conectar()
-    cursor = conn.cursor()
+    st.write("")
+    estilos.rodape()
 
-    cursor.execute("""
-    INSERT INTO sac_historico
-    (
-        mes_ano,
-        reclamacoes,
-        meta,
-        atualizado_por,
-        atualizado_em
-    )
-    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+with aba_sac:
+    render_aba_sac()
 
-    ON CONFLICT (mes_ano)
-    DO UPDATE SET
-        reclamacoes = EXCLUDED.reclamacoes,
-        meta = EXCLUDED.meta,
-        atualizado_por = EXCLUDED.atualizado_por,
-        atualizado_em = CURRENT_TIMESTAMP
-    """, (
-        mes_ano,
-        reclamacoes,
-        meta,
-        usuario
-    ))
+# =====================================================
+# ADMINISTRATIVO
+# =====================================================
+# Sem run_every: esta aba é cheia de formulários e inputs.
+# O fragmento aqui serve só para isolar cliques/digitação
+# nesta aba, evitando que eles recarreguem o app inteiro.
 
-    conn.commit()
-    conn.close()
+@st.fragment
+def render_aba_admin():
 
-    ler_historico_sac.clear()
+    administrativo.render()
 
+    st.write("")
+    estilos.rodape()
 
-@st.cache_data(ttl=30)
-def ler_historico_sac():
+if aba_admin:
+    with aba_admin:
+        render_aba_admin()
 
-    conn = conectar()
-    cursor = conn.cursor()
+# =====================================================
+# RODAPÉ
+# =====================================================
 
-    cursor.execute("""
-    SELECT
-        mes_ano,
-        reclamacoes,
-        meta,
-        atualizado_por,
-        atualizado_em
-    FROM sac_historico
-    ORDER BY mes_ano ASC
-    """)
+st.write("")
+st.divider()
 
-    dados = cursor.fetchall()
+estilos.rodape()
 
-    conn.close()
-
-    return dados
-
-
-def total_reclamacoes():
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT
-        COALESCE(
-            SUM(reclamacoes),
-            0
-        )
-    FROM sac_historico
-    """)
-
-    total = cursor.fetchone()[0]
-
-    conn.close()
-
-    return total
-
-# ==================================================
-# ANÁLISE TÉCNICA (SAC)
-# ==================================================
-
-def adicionar_analise_tecnica(
-    nome,
-    tipo_erro,
-    data_erro,
-    descricao=None,
-    usuario=None
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    INSERT INTO analise_tecnica
-    (
-        nome,
-        tipo_erro,
-        data_erro,
-        descricao,
-        registrado_por
-    )
-    VALUES (%s, %s, %s, %s, %s)
-    """, (
-        nome,
-        tipo_erro,
-        data_erro,
-        descricao,
-        usuario
-    ))
-
-    conn.commit()
-    conn.close()
-
-    ler_analise_tecnica.clear()
-
-
-@st.cache_data(ttl=30)
-def ler_analise_tecnica():
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT
-        id,
-        nome,
-        tipo_erro,
-        data_erro,
-        descricao,
-        registrado_por
-    FROM analise_tecnica
-    ORDER BY data_erro DESC
-    """)
-
-    dados = []
-
-    for row in cursor.fetchall():
-
-        dados.append({
-            "id": row[0],
-            "nome": row[1],
-            "tipo_erro": row[2],
-            "data_erro": row[3],
-            "descricao": row[4],
-            "registrado_por": row[5]
-        })
-
-    conn.close()
-
-    return dados
-
-
-def excluir_analise_tecnica(
-    id_registro
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    DELETE FROM analise_tecnica
-    WHERE id = %s
-    """, (
-        id_registro,
-    ))
-
-    conn.commit()
-    conn.close()
-
-    ler_analise_tecnica.clear()
-
-
-def excluir_analise_tecnica_lote(
-    ids_registros
-):
-
-    if not ids_registros:
-        return
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    DELETE FROM analise_tecnica
-    WHERE id = ANY(%s)
-    """, (
-        ids_registros,
-    ))
-
-    conn.commit()
-    conn.close()
-
-    ler_analise_tecnica.clear()
-
-# ==================================================
-# USUÁRIOS
-# ==================================================
-
-def autenticar(
-    usuario,
-    senha
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT
-        id,
-        tipo,
-        trocar_senha
-    FROM usuarios
-    WHERE usuario = %s
-    AND senha = %s
-    """, (
-        usuario,
-        senha
-    ))
-
-    resultado = cursor.fetchone()
-
-    conn.close()
-
-    return resultado
-
-
-def criar_usuario(
-    usuario,
-    senha,
-    tipo="usuario"
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    INSERT INTO usuarios
-    (
-        usuario,
-        senha,
-        tipo,
-        trocar_senha
-    )
-    VALUES (%s, %s, %s, %s)
-    """, (
-        usuario,
-        senha,
-        tipo,
-        1
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def listar_usuarios():
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT
-        id,
-        usuario,
-        tipo
-    FROM usuarios
-    ORDER BY usuario
-    """)
-
-    usuarios = cursor.fetchall()
-
-    conn.close()
-
-    return usuarios
-
-
-def excluir_usuario(usuario):
-
-    # Nunca permitir apagar o fundador
-    if usuario == USUARIO_FUNDADOR:
-        return False
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    DELETE FROM usuarios
-    WHERE usuario = %s
-    """, (
-        usuario,
-    ))
-
-    conn.commit()
-    conn.close()
-
-    return True
-
-
-def alterar_senha(
-    usuario,
-    nova_senha
-):
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    UPDATE usuarios
-    SET
-        senha = %s,
-        trocar_senha = 0
-    WHERE usuario = %s
-    """, (
-        nova_senha,
-        usuario
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def resetar_senha(
-    usuario,
-    senha_temporaria
-):
-
-    # proteção adicional
-    if usuario == USUARIO_FUNDADOR:
-        return False
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    UPDATE usuarios
-    SET
-        senha = %s,
-        trocar_senha = 1
-    WHERE usuario = %s
-    """, (
-        senha_temporaria,
-        usuario
-    ))
-
-    conn.commit()
-    conn.close()
-
-    return True 
+st.markdown(
+    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.2</p>",
+    unsafe_allow_html=True
+)
