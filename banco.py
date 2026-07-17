@@ -15,7 +15,6 @@ DATABASE = os.getenv("SUPABASE_DATABASE")
 USER = os.getenv("SUPABASE_USER")
 PASSWORD = os.getenv("SUPABASE_PASSWORD")
 
-
 # ==================================================
 # FUNDADOR (SECRETS)
 # ==================================================
