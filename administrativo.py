@@ -1,10 +1,48 @@
 import streamlit as st
 import banco
+import pandas as pd
+import io
 
 
 # =====================================================
 # DIÁLOGOS DE CONFIRMAÇÃO DE EXCLUSÃO
 # =====================================================
+
+@st.dialog("Confirmar notificação")
+def perguntar_notificacao(pendente, campo):
+
+    nome_pessoa = pendente[campo]
+
+    rotulo = "Separador(a)" if campo == "separador" else "Conferente"
+
+    st.write(
+        f"Deseja notificar o(a) {rotulo} **{nome_pessoa}** sobre o erro?"
+    )
+
+    st.caption(
+        "Se confirmar, essa ocorrência também vai aparecer no card dessa pessoa."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button(
+            "✅ Sim",
+            use_container_width=True,
+            key=f"notificar_sim_{campo}"
+        ):
+            st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = True
+            st.rerun()
+
+    with c2:
+        if st.button(
+            "❌ Não",
+            use_container_width=True,
+            key=f"notificar_nao_{campo}"
+        ):
+            st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = False
+            st.rerun()
+
 
 @st.dialog("Confirmar exclusão")
 def confirmar_exclusao_remanejamento(id_item, nome_item):
@@ -35,6 +73,40 @@ def confirmar_exclusao_remanejamento(id_item, nome_item):
             "❌ Cancelar",
             use_container_width=True,
             key=f"cancela_del_remanejamento_{id_item}"
+        ):
+            st.rerun(scope="fragment")
+
+
+@st.dialog("Confirmar exclusão em lote")
+def confirmar_exclusao_multipla_remanejamento(ids_selecionados):
+
+    st.write(
+        f"Tem certeza que deseja excluir **{len(ids_selecionados)}** "
+        "prioridade(s) selecionada(s)?"
+    )
+
+    st.caption(
+        "Essa ação não pode ser desfeita."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button(
+            "✅ Confirmar exclusão",
+            use_container_width=True,
+            key="confirma_del_lote_remanejamento"
+        ):
+            with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} prioridade(s)..."):
+                banco.excluir_remanejamento_lote(ids_selecionados)
+            st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} prioridade(s) excluída(s).")
+            st.rerun(scope="fragment")
+
+    with c2:
+        if st.button(
+            "❌ Cancelar",
+            use_container_width=True,
+            key="cancela_del_lote_remanejamento"
         ):
             st.rerun(scope="fragment")
 
@@ -338,9 +410,22 @@ def render():
                 "Nenhuma prioridade cadastrada."
             )
 
+        ids_selecionados_remanejamento = []
+
         for item in itens:
 
-            c1, c2 = st.columns([8, 1])
+            c0, c1, c2 = st.columns([0.6, 7.4, 1])
+
+            with c0:
+
+                marcado_remanejamento = st.checkbox(
+                    "selecionar",
+                    key=f"select_remanejamento_{item['id']}",
+                    label_visibility="collapsed"
+                )
+
+                if marcado_remanejamento:
+                    ids_selecionados_remanejamento.append(item["id"])
 
             with c1:
 
@@ -373,6 +458,19 @@ def render():
                         item["id"],
                         item["nome"]
                     )
+
+        if ids_selecionados_remanejamento:
+
+            st.write("")
+
+            if st.button(
+                f"🗑️ Excluir {len(ids_selecionados_remanejamento)} selecionado(s)",
+                key="btn_excluir_lote_remanejamento"
+            ):
+
+                confirmar_exclusao_multipla_remanejamento(
+                    ids_selecionados_remanejamento
+                )
 
     # =====================================================
     # SAC
@@ -423,38 +521,218 @@ def render():
         )
 
         st.caption(
-            "Registre quem cometeu o erro, o tipo de erro e a data da ocorrência."
+            "Registre os detalhes completos da ocorrência."
         )
 
         TIPOS_ERRO_SAC = [
             "Pigmentação",
-            "Inversão",
-            "Mandou produto a mais",
-            "Mandou produto a menos",
-            "Não enviou componentes",
-            "Remanejou na doca errada"
+            "Componente",
+            "Contagem",
+            "Deixou no Picking",
+            "Impróprio",
+            "Inversão de Doca",
+            "Inversão de Etiqueta",
+            "Inversão de Picking",
+            "Inversão de Produto"
         ]
+
+        TRATATIVA_OPCOES = [
+            "Crédito disponível",
+            "Minuta",
+            "Coleta",
+            "Pedido"
+        ]
+
+        BALANCA_OPCOES = [
+            "Sim",
+            "Não"
+        ]
+
+        # -----------------------------------------------
+        # Fluxo de confirmação de notificação
+        # (roda antes do formulário para não perder o
+        # estado pendente entre reruns)
+        # -----------------------------------------------
+
+        pendente = st.session_state.get(
+            "pendente_analise_tecnica"
+        )
+
+        if pendente:
+
+            if pendente.get("separador") and pendente.get("notificar_separador") is None:
+
+                perguntar_notificacao(
+                    pendente,
+                    campo="separador"
+                )
+
+            elif pendente.get("conferente") and pendente.get("notificar_conferente") is None:
+
+                perguntar_notificacao(
+                    pendente,
+                    campo="conferente"
+                )
+
+            else:
+
+                vinculos = []
+
+                if pendente.get("separador") and pendente.get("notificar_separador"):
+
+                    vinculos.append({
+                        "nome": pendente["separador"],
+                        "papel": "Separador"
+                    })
+
+                if pendente.get("conferente") and pendente.get("notificar_conferente"):
+
+                    vinculos.append({
+                        "nome": pendente["conferente"],
+                        "papel": "Conferente"
+                    })
+
+                # Deduplica por nome (ignorando maiúsculas/minúsculas):
+                # se a mesma pessoa aparecer em mais de um campo,
+                # essa ocorrência conta 1 vez só, com os papéis mesclados.
+                vinculos_por_nome = {}
+
+                for vinculo in vinculos:
+
+                    chave = vinculo["nome"].strip().title()
+
+                    if chave in vinculos_por_nome:
+
+                        if vinculo["papel"] not in vinculos_por_nome[chave]["papel"]:
+
+                            vinculos_por_nome[chave]["papel"] += f" e {vinculo['papel']}"
+
+                    else:
+
+                        vinculos_por_nome[chave] = {
+                            "nome": vinculo["nome"],
+                            "papel": vinculo["papel"]
+                        }
+
+                vinculos = list(vinculos_por_nome.values())
+
+                rotulo_ocorrencia = (
+                    pendente.get("separador")
+                    or pendente.get("conferente")
+                    or pendente.get("chamado")
+                    or "nova ocorrência"
+                )
+
+                with st.spinner(f"✨ Luxiz IA atualizando: registrando {rotulo_ocorrencia}..."):
+                    banco.adicionar_analise_tecnica(
+                        pendente,
+                        vinculos,
+                        usuario=usuario_logado
+                    )
+
+                st.toast(f"✨ Luxiz IA: {rotulo_ocorrencia} registrada.")
+
+                del st.session_state["pendente_analise_tecnica"]
+
+                st.rerun()
 
         with st.form(
             "form_analise_tecnica"
         ):
 
-            col1, col2, col3 = st.columns([2, 2, 1])
-
-            with col1:
-                nome_erro = st.text_input(
-                    "Nome"
-                )
+            col2, col3 = st.columns(2)
 
             with col2:
                 tipo_erro = st.selectbox(
-                    "O que errou",
+                    "Tipo",
                     TIPOS_ERRO_SAC
                 )
 
             with col3:
                 data_erro = st.date_input(
                     "Data"
+                )
+
+            col4, col5, col6 = st.columns(3)
+
+            with col4:
+                chamado = st.text_input(
+                    "Chamado"
+                )
+
+            with col5:
+                cliente = st.text_input(
+                    "Cliente"
+                )
+
+            with col6:
+                nota_fiscal = st.text_input(
+                    "Nota Fiscal"
+                )
+
+            col7, col8, col9 = st.columns(3)
+
+            with col7:
+                cod_produto = st.text_input(
+                    "Cód Produto"
+                )
+
+            with col8:
+                produto = st.text_input(
+                    "Produto"
+                )
+
+            with col9:
+                hora = st.time_input(
+                    "Hora"
+                )
+
+            col10, col11, col12 = st.columns(3)
+
+            with col10:
+                separador = st.text_input(
+                    "Separador"
+                )
+
+            with col11:
+                conferente = st.text_input(
+                    "Conferente"
+                )
+
+            with col12:
+                balanca = st.selectbox(
+                    "Balança",
+                    BALANCA_OPCOES
+                )
+
+            col13, col14, col15 = st.columns(3)
+
+            with col13:
+                volume = st.text_input(
+                    "Volume"
+                )
+
+            with col14:
+                carga = st.text_input(
+                    "Carga"
+                )
+
+            with col15:
+                regiao = st.text_input(
+                    "Região"
+                )
+
+            col16, col17 = st.columns(2)
+
+            with col16:
+                motorista = st.text_input(
+                    "Motorista"
+                )
+
+            with col17:
+                tratativa = st.selectbox(
+                    "Tratativa",
+                    TRATATIVA_OPCOES
                 )
 
             descricao_erro = st.text_area(
@@ -467,25 +745,29 @@ def render():
 
             if registrar:
 
-                if nome_erro:
+                st.session_state["pendente_analise_tecnica"] = {
+                    "tipo_erro": tipo_erro,
+                    "data_erro": data_erro,
+                    "descricao": descricao_erro,
+                    "chamado": chamado,
+                    "cliente": cliente,
+                    "nota_fiscal": nota_fiscal,
+                    "cod_produto": cod_produto,
+                    "produto": produto,
+                    "tratativa": tratativa,
+                    "hora": hora,
+                    "separador": separador if separador else None,
+                    "volume": volume,
+                    "carga": carga,
+                    "regiao": regiao,
+                    "motorista": motorista,
+                    "balanca": balanca,
+                    "conferente": conferente if conferente else None,
+                    "notificar_separador": None if separador else False,
+                    "notificar_conferente": None if conferente else False
+                }
 
-                    with st.spinner(f"✨ Luxiz IA atualizando: registrando ocorrência de {nome_erro}..."):
-                        banco.adicionar_analise_tecnica(
-                            nome_erro,
-                            tipo_erro,
-                            data_erro,
-                            descricao=descricao_erro,
-                            usuario=usuario_logado
-                        )
-
-                    st.toast(f"✨ Luxiz IA: ocorrência de {nome_erro} registrada.")
-                    st.rerun(scope="fragment")
-
-                else:
-
-                    st.warning(
-                        "Informe o nome antes de registrar."
-                    )
+                st.rerun()
 
         st.divider()
 
@@ -517,8 +799,15 @@ def render():
 
                 with c1:
 
+                    identificador = (
+                        registro.get("separador")
+                        or registro.get("conferente")
+                        or registro.get("chamado")
+                        or "Ocorrência"
+                    )
+
                     st.caption(
-                        f"👤 {registro['nome']} • {registro['tipo_erro']} • "
+                        f"👤 {identificador} • {registro['tipo_erro']} • "
                         f"{registro['data_erro'].strftime('%d/%m/%Y')}"
                     )
 
@@ -531,7 +820,7 @@ def render():
 
                         confirmar_exclusao_analise_tecnica(
                             registro["id"],
-                            registro["nome"]
+                            identificador
                         )
 
             if ids_selecionados:
@@ -545,6 +834,34 @@ def render():
                     confirmar_exclusao_multipla_analise_tecnica(
                         ids_selecionados
                     )
+
+            st.divider()
+
+            df_exportar = pd.DataFrame(registros_tecnica)
+
+            if "vinculos_notificados" in df_exportar.columns:
+
+                df_exportar["vinculos_notificados"] = df_exportar["vinculos_notificados"].apply(
+                    lambda lista: ", ".join(
+                        f"{item['nome']} ({item['papel']})" for item in lista
+                    ) if lista else ""
+                )
+
+            buffer_excel = io.BytesIO()
+
+            with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
+                df_exportar.to_excel(
+                    writer,
+                    index=False,
+                    sheet_name="Analise Tecnica"
+                )
+
+            st.download_button(
+                "📥 Exportar para Excel",
+                data=buffer_excel.getvalue(),
+                file_name="analise_tecnica_luxiz.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
     # =====================================================
     # USUÁRIOS
