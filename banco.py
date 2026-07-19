@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import psycopg2
+from psycopg2.extras import Json
 from datetime import datetime
 
 
@@ -117,10 +118,25 @@ def inicializar_banco():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS analise_tecnica (
         id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
+        nome TEXT,
         tipo_erro TEXT NOT NULL,
         data_erro DATE NOT NULL,
         descricao TEXT,
+        chamado TEXT,
+        cliente TEXT,
+        nota_fiscal TEXT,
+        cod_produto TEXT,
+        produto TEXT,
+        tratativa TEXT,
+        hora TIME,
+        separador TEXT,
+        volume TEXT,
+        carga TEXT,
+        regiao TEXT,
+        motorista TEXT,
+        balanca TEXT,
+        conferente TEXT,
+        vinculos_notificados JSONB DEFAULT '[]'::jsonb,
         registrado_por TEXT,
         data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -189,7 +205,23 @@ def inicializar_banco():
     cursor.execute("ALTER TABLE historico_remanejamento ADD COLUMN IF NOT EXISTS usuario TEXT")
     cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
     cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    cursor.execute("ALTER TABLE analise_tecnica ALTER COLUMN nome DROP NOT NULL")
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS descricao TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS chamado TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS cliente TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS nota_fiscal TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS cod_produto TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS produto TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS tratativa TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS hora TIME")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS separador TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS volume TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS carga TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS regiao TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS motorista TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS balanca TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS conferente TEXT")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS vinculos_notificados JSONB DEFAULT '[]'::jsonb")
 
     conn.commit()
     conn.close()
@@ -468,6 +500,29 @@ def excluir_remanejamento(
     ler_remanejamentos.clear()
 
 
+def excluir_remanejamento_lote(
+    ids_itens
+):
+
+    if not ids_itens:
+        return
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM remanejamento
+    WHERE id = ANY(%s)
+    """, (
+        ids_itens,
+    ))
+
+    conn.commit()
+    conn.close()
+
+    ler_remanejamentos.clear()
+
+
 def total_remanejamentos():
 
     conn = conectar()
@@ -605,10 +660,8 @@ def total_reclamacoes():
 # ==================================================
 
 def adicionar_analise_tecnica(
-    nome,
-    tipo_erro,
-    data_erro,
-    descricao=None,
+    dados,
+    vinculos,
     usuario=None
 ):
 
@@ -618,18 +671,24 @@ def adicionar_analise_tecnica(
     cursor.execute("""
     INSERT INTO analise_tecnica
     (
-        nome,
-        tipo_erro,
-        data_erro,
-        descricao,
+        nome, tipo_erro, data_erro, descricao,
+        chamado, cliente, nota_fiscal, cod_produto, produto,
+        tratativa, hora, separador, volume, carga, regiao,
+        motorista, balanca, conferente, vinculos_notificados,
         registrado_por
     )
-    VALUES (%s, %s, %s, %s, %s)
+    VALUES (
+        %s, %s, %s, %s,
+        %s, %s, %s, %s, %s,
+        %s, %s, %s, %s, %s, %s,
+        %s, %s, %s, %s,
+        %s
+    )
     """, (
-        nome,
-        tipo_erro,
-        data_erro,
-        descricao,
+        None, dados["tipo_erro"], dados["data_erro"], dados["descricao"],
+        dados["chamado"], dados["cliente"], dados["nota_fiscal"], dados["cod_produto"], dados["produto"],
+        dados["tratativa"], dados["hora"], dados["separador"], dados["volume"], dados["carga"], dados["regiao"],
+        dados["motorista"], dados["balanca"], dados["conferente"], Json(vinculos),
         usuario
     ))
 
@@ -647,28 +706,30 @@ def ler_analise_tecnica():
 
     cursor.execute("""
     SELECT
-        id,
-        nome,
-        tipo_erro,
-        data_erro,
-        descricao,
+        id, nome, tipo_erro, data_erro, descricao,
+        chamado, cliente, nota_fiscal, cod_produto, produto,
+        tratativa, hora, separador, volume, carga, regiao,
+        motorista, balanca, conferente, vinculos_notificados,
         registrado_por
     FROM analise_tecnica
     ORDER BY data_erro DESC
     """)
 
+    colunas = [
+        "id", "nome", "tipo_erro", "data_erro", "descricao",
+        "chamado", "cliente", "nota_fiscal", "cod_produto", "produto",
+        "tratativa", "hora", "separador", "volume", "carga", "regiao",
+        "motorista", "balanca", "conferente", "vinculos_notificados",
+        "registrado_por"
+    ]
+
     dados = []
 
     for row in cursor.fetchall():
 
-        dados.append({
-            "id": row[0],
-            "nome": row[1],
-            "tipo_erro": row[2],
-            "data_erro": row[3],
-            "descricao": row[4],
-            "registrado_por": row[5]
-        })
+        dados.append(
+            dict(zip(colunas, row))
+        )
 
     conn.close()
 
@@ -870,4 +931,4 @@ def resetar_senha(
     conn.commit()
     conn.close()
 
-    return True 
+    return True
