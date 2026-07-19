@@ -1,8 +1,18 @@
 import streamlit as st
 import banco
+import re
 
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
+
+def gerar_chave_css(texto):
+
+    return re.sub(
+        r'[^a-zA-Z0-9]+',
+        '-',
+        texto
+    ).strip('-').lower()
 
 
 def render():
@@ -91,34 +101,61 @@ def render():
 
             with cols[indice % 3]:
 
-                with st.container(border=True):
+                if prioridade == "Alta":
 
-                    if prioridade == "Alta":
+                    cor_fundo = "rgba(220,38,38,0.16)"
+                    cor_borda = "#dc2626"
+                    rotulo_status = "🚨 PRIORIDADE ALTA"
+                    tipo_alerta = "error"
+                    progresso = 100
+                    descricao = "Execução imediata recomendada."
 
-                        st.error(
-                            "🚨 PRIORIDADE ALTA"
-                        )
+                elif prioridade == "Média":
 
-                        progresso = 100
-                        descricao = "Execução imediata recomendada."
+                    cor_fundo = "rgba(245,158,11,0.16)"
+                    cor_borda = "#f59e0b"
+                    rotulo_status = "⚠️ PRIORIDADE MÉDIA"
+                    tipo_alerta = "warning"
+                    progresso = 60
+                    descricao = "Monitoramento operacional ativo."
 
-                    elif prioridade == "Média":
+                else:
 
-                        st.warning(
-                            "⚠️ PRIORIDADE MÉDIA"
-                        )
+                    cor_fundo = "rgba(34,197,94,0.16)"
+                    cor_borda = "#22c55e"
+                    rotulo_status = "✅ PRIORIDADE NORMAL"
+                    tipo_alerta = "success"
+                    progresso = 30
+                    descricao = "Fluxo operacional dentro do esperado."
 
-                        progresso = 60
-                        descricao = "Monitoramento operacional ativo."
+                chave_card = f"card-reman-{item['id']}-{gerar_chave_css(item['nome'])}"
+
+                st.markdown(
+                    f"""
+                    <style>
+                    .st-key-{chave_card} {{
+                        background-color: {cor_fundo} !important;
+                        border: 2px solid {cor_borda} !important;
+                        border-radius: 0.6rem;
+                    }}
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                with st.container(border=True, key=chave_card):
+
+                    if tipo_alerta == "error":
+
+                        st.error(rotulo_status)
+
+                    elif tipo_alerta == "warning":
+
+                        st.warning(rotulo_status)
 
                     else:
 
-                        st.success(
-                            "✅ PRIORIDADE NORMAL"
-                        )
-
-                        progresso = 30
-                        descricao = "Fluxo operacional dentro do esperado."
+                        st.success(rotulo_status)
 
                     st.markdown(
                         f"### ⚡ {item['nome']}"
