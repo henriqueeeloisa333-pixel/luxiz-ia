@@ -95,7 +95,8 @@ st.session_state.tema = "claro" if tema_claro else "escuro"
 # =====================================================
 
 estilos.aplicar_fundo(
-    tema=st.session_state.tema
+    tema=st.session_state.tema,
+    tela="login" if not st.session_state.logado else "app"
 )
 
 # =====================================================
@@ -288,19 +289,24 @@ st.success(
     f"Bem-vindo, {st.session_state.usuario} • {badge}"
 )
 
-with st.popover("🆕 Novidades da versão 1.0.2"):
+with st.popover("🆕 Novidades da versão 1.0.3"):
 
     st.markdown(
         """
 **O que há de novo no Luxiz IA:**
 
+- 🎨 Os cards do Dashboard e do Remanejamento agora ficam **coloridos por inteiro** conforme a nota ou a prioridade — dá para ver a situação de longe, sem precisar ler o texto.
+- 📝 O campo "Nome" da Análise Técnica foi removido; Separador e Conferente já cobrem essa informação, evitando registrar o mesmo erro duas vezes.
+- 🔧 Corrigido: quando a mesma pessoa aparecia em mais de um campo (ex: Separador e Conferente iguais), o erro contava em dobro no card dela — agora conta só 1 vez por registro.
 - 🕒 O histórico de Remanejamentos foi movido para um botão discreto no final da página, deixando a tela mais limpa.
 - ✨ Feedback visual em tempo real: ao salvar, adicionar ou excluir algo, o sistema mostra "Luxiz IA atualizando..." e confirma com um aviso rápido na tela.
 - ⏱️ Atualização automática das telas ajustada para a cada 120 segundos, reduzindo o "piscar" da tela.
-- 🔍 Nova seção **Análise Técnica** no SAC: registre ocorrências por pessoa (nome, tipo de erro, data e descrição), veja um card individual por pessoa com o total de erros e um ponto de melhoria automático.
-- 🗑️ Agora é possível excluir vários registros de Análise Técnica de uma vez, usando as caixinhas de seleção.
-- 🏷️ Mostra nessa nova atualização "Quem alterou" também foi acrescentado **Horarios e datas**.
-- 👥 Novos perfis de acesso: **Separador** e **Conferente**, com visão restrita ao Dashboard e ao SAC — e, na Análise Técnica, cada um vê apenas o próprio card.
+- 🔍 Análise Técnica no SAC ganhou muito mais detalhe: Chamado, Cliente, Nota Fiscal, Cód Produto, Produto, Tratativa, Hora, Separador, Volume, Carga, Região, Motorista, Balança e Conferente.
+- 🔔 Ao informar um Separador ou Conferente na Análise Técnica, o sistema pergunta se deseja notificá-lo(a) — se confirmado, a ocorrência aparece também no card dessa pessoa.
+- 📥 Novo botão para exportar toda a Análise Técnica para uma planilha Excel.
+- 🗑️ Agora é possível excluir vários registros de Remanejamento e de Análise Técnica de uma vez, usando as caixinhas de seleção.
+- 🏷️ O tipo de erro agora tem opções mais completas: Pigmentação, Componente, Contagem, Deixou no Picking, Impróprio, Inversão de Doca, Inversão de Etiqueta, Inversão de Picking e Inversão de Produto.
+- 👥 Perfis de acesso **Separador** e **Conferente**, com visão restrita ao Dashboard e ao SAC — e, na Análise Técnica, cada um vê apenas o próprio card.
         """
     )
 
@@ -513,6 +519,6 @@ st.divider()
 estilos.rodape()
 
 st.markdown(
-    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.2</p>",
+    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.3</p>",
     unsafe_allow_html=True
 )
