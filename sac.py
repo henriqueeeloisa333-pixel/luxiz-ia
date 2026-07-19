@@ -291,14 +291,54 @@ significativamente a meta.
 
     registros = banco.ler_analise_tecnica()
 
+    por_pessoa = {}
+
+    for registro in registros:
+
+        vinculos = registro.get("vinculos_notificados") or []
+
+        if not vinculos and registro.get("nome"):
+
+            # Compatibilidade com registros antigos, criados antes
+            # da remoção do campo Nome.
+            vinculos = [
+                {
+                    "nome": registro["nome"],
+                    "papel": "Responsável"
+                }
+            ]
+
+        # Deduplica por nome dentro do mesmo registro: mesmo que o
+        # mesmo nome apareça em papéis diferentes (ex: Nome e
+        # Separador iguais, salvos antes da correção), esse
+        # registro conta só 1 vez para essa pessoa.
+        nomes_ja_contados_neste_registro = set()
+
+        for vinculo in vinculos:
+
+            nome_normalizado = vinculo["nome"].strip().title()
+
+            if nome_normalizado in nomes_ja_contados_neste_registro:
+                continue
+
+            nomes_ja_contados_neste_registro.add(nome_normalizado)
+
+            entrada = dict(registro)
+            entrada["papel_nesta_ocorrencia"] = vinculo["papel"]
+
+            por_pessoa.setdefault(
+                nome_normalizado,
+                []
+            ).append(entrada)
+
     if nome_restrito:
 
-        registros = [
-            registro for registro in registros
-            if registro["nome"].strip().title() == nome_restrito
-        ]
+        por_pessoa = {
+            nome: erros for nome, erros in por_pessoa.items()
+            if nome == nome_restrito
+        }
 
-    if not registros:
+    if not por_pessoa:
 
         if nome_restrito:
 
@@ -313,17 +353,6 @@ significativamente a meta.
             )
 
     else:
-
-        por_pessoa = {}
-
-        for registro in registros:
-
-            nome_normalizado = registro["nome"].strip().title()
-
-            por_pessoa.setdefault(
-                nome_normalizado,
-                []
-            ).append(registro)
 
         nomes = sorted(
             por_pessoa.keys()
@@ -381,7 +410,8 @@ significativamente a meta.
 
                                 st.caption(
                                     f"• {erro['tipo_erro']} — "
-                                    f"{erro['data_erro'].strftime('%d/%m/%Y')}"
+                                    f"{erro['data_erro'].strftime('%d/%m/%Y')} "
+                                    f"({erro['papel_nesta_ocorrencia']})"
                                 )
 
                                 if erro.get("descricao"):
