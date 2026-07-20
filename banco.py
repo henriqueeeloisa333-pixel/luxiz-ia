@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import Json
 from datetime import datetime
 
@@ -29,19 +30,63 @@ SENHA_FUNDADOR = os.getenv(
 )
 
 # ==================================================
-# CONEXÃO
+# CONEXÃO (POOL REAPROVEITADO)
 # ==================================================
+# Antes, cada ação abria uma conexão nova com o Supabase
+# do zero (handshake TLS completo a cada clique), o que
+# deixava tudo mais lento. Agora um pool mantém conexões
+# já abertas prontas para uso — conectar() pega uma
+# emprestada, liberar() devolve pro pool (sem fechar de
+# verdade), evitando repetir esse custo a cada ação.
 
-def conectar():
+@st.cache_resource
+def _obter_pool():
 
-    return psycopg2.connect(
+    return psycopg2.pool.SimpleConnectionPool(
+        1,
+        10,
         host=HOST,
         port=PORT,
         database=DATABASE,
         user=USER,
         password=PASSWORD,
         connect_timeout=10
-    )   
+    )
+
+
+def conectar():
+
+    pool_conexoes = _obter_pool()
+
+    conn = pool_conexoes.getconn()
+
+    try:
+        # Verifica se a conexão ainda está viva (o Supabase
+        # pode derrubar conexões ociosas depois de um tempo).
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.close()
+
+    except Exception:
+
+        pool_conexoes.putconn(conn, close=True)
+
+        conn = psycopg2.connect(
+            host=HOST,
+            port=PORT,
+            database=DATABASE,
+            user=USER,
+            password=PASSWORD,
+            connect_timeout=10
+        )
+
+    return conn
+
+
+def liberar(conn):
+
+    _obter_pool().putconn(conn)
+
 
 def inicializar_banco():
 
@@ -189,7 +234,7 @@ def inicializar_banco():
         ))
 
     conn.commit()
-    conn.close()    
+    liberar(conn)    
 
     # ==============================
     # MIGRAÇÃO: colunas de auditoria
@@ -224,7 +269,7 @@ def inicializar_banco():
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS vinculos_notificados JSONB DEFAULT '[]'::jsonb")
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
 # ==================================================
 # DASHBOARD
@@ -248,7 +293,7 @@ def ler_notas():
         for row in cursor.fetchall()
     }
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -271,7 +316,7 @@ def ler_duplas():
         for row in cursor.fetchall()
     }
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -299,7 +344,7 @@ def ler_tudo():
             "dupla": row[2]
         }
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -355,7 +400,7 @@ def salvar_dados(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     # limpa o cache para refletir o dado novo imediatamente
     ler_notas.clear()
@@ -390,7 +435,7 @@ def ler_historico_rua(
 
     dados = cursor.fetchall()
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -431,7 +476,7 @@ def ler_remanejamentos():
             "criado_por": row[3]
         })
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -474,7 +519,7 @@ def adicionar_remanejamento(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     ler_remanejamentos.clear()
     ler_historico_remanejamento.clear()
@@ -495,7 +540,7 @@ def excluir_remanejamento(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     ler_remanejamentos.clear()
 
@@ -518,7 +563,7 @@ def excluir_remanejamento_lote(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     ler_remanejamentos.clear()
 
@@ -535,7 +580,7 @@ def total_remanejamentos():
 
     total = cursor.fetchone()[0]
 
-    conn.close()
+    liberar(conn)
 
     return total
 
@@ -560,7 +605,7 @@ def ler_historico_remanejamento(
 
     dados = cursor.fetchall()
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -606,7 +651,7 @@ def atualizar_sac_mensal(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     ler_historico_sac.clear()
 
@@ -630,7 +675,7 @@ def ler_historico_sac():
 
     dados = cursor.fetchall()
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -651,7 +696,7 @@ def total_reclamacoes():
 
     total = cursor.fetchone()[0]
 
-    conn.close()
+    liberar(conn)
 
     return total
 
@@ -693,7 +738,7 @@ def adicionar_analise_tecnica(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     ler_analise_tecnica.clear()
 
@@ -731,7 +776,7 @@ def ler_analise_tecnica():
             dict(zip(colunas, row))
         )
 
-    conn.close()
+    liberar(conn)
 
     return dados
 
@@ -751,7 +796,7 @@ def excluir_analise_tecnica(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     ler_analise_tecnica.clear()
 
@@ -774,7 +819,7 @@ def excluir_analise_tecnica_lote(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     ler_analise_tecnica.clear()
 
@@ -805,7 +850,7 @@ def autenticar(
 
     resultado = cursor.fetchone()
 
-    conn.close()
+    liberar(conn)
 
     return resultado
 
@@ -836,7 +881,7 @@ def criar_usuario(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
 
 def listar_usuarios():
@@ -855,7 +900,7 @@ def listar_usuarios():
 
     usuarios = cursor.fetchall()
 
-    conn.close()
+    liberar(conn)
 
     return usuarios
 
@@ -877,7 +922,7 @@ def excluir_usuario(usuario):
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     return True
 
@@ -902,7 +947,7 @@ def alterar_senha(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
 
 def resetar_senha(
@@ -929,6 +974,6 @@ def resetar_senha(
     ))
 
     conn.commit()
-    conn.close()
+    liberar(conn)
 
     return True
