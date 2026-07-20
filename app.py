@@ -105,17 +105,25 @@ estilos.aplicar_fundo(
 
 if not st.session_state.logado:
 
-    estilos.logo_header()
+    col_logo, col_teaser = st.columns([2, 1.4])
 
-    st.markdown(
-        """
-        <div class="luxiz-teaser">
-            🚀 A Luxiz IA está desenvolvendo o <strong>LX&nbsp;Roteiriza</strong> —
-            em breve, mais novidades.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    with col_logo:
+
+        estilos.logo_header()
+
+    with col_teaser:
+
+        st.markdown(
+            """
+            <div class="luxiz-teaser-wrap">
+                <div class="luxiz-teaser">
+                    🚀 A Luxiz IA está desenvolvendo o <strong>LX&nbsp;Roteiriza</strong> —
+                    em breve, mais novidades.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     st.write("")
 
