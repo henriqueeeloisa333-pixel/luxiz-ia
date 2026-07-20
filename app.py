@@ -476,7 +476,8 @@ if aba_inicio:
 @st.fragment(run_every=120)
 def render_aba_dashboard():
 
-    dashboard.render()
+    with st.spinner("🔄 Luxiz IA atualizando: Dashboard..."):
+        dashboard.render()
 
     st.write("")
     estilos.rodape()
@@ -491,7 +492,8 @@ with aba_dashboard:
 @st.fragment(run_every=120)
 def render_aba_remanejamento():
 
-    remanejamento.render()
+    with st.spinner("🔄 Luxiz IA atualizando: Remanejamento..."):
+        remanejamento.render()
 
     st.write("")
     estilos.rodape()
@@ -507,7 +509,8 @@ if aba_remanejamento:
 @st.fragment(run_every=120)
 def render_aba_sac():
 
-    sac.render()
+    with st.spinner("🔄 Luxiz IA atualizando: Central SAC..."):
+        sac.render()
 
     st.write("")
     estilos.rodape()
