@@ -133,17 +133,17 @@ def render():
 
                 if nota >= 4.8:
 
-                    cor_fundo = "rgba(34,197,94,0.16)"
-                    cor_borda = "#22c55e"
+                    cor_fundo = "rgba(59,130,246,0.16)"
+                    cor_borda = "#3b82f6"
                     rotulo_status = "🏆 Excelência"
-                    tipo_alerta = "success"
+                    tipo_alerta = "info"
 
                 elif nota >= 4:
 
-                    cor_fundo = "rgba(59,130,246,0.16)"
-                    cor_borda = "#3b82f6"
+                    cor_fundo = "rgba(34,197,94,0.16)"
+                    cor_borda = "#22c55e"
                     rotulo_status = "✅ Bom desempenho"
-                    tipo_alerta = "info"
+                    tipo_alerta = "success"
 
                 elif nota >= 3:
 
