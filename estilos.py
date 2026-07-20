@@ -372,6 +372,30 @@ def _css_fundo(tema, tela):
                     linear-gradient(135deg,#f8fafc,#f1f5f9,#f8fafc);
                 color:#111827;
             }
+
+            .luxiz-teaser{
+                display:inline-flex;
+                align-items:center;
+                gap:8px;
+                background:rgba(255,255,255,.65);
+                border:1px solid rgba(2,132,199,.25);
+                border-radius:999px;
+                padding:8px 18px;
+                font-size:.85rem;
+                color:#0369a1;
+                font-weight:600;
+                margin-bottom:18px;
+                backdrop-filter:blur(10px);
+            }
+
+            .st-key-login-card{
+                background:rgba(255,255,255,.55) !important;
+                border:1px solid rgba(0,0,0,.08) !important;
+                border-radius:20px !important;
+                backdrop-filter:blur(20px);
+                box-shadow:0 8px 32px rgba(2,132,199,.12);
+                padding:8px;
+            }
             </style>
             """
 
@@ -384,6 +408,30 @@ def _css_fundo(tema, tela):
                 radial-gradient(circle at bottom right,#7c3aed 0%,transparent 30%),
                 linear-gradient(135deg,#010617,#020b24,#010617);
             color:white;
+        }
+
+        .luxiz-teaser{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            background:rgba(255,255,255,.06);
+            border:1px solid rgba(0,200,255,.3);
+            border-radius:999px;
+            padding:8px 18px;
+            font-size:.85rem;
+            color:#7dd3fc;
+            font-weight:600;
+            margin-bottom:18px;
+            backdrop-filter:blur(10px);
+        }
+
+        .st-key-login-card{
+            background:rgba(255,255,255,.05) !important;
+            border:1px solid rgba(255,255,255,.1) !important;
+            border-radius:20px !important;
+            backdrop-filter:blur(20px);
+            box-shadow:0 8px 32px rgba(0,0,0,.35);
+            padding:8px;
         }
         </style>
         """
