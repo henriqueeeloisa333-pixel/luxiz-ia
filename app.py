@@ -107,50 +107,63 @@ if not st.session_state.logado:
 
     estilos.logo_header()
 
-    st.write("")
+    st.markdown(
+        """
+        <div class="luxiz-teaser">
+            🚀 A Luxiz IA está desenvolvendo o <strong>LX&nbsp;Roteiriza</strong> —
+            em breve, mais novidades.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.write("")
 
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2, col3 = st.columns([1, 1.2, 1])
 
     with col2:
 
-        usuario = st.text_input(
-            "Usuário"
-        )
+        with st.container(border=True, key="login-card"):
 
-        senha = st.text_input(
-            "Senha",
-            type="password"
-        )
+            st.markdown("#### 🔐 Acesso ao sistema")
 
-        if st.button(
-            "Entrar",
-            use_container_width=True
-        ):
-
-            resultado = banco.autenticar(
-                usuario,
-                senha
+            usuario = st.text_input(
+                "Usuário"
             )
 
-            if resultado:
+            senha = st.text_input(
+                "Senha",
+                type="password"
+            )
 
-                st.session_state.logado = True
-                st.session_state.usuario = usuario
+            if st.button(
+                "Entrar",
+                use_container_width=True
+            ):
 
-                # retorno:
-                # (id, tipo, trocar_senha)
-
-                st.session_state.tipo_usuario = resultado[1]
-                st.session_state.trocar_senha = resultado[2]
-
-                st.rerun()
-
-            else:
-
-                st.error(
-                    "Usuário ou senha inválidos."
+                resultado = banco.autenticar(
+                    usuario,
+                    senha
                 )
+
+                if resultado:
+
+                    st.session_state.logado = True
+                    st.session_state.usuario = usuario
+
+                    # retorno:
+                    # (id, tipo, trocar_senha)
+
+                    st.session_state.tipo_usuario = resultado[1]
+                    st.session_state.trocar_senha = resultado[2]
+
+                    st.rerun()
+
+                else:
+
+                    st.error(
+                        "Usuário ou senha inválidos."
+                    )
 
         st.write("")
 
@@ -289,12 +302,16 @@ st.success(
     f"Bem-vindo, {st.session_state.usuario} • {badge}"
 )
 
-with st.popover("🆕 Novidades da versão 1.0.3"):
+with st.popover("🆕 Novidades da versão 1.0.4"):
 
     st.markdown(
         """
 **O que há de novo no Luxiz IA:**
 
+- ⚡ Ações do dia a dia (salvar, adicionar, excluir) ficaram mais rápidas: o app agora reaproveita a conexão com o banco de dados em vez de abrir uma nova a cada clique.
+- 🖥️ O fundo do app não depende mais das configurações de tema do navegador — o visual é sempre o mesmo, controlado só pelo Luxiz IA.
+- 🎨 Fundo com gradiente chamativo só na tela de login; nas demais telas, um fundo sólido mais limpo (claro ou escuro).
+- 🔐 Tela de login redesenhada, com cartão de vidro fosco e aviso de novidades futuras.
 - 🎨 Os cards do Dashboard e do Remanejamento agora ficam **coloridos por inteiro** conforme a nota ou a prioridade — dá para ver a situação de longe, sem precisar ler o texto.
 - 📝 O campo "Nome" da Análise Técnica foi removido; Separador e Conferente já cobrem essa informação, evitando registrar o mesmo erro duas vezes.
 - 🔧 Corrigido: quando a mesma pessoa aparecia em mais de um campo (ex: Separador e Conferente iguais), o erro contava em dobro no card dela — agora conta só 1 vez por registro.
@@ -519,6 +536,6 @@ st.divider()
 estilos.rodape()
 
 st.markdown(
-    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.3</p>",
+    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.4</p>",
     unsafe_allow_html=True
 )
