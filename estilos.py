@@ -129,15 +129,31 @@ def _css_base(tema):
         .footer-luxiz span.refresh{ color:#ca8a04; font-weight:700; }
 
         .luxiz-logo{
-            text-align:left;
+            display:flex;
+            align-items:center;
+            gap:14px;
             margin-bottom:10px;
         }
 
-        .luxiz-logo h1{
-            font-size:2.4rem;
+        .luxiz-logo-icon{
+            width:52px;
+            height:52px;
+            min-width:52px;
+            border-radius:14px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:1.5rem;
+            background:linear-gradient(135deg,#0284c7,#7c3aed);
+            box-shadow:0 6px 18px rgba(2,132,199,.35);
+        }
+
+        .luxiz-logo-texto h1{
+            font-size:2rem;
             font-weight:800;
-            letter-spacing:.5px;
+            letter-spacing:.3px;
             margin:0;
+            line-height:1.1;
             background:linear-gradient(90deg,#0284c7,#7c3aed,#0284c7);
             background-size:200% auto;
             -webkit-background-clip:text;
@@ -145,13 +161,21 @@ def _css_base(tema):
             background-clip:text;
         }
 
-        .luxiz-logo p{
-            margin:2px 0 0 0;
-            font-size:.8rem;
+        .luxiz-logo-texto p{
+            margin:3px 0 0 0;
+            font-size:.72rem;
             font-weight:600;
-            letter-spacing:2.5px;
+            letter-spacing:2px;
             text-transform:uppercase;
             color:#64748b;
+        }
+
+        .luxiz-teaser-wrap{
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
+            height:100%;
+            min-height:52px;
         }
 
         .luxiz-dev-footer{
@@ -298,15 +322,31 @@ def _css_base(tema):
     .footer-luxiz span.refresh{ color:#facc15; font-weight:700; }
 
     .luxiz-logo{
-        text-align:left;
+        display:flex;
+        align-items:center;
+        gap:14px;
         margin-bottom:10px;
     }
 
-    .luxiz-logo h1{
-        font-size:2.4rem;
+    .luxiz-logo-icon{
+        width:52px;
+        height:52px;
+        min-width:52px;
+        border-radius:14px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:1.5rem;
+        background:linear-gradient(135deg,#00c8ff,#a855f7);
+        box-shadow:0 6px 18px rgba(0,200,255,.35);
+    }
+
+    .luxiz-logo-texto h1{
+        font-size:2rem;
         font-weight:800;
-        letter-spacing:.5px;
+        letter-spacing:.3px;
         margin:0;
+        line-height:1.1;
         background:linear-gradient(90deg,#00c8ff,#a855f7,#00c8ff);
         background-size:200% auto;
         -webkit-background-clip:text;
@@ -314,13 +354,21 @@ def _css_base(tema):
         background-clip:text;
     }
 
-    .luxiz-logo p{
-        margin:2px 0 0 0;
-        font-size:.8rem;
+    .luxiz-logo-texto p{
+        margin:3px 0 0 0;
+        font-size:.72rem;
         font-weight:600;
-        letter-spacing:2.5px;
+        letter-spacing:2px;
         text-transform:uppercase;
         color:#94a3b8;
+    }
+
+    .luxiz-teaser-wrap{
+        display:flex;
+        align-items:center;
+        justify-content:flex-end;
+        height:100%;
+        min-height:52px;
     }
 
     .luxiz-dev-footer{
@@ -384,7 +432,7 @@ def _css_fundo(tema, tela):
                 font-size:.85rem;
                 color:#0369a1;
                 font-weight:600;
-                margin-bottom:18px;
+                margin-bottom:0;
                 backdrop-filter:blur(10px);
             }
 
@@ -421,7 +469,7 @@ def _css_fundo(tema, tela):
             font-size:.85rem;
             color:#7dd3fc;
             font-weight:600;
-            margin-bottom:18px;
+            margin-bottom:0;
             backdrop-filter:blur(10px);
         }
 
@@ -492,8 +540,11 @@ def logo_header(subtitulo="Centro Inteligente de Operações"):
     st.markdown(
         f"""
         <div class="luxiz-logo">
-            <h1>✨ Luxiz IA</h1>
-            <p>{subtitulo}</p>
+            <div class="luxiz-logo-icon">✨</div>
+            <div class="luxiz-logo-texto">
+                <h1>Luxiz IA</h1>
+                <p>{subtitulo}</p>
+            </div>
         </div>
         """,
         unsafe_allow_html=True
