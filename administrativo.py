@@ -32,7 +32,7 @@ def perguntar_notificacao(pendente, campo):
             key=f"notificar_sim_{campo}"
         ):
             st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = True
-            st.rerun()
+            st.rerun(scope="fragment")
 
     with c2:
         if st.button(
@@ -41,7 +41,7 @@ def perguntar_notificacao(pendente, campo):
             key=f"notificar_nao_{campo}"
         ):
             st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = False
-            st.rerun()
+            st.rerun(scope="fragment")
 
 
 @st.dialog("Confirmar exclusão")
@@ -634,7 +634,7 @@ def render():
 
                 del st.session_state["pendente_analise_tecnica"]
 
-                st.rerun()
+                st.rerun(scope="fragment")
 
         with st.form(
             "form_analise_tecnica"
@@ -767,7 +767,7 @@ def render():
                     "notificar_conferente": None if conferente else False
                 }
 
-                st.rerun()
+                st.rerun(scope="fragment")
 
         st.divider()
 
