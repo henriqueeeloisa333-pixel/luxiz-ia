@@ -56,36 +56,15 @@ def _obter_pool():
 
 def conectar():
 
-    pool_conexoes = _obter_pool()
-
-    conn = pool_conexoes.getconn()
-
-    try:
-        # Verifica se a conexão ainda está viva (o Supabase
-        # pode derrubar conexões ociosas depois de um tempo).
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        cursor.close()
-
-    except Exception:
-
-        pool_conexoes.putconn(conn, close=True)
-
-        conn = psycopg2.connect(
-            host=HOST,
-            port=PORT,
-            database=DATABASE,
-            user=USER,
-            password=PASSWORD,
-            connect_timeout=10
-        )
-
-    return conn
+    return _obter_pool().getconn()
 
 
 def liberar(conn):
 
-    _obter_pool().putconn(conn)
+    try:
+        _obter_pool().putconn(conn)
+    except Exception:
+        pass
 
 
 def inicializar_banco():
