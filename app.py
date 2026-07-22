@@ -46,14 +46,6 @@ def render_status_footer():
         unsafe_allow_html=True
     )
 
-render_status_footer()
-
-# =====================================================
-# BANCO
-# =====================================================
-
-banco.inicializar_banco()
-
 # =====================================================
 # SESSION STATE
 # =====================================================
@@ -63,6 +55,19 @@ if "logado" not in st.session_state:
 
 if "usuario" not in st.session_state:
     st.session_state.usuario = ""
+
+# O rodapé "Sistema Online" só precisa se auto-atualizar
+# depois de logar — antes disso, não há necessidade de
+# ficar recarregando sozinho a cada 120s.
+
+if st.session_state.logado:
+    render_status_footer()
+
+# =====================================================
+# BANCO
+# =====================================================
+
+banco.inicializar_banco()
 
 if "tipo_usuario" not in st.session_state:
     st.session_state.tipo_usuario = "usuario"
