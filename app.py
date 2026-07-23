@@ -346,37 +346,96 @@ with st.popover("🆕 Novidades da versão 1.0.4"):
 
 if acesso_restrito:
 
-    labels_abas = [
-        "📊 Dashboard",
-        "😊 SAC"
+    NAV_ITENS = [
+        ("nav_dashboard", "📊", "Dashboard"),
+        ("nav_sac", "😊", "SAC"),
     ]
 
 else:
 
-    labels_abas = [
-        "🏠 Início",
-        "📊 Dashboard",
-        "⚡ Remanejamento",
-        "😊 SAC",
-        "⚙️ Administrativo"
+    NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
+        ("nav_dashboard", "📊", "Dashboard"),
+        ("nav_remanejamento", "⚡", "Remanejamento"),
+        ("nav_sac", "😊", "SAC"),
+        ("nav_administrativo", "⚙️", "Administrativo"),
     ]
 
-tabs_criadas = st.tabs(
-    labels_abas
+CHAVES_VALIDAS = [chave for chave, _, _ in NAV_ITENS]
+
+if (
+    "aba_atual" not in st.session_state
+    or st.session_state.aba_atual not in CHAVES_VALIDAS
+):
+    st.session_state.aba_atual = CHAVES_VALIDAS[0]
+
+# =====================================================
+# DOCK LATERAL (bolinhas que expandem no hover)
+# =====================================================
+
+TOPO_INICIAL_PX = 220
+ESPACAMENTO_PX = 62
+
+st.markdown(
+    """
+    <style>
+    div[class*="st-key-nav_"]{
+        position:fixed;
+        left:14px;
+        z-index:999998;
+    }
+    div[class*="st-key-nav_"] button{
+        width:52px;
+        height:52px;
+        border-radius:50% !important;
+        overflow:hidden;
+        white-space:nowrap;
+        padding:0 0 0 14px !important;
+        text-align:left;
+        transition:width .22s ease, border-radius .22s ease;
+        font-size:1.3rem;
+    }
+    div[class*="st-key-nav_"] button:hover{
+        width:200px;
+        border-radius:26px !important;
+    }
+    .block-container{
+        padding-left:5rem !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
-tab_map = dict(
-    zip(
-        labels_abas,
-        tabs_criadas
+for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
+
+    ativo = st.session_state.aba_atual == chave
+
+    st.markdown(
+        f"""
+        <style>
+        div[class*="st-key-{chave}"]{{
+            top:{TOPO_INICIAL_PX + indice * ESPACAMENTO_PX}px;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
     )
-)
 
-aba_inicio = tab_map.get("🏠 Início")
-aba_dashboard = tab_map["📊 Dashboard"]
-aba_remanejamento = tab_map.get("⚡ Remanejamento")
-aba_sac = tab_map["😊 SAC"]
-aba_admin = tab_map.get("⚙️ Administrativo")
+    if st.button(
+        f"{icone}  {nome}",
+        key=chave,
+        type="primary" if ativo else "secondary"
+    ):
+        st.session_state.aba_atual = chave
+        st.rerun()
+
+aba_inicio = st.session_state.aba_atual == "nav_inicio"
+aba_dashboard = st.session_state.aba_atual == "nav_dashboard"
+aba_remanejamento = st.session_state.aba_atual == "nav_remanejamento"
+aba_sac = st.session_state.aba_atual == "nav_sac"
+aba_admin = st.session_state.aba_atual == "nav_administrativo"
+
 
 # =====================================================
 # INÍCIO
@@ -385,7 +444,7 @@ aba_admin = tab_map.get("⚙️ Administrativo")
 def render_conteudo_inicio():
 
     st.info(
-        "Utilize as abas superiores para navegar pelo sistema."
+        "Utilize as bolinhas na lateral esquerda para navegar pelo sistema."
     )
 
     c1, c2, c3, c4 = st.columns(4)
@@ -475,8 +534,7 @@ def render_conteudo_inicio():
     estilos.rodape()
 
 if aba_inicio:
-    with aba_inicio:
-        render_conteudo_inicio()
+    render_conteudo_inicio()
 
 @st.fragment(run_every=120)
 def render_aba_dashboard():
@@ -487,7 +545,7 @@ def render_aba_dashboard():
     st.write("")
     estilos.rodape()
 
-with aba_dashboard:
+if aba_dashboard:
     render_aba_dashboard()
 
 # =====================================================
@@ -504,8 +562,7 @@ def render_aba_remanejamento():
     estilos.rodape()
 
 if aba_remanejamento:
-    with aba_remanejamento:
-        render_aba_remanejamento()
+    render_aba_remanejamento()
 
 # =====================================================
 # SAC
@@ -520,7 +577,7 @@ def render_aba_sac():
     st.write("")
     estilos.rodape()
 
-with aba_sac:
+if aba_sac:
     render_aba_sac()
 
 # =====================================================
@@ -539,8 +596,7 @@ def render_aba_admin():
     estilos.rodape()
 
 if aba_admin:
-    with aba_admin:
-        render_aba_admin()
+    render_aba_admin()
 
 # =====================================================
 # RODAPÉ
