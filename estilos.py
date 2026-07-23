@@ -15,6 +15,9 @@ def _css_base(tema):
         <style>
 
         header{visibility:hidden;}
+        header [data-testid="collapsedControl"]{
+            visibility:visible !important;
+        }
         footer{visibility:hidden;}
 
         .block-container{
@@ -208,6 +211,9 @@ def _css_base(tema):
     <style>
 
     header{visibility:hidden;}
+    header [data-testid="collapsedControl"]{
+        visibility:visible !important;
+    }
     footer{visibility:hidden;}
 
     .block-container{
