@@ -17,6 +17,7 @@ DATABASE = os.getenv("SUPABASE_DATABASE")
 USER = os.getenv("SUPABASE_USER")
 PASSWORD = os.getenv("SUPABASE_PASSWORD")
 
+
 # ==================================================
 # FUNDADOR (SECRETS)
 # ==================================================
@@ -67,7 +68,8 @@ def liberar(conn):
         pass
 
 
-def inicializar_banco():
+@st.cache_resource
+def _garantir_schema():
 
     print("🔎 Iniciando conexão com o banco...", flush=True)
     print(f"HOST={HOST!r} PORT={PORT!r} DATABASE={DATABASE!r} USER={USER!r}", flush=True)
@@ -249,6 +251,13 @@ def inicializar_banco():
 
     conn.commit()
     liberar(conn)
+
+    return True
+
+
+def inicializar_banco():
+
+    _garantir_schema()
 
 # ==================================================
 # DASHBOARD
@@ -862,7 +871,10 @@ def criar_usuario(
     conn.commit()
     liberar(conn)
 
+    listar_usuarios.clear()
 
+
+@st.cache_data(ttl=30)
 def listar_usuarios():
 
     conn = conectar()
@@ -902,6 +914,8 @@ def excluir_usuario(usuario):
 
     conn.commit()
     liberar(conn)
+
+    listar_usuarios.clear()
 
     return True
 
