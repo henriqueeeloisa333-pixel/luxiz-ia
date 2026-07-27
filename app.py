@@ -6,6 +6,10 @@ import dashboard
 import remanejamento
 import sac
 import administrativo
+import auditoria
+import rotativo
+import checklist
+import equipamentos
 
 from datetime import datetime
 
@@ -82,16 +86,15 @@ if "tema" not in st.session_state:
 # SELETOR DE TEMA (discreto, canto superior direito)
 # =====================================================
 
-_, col_tema = st.columns([9, 1])
+# O toggle fica fixado (via CSS) dentro da mesma faixa da barra
+# de status do rodapé — não precisa mais de coluna own própria.
 
-with col_tema:
-
-    tema_claro = st.toggle(
-        "☀️" if st.session_state.tema == "escuro" else "🌙",
-        value=(st.session_state.tema == "claro"),
-        key="toggle_tema",
-        help="Alternar entre modo claro e escuro"
-    )
+tema_claro = st.toggle(
+    "☀️" if st.session_state.tema == "escuro" else "🌙",
+    value=(st.session_state.tema == "claro"),
+    key="toggle_tema",
+    help="Alternar entre modo claro e escuro"
+)
 
 st.session_state.tema = "claro" if tema_claro else "escuro"
 
@@ -108,19 +111,109 @@ estilos.aplicar_fundo(
 # LOGIN
 # =====================================================
 
+@st.dialog("✨ Sobre o Luxiz IA", width="large")
+def mostrar_sobre_luxiz():
+
+    with st.container(height=480):
+
+        st.markdown("""
+
+O **Luxiz IA** foi desenvolvido para auxiliar líderes, supervisores, coordenadores e gestores na administração operacional diária de armazéns e centros logísticos.
+
+---
+
+## 📊 Dashboard Organizacional
+
+O Dashboard foi criado para gerar motivação e engajamento das equipes.
+
+O líder realiza inspeções presenciais em cada rua, setor ou área operacional e atribui uma nota conforme a organização, limpeza e padrão operacional encontrado.
+
+Isso cria maior senso de responsabilidade, incentivo saudável entre equipes, melhoria contínua e acompanhamento visual da evolução operacional.
+
+---
+
+## ⚡ Central de Remanejamento
+
+Monitora prioridades operacionais em tempo real — docas prioritárias, coletas urgentes, itens pendentes, separações críticas, carregamentos e atividades administrativas.
+
+Ferramenta ideal para faturistas, administrativo, supervisores e gestores operacionais.
+
+---
+
+## 😊 Central SAC
+
+Controla reclamações, falhas operacionais e ocorrências logísticas.
+
+O objetivo é definir uma meta mensal e trabalhar continuamente para permanecer dentro dela, medindo a qualidade operacional, acompanhando tendências e agindo preventivamente.
+
+---
+
+## 🎯 Auditoria de Atividades
+
+Registra acertos e erros de cada colaborador por função (Conferente, Empilhador, Assistente Logístico), com histórico individual e nível de aproveitamento.
+
+O objetivo é identificar quem precisa de reforço e reconhecer quem está com excelência.
+
+---
+
+## 🔄 Rodízio de Fim de Expediente
+
+Gera automaticamente a escala semanal de quem faz cada atividade de fim de expediente, alternando as pessoas de forma justa (rodízio), além de mostrar as atividades fixas.
+
+---
+
+## ✅ Checklist de Equipamentos
+
+Registro das inspeções de hidráulicos, carrinhos, empilhadeiras e pigmentação feitas pelos colaboradores, com histórico de conformidade e exportação para Excel.
+
+---
+
+## 🧰 Equipamentos
+
+Mostra quem é o responsável por cada hidráulico e carrinho, e quais carrinhos ficam fixos em cada local, sem precisar de remanejamento.
+
+---
+
+## ⚙️ Administrativo
+
+Área de gestão completa da operação: cadastro de usuários, responsáveis, atividades do rodízio, carrinhos fixos e demais parâmetros do sistema.
+
+---
+
+## 🎯 Objetivo do Luxiz IA
+
+Transformar indicadores operacionais em informações simples, rápidas e visuais, auxiliando líderes e gestores na tomada de decisão diária.
+        """)
+
+
 if not st.session_state.logado:
 
-    col_logo, col_teaser = st.columns([2, 1.4])
+    _, col_centro, _ = st.columns([1, 1.1, 1])
 
-    with col_logo:
+    with col_centro:
 
-        estilos.logo_header()
-
-    with col_teaser:
+        st.markdown(
+            "<div style='height:3rem'></div>",
+            unsafe_allow_html=True
+        )
 
         st.markdown(
             """
-            <div class="luxiz-teaser-wrap">
+            <div style="display:flex;justify-content:center;">
+            """,
+            unsafe_allow_html=True
+        )
+
+        estilos.logo_header()
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            """
+            <div class="luxiz-teaser-wrap" style="justify-content:center;">
                 <div class="luxiz-teaser">
                     🚀 A Luxiz IA está desenvolvendo o <strong>LX&nbsp;Roteiriza</strong> —
                     em breve, mais novidades.
@@ -130,11 +223,7 @@ if not st.session_state.logado:
             unsafe_allow_html=True
         )
 
-    st.write("")
-
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-
-    with col2:
+        st.write("")
 
         with st.container(border=True, key="login-card"):
 
@@ -180,108 +269,14 @@ if not st.session_state.logado:
 
         st.write("")
 
-        with st.expander(
-            "❓ Para que serve o Luxiz IA?"
+        if st.button(
+            "❓ Para que serve o Luxiz IA?",
+            use_container_width=True
         ):
 
-            st.markdown("""
-
-# ✨ Sobre o Luxiz IA
-
-O **Luxiz IA** foi desenvolvido para auxiliar líderes, supervisores, coordenadores e gestores na administração operacional diária de armazéns e centros logísticos.
-
----
-
-## 📊 Dashboard Organizacional
-
-O Dashboard foi criado para gerar motivação e engajamento das equipes.
-
-Sabemos da dificuldade de manter um armazém organizado diariamente, principalmente em operações com alto volume e grande movimentação.
-
-Por isso, o líder realiza inspeções presenciais em cada rua, setor ou área operacional e atribui uma nota conforme a organização, limpeza e padrão operacional encontrado.
-
-Isso cria:
-
-- maior senso de responsabilidade;
-- incentivo saudável entre equipes;
-- melhoria contínua;
-- acompanhamento visual da evolução operacional;
-- reconhecimento das melhores equipes.
-
----
-
-## ⚡ Central de Remanejamento
-
-A Central de Remanejamento foi criada para monitorar prioridades operacionais em tempo real.
-
-Exemplos:
-
-- docas prioritárias;
-- coletas urgentes;
-- itens pendentes;
-- separações críticas;
-- carregamentos prioritários;
-- atividades administrativas.
-
-Ferramenta ideal para:
-
-- faturistas;
-- administrativo;
-- supervisores;
-- gestores operacionais.
-
----
-
-## 😊 Central SAC
-
-A Central SAC permite controlar reclamações, falhas operacionais e ocorrências logísticas.
-
-O objetivo é definir uma meta mensal e trabalhar continuamente para permanecer dentro dela.
-
-Isso permite:
-
-- medir a qualidade operacional;
-- acompanhar tendências;
-- identificar gargalos;
-- agir preventivamente;
-- reduzir reincidências.
-
----
-
-## 🎯 Objetivo do Luxiz IA
-
-Transformar indicadores operacionais em informações simples, rápidas e visuais, auxiliando líderes e gestores na tomada de decisão diária.
-            """)
+            mostrar_sobre_luxiz()
 
     st.stop()
-
-# =====================================================
-# CABEÇALHO
-# =====================================================
-
-col1, col2 = st.columns([7,2])
-
-with col1:
-
-    estilos.logo_header()
-
-with col2:
-
-    st.success("🟢 Online")
-
-    st.caption(
-        f"☁️ Sincronizado com o servidor\n\n"
-        f"Última atualização: "
-        f"{datetime.now().strftime('%H:%M:%S')}"
-    )
-
-    if st.button(
-        "🚪 Sair",
-        use_container_width=True
-    ):
-
-        st.session_state.clear()
-        st.rerun()
 
 # =====================================================
 # PERFIL
@@ -293,6 +288,7 @@ usuario_atual = st.session_state.usuario
 
 eh_separador = usuario_atual.startswith("Separador.")
 eh_conferente = usuario_atual.startswith("Conferente.")
+eh_recebimento = usuario_atual.startswith("Recebimento.")
 
 acesso_restrito = eh_separador or eh_conferente
 
@@ -308,35 +304,78 @@ elif eh_separador:
 elif eh_conferente:
     badge = "🔎 Conferente"
 
+elif eh_recebimento:
+    badge = "📥 Recebimento"
+
 else:
     badge = "👤 Usuário"
 
-st.success(
-    f"Bem-vindo, {st.session_state.usuario} • {badge}"
+nome_exibicao = (
+    usuario_atual.split(".", 1)[1].strip().title()
+    if "." in usuario_atual
+    else usuario_atual
 )
 
-with st.popover("🆕 Novidades da versão 1.0.4"):
+def botao_sair_rodape(identificador):
 
-    st.markdown(
-        """
+    st.write("")
+
+    _, col_sair = st.columns([3, 1])
+
+    with col_sair:
+
+        if st.button(
+            "🚪 Sair",
+            use_container_width=True,
+            key=f"sair_{identificador}"
+        ):
+
+            st.session_state.clear()
+            st.rerun()
+
+
+def render_cabecalho_inicio():
+
+    col1, col2 = st.columns([7, 2])
+
+    with col1:
+
+        estilos.logo_header()
+
+    with col2:
+
+        st.success("🟢 Online")
+
+        st.caption(
+            f"☁️ Sincronizado com o servidor\n\n"
+            f"Última atualização: "
+            f"{datetime.now().strftime('%H:%M:%S')}"
+        )
+
+    st.success(
+        f"Bem-vindo, {nome_exibicao} • {badge}"
+    )
+
+    with st.popover("🆕 Novidades da versão 1.0.5"):
+
+        st.markdown(
+            """
 **O que há de novo no Luxiz IA:**
 
+- 🕒 Os cards do Dashboard agora mostram a **data e hora** da última atualização de cada rua, além de quem atualizou.
+- 🔐 Tela de login redesenhada: mais limpa, com foco na logo (agora com um efeito de brilho pulsante) e um fundo com movimento suave.
+- ❓ Texto "Para que serve o Luxiz IA?" atualizado, agora explicando todos os módulos do sistema (Auditoria, Rodízio, Checklist, Equipamentos e Administrativo, além de Dashboard, Remanejamento e SAC).
+- 📖 Nova seção **"Modo de Usar"** na tela inicial, logo abaixo das Permissões, explicando como usar cada módulo e qual é a meta dele.
 - ⚡ Ações do dia a dia (salvar, adicionar, excluir) ficaram mais rápidas: o app agora reaproveita a conexão com o banco de dados em vez de abrir uma nova a cada clique.
 - 🖥️ O fundo do app não depende mais das configurações de tema do navegador — o visual é sempre o mesmo, controlado só pelo Luxiz IA.
-- 🎨 Fundo com gradiente chamativo só na tela de login; nas demais telas, um fundo sólido mais limpo (claro ou escuro).
-- 🔐 Tela de login redesenhada, com cartão de vidro fosco e aviso de novidades futuras.
-- 🎨 Os cards do Dashboard e do Remanejamento agora ficam **coloridos por inteiro** conforme a nota ou a prioridade — dá para ver a situação de longe, sem precisar ler o texto.
-- 📝 O campo "Nome" da Análise Técnica foi removido; Separador e Conferente já cobrem essa informação, evitando registrar o mesmo erro duas vezes.
-- 🔧 Corrigido: quando a mesma pessoa aparecia em mais de um campo (ex: Separador e Conferente iguais), o erro contava em dobro no card dela — agora conta só 1 vez por registro.
+- 🎨 Os cards do Dashboard e do Remanejamento ficam **coloridos por inteiro** conforme a nota ou a prioridade — dá para ver a situação de longe, sem precisar ler o texto.
 - 🕒 O histórico de Remanejamentos foi movido para um botão discreto no final da página, deixando a tela mais limpa.
 - ✨ Feedback visual em tempo real: ao salvar, adicionar ou excluir algo, o sistema mostra "Luxiz IA atualizando..." e confirma com um aviso rápido na tela.
-- ⏱️ Atualização automática das telas ajustada para a cada 120 segundos, reduzindo o "piscar" da tela.
-- 🔍 Análise Técnica no SAC ganhou muito mais detalhe: Chamado, Cliente, Nota Fiscal, Cód Produto, Produto, Tratativa, Hora, Separador, Volume, Carga, Região, Motorista, Balança e Conferente.
-- 🔔 Ao informar um Separador ou Conferente na Análise Técnica, o sistema pergunta se deseja notificá-lo(a) — se confirmado, a ocorrência aparece também no card dessa pessoa.
-- 📥 Novo botão para exportar toda a Análise Técnica para uma planilha Excel.
-- 🗑️ Agora é possível excluir vários registros de Remanejamento e de Análise Técnica de uma vez, usando as caixinhas de seleção.
-- 🏷️ O tipo de erro agora tem opções mais completas: Pigmentação, Componente, Contagem, Deixou no Picking, Impróprio, Inversão de Doca, Inversão de Etiqueta, Inversão de Picking e Inversão de Produto.
-- 👥 Perfis de acesso **Separador** e **Conferente**, com visão restrita ao Dashboard e ao SAC — e, na Análise Técnica, cada um vê apenas o próprio card.
+- ⏱️ Atualização automática das telas a cada 120 segundos, reduzindo o "piscar" da tela.
+- 🔍 Análise Técnica no SAC com muito mais detalhe: Chamado, Cliente, Nota Fiscal, Cód Produto, Produto, Tratativa, Hora, Separador, Volume, Carga, Região, Motorista, Balança e Conferente.
+- 📥 Botão para exportar toda a Análise Técnica para uma planilha Excel.
+- 🗑️ É possível excluir vários registros de Remanejamento e de Análise Técnica de uma vez, usando as caixinhas de seleção.
+- 👥 Perfis de acesso **Separador**, **Conferente** e **Recebimento**, cada um com visão restrita aos módulos que fazem parte da sua rotina.
         """
     )
 
@@ -347,8 +386,21 @@ with st.popover("🆕 Novidades da versão 1.0.4"):
 if acesso_restrito:
 
     NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
         ("nav_dashboard", "📊", "Dashboard"),
         ("nav_sac", "😊", "SAC"),
+        ("nav_rotativo", "🔄", "Rodízio"),
+        ("nav_checklist", "✅", "Checklist"),
+        ("nav_equipamentos", "🧰", "Equipamentos"),
+    ]
+
+elif eh_recebimento:
+
+    NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
+        ("nav_auditoria", "🎯", "Auditoria"),
+        ("nav_checklist", "✅", "Checklist"),
+        ("nav_equipamentos", "🧰", "Equipamentos"),
     ]
 
 else:
@@ -358,6 +410,10 @@ else:
         ("nav_dashboard", "📊", "Dashboard"),
         ("nav_remanejamento", "⚡", "Remanejamento"),
         ("nav_sac", "😊", "SAC"),
+        ("nav_auditoria", "🎯", "Auditoria"),
+        ("nav_rotativo", "🔄", "Rodízio"),
+        ("nav_checklist", "✅", "Checklist"),
+        ("nav_equipamentos", "🧰", "Equipamentos"),
         ("nav_administrativo", "⚙️", "Administrativo"),
     ]
 
@@ -370,70 +426,155 @@ if (
     st.session_state.aba_atual = CHAVES_VALIDAS[0]
 
 # =====================================================
-# DOCK LATERAL (bolinhas que expandem no hover)
+# BARRA LATERAL (construída com CSS, não usa st.sidebar)
 # =====================================================
 
-TOPO_INICIAL_PX = 220
-ESPACAMENTO_PX = 62
+if "sidebar_aberta" not in st.session_state:
+    st.session_state.sidebar_aberta = True
+
+LARGURA_PAINEL_PX = 208 if st.session_state.sidebar_aberta else 64
+TOPO_INICIAL_PX = 104
+ESPACAMENTO_PX = 56
+
+# A barra lateral é um painel próprio (não usa st.sidebar), então
+# precisa seguir manualmente o tema claro/escuro escolhido no topo.
+if st.session_state.tema == "claro":
+    COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.94))"
+    COR_BORDA_SIDEBAR = "rgba(0,0,0,.08)"
+    COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.06)"
+    COR_TEXTO_TOGGLE = "#0f172a"
+else:
+    COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(8,12,24,.95), rgba(8,12,24,.88))"
+    COR_BORDA_SIDEBAR = "rgba(255,255,255,.08)"
+    COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.25)"
+    COR_TEXTO_TOGGLE = "#e2e8f0"
 
 st.markdown(
-    """
+    f"""
     <style>
-    div[class*="st-key-nav_"]{
+    .luxiz-sidebar-fundo{{
         position:fixed;
-        left:14px;
+        left:0;
+        top:0;
+        width:{LARGURA_PAINEL_PX}px;
+        height:100vh;
+        background:{COR_FUNDO_SIDEBAR};
+        border-right:1px solid {COR_BORDA_SIDEBAR};
+        box-shadow:{COR_SOMBRA_SIDEBAR};
+        z-index:999996;
+        transition:width .18s ease, background .18s ease;
+    }}
+    .luxiz-sidebar-sub{{
+        position:fixed;
+        left:0;
+        top:70px;
+        width:{LARGURA_PAINEL_PX}px;
+        text-align:center;
+        z-index:999997;
+        color:#64748b;
+        font-size:.68rem;
+        letter-spacing:1px;
+        text-transform:uppercase;
+        pointer-events:none;
+    }}
+    div[class*="st-key-toggle_sidebar_luxiz"]{{
+        position:fixed;
+        left:0;
+        top:16px;
+        width:{LARGURA_PAINEL_PX}px;
+        z-index:999999;
+        text-align:center;
+        transition:width .18s ease;
+    }}
+    div[class*="st-key-toggle_sidebar_luxiz"] button{{
+        background:transparent !important;
+        border:none !important;
+        box-shadow:none !important;
+        color:{COR_TEXTO_TOGGLE} !important;
+        font-weight:800 !important;
+        font-size:1.05rem !important;
+        letter-spacing:.4px;
+        width:100%;
+        padding:.3rem 0 !important;
+    }}
+    div[class*="st-key-toggle_sidebar_luxiz"] button:hover{{
+        filter:brightness(1.4);
+        transform:scale(1.05);
+    }}
+    div[class*="st-key-nav_"]{{
+        position:fixed;
+        left:16px;
+        width:{LARGURA_PAINEL_PX - 32}px;
         z-index:999998;
-    }
-    div[class*="st-key-nav_"] button{
-        width:52px;
-        height:52px;
-        border-radius:50% !important;
-        overflow:hidden;
-        white-space:nowrap;
-        padding:0 0 0 14px !important;
+    }}
+    div[class*="st-key-nav_"] button{{
+        width:100%;
+        height:44px;
+        border-radius:10px !important;
         text-align:left;
-        transition:width .22s ease, border-radius .22s ease;
-        font-size:1.3rem;
-    }
-    div[class*="st-key-nav_"] button:hover{
-        width:200px;
-        border-radius:26px !important;
-    }
-    .block-container{
-        padding-left:5rem !important;
-    }
+        padding-left:16px !important;
+        font-size:.92rem;
+        white-space:nowrap;
+        transition:transform .15s ease, filter .15s ease;
+    }}
+    div[class*="st-key-nav_"] button:hover{{
+        transform:translateX(3px);
+        filter:brightness(1.15);
+    }}
+    .block-container{{
+        padding-left:{LARGURA_PAINEL_PX + (32 if st.session_state.sidebar_aberta else 24)}px !important;
+        transition:padding-left .18s ease;
+    }}
     </style>
+    <div class="luxiz-sidebar-fundo"></div>
     """,
     unsafe_allow_html=True
 )
 
-for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
+rotulo_toggle = "✨  Luxiz IA" if st.session_state.sidebar_aberta else "✨"
 
-    ativo = st.session_state.aba_atual == chave
+if st.button(rotulo_toggle, key="toggle_sidebar_luxiz"):
+    st.session_state.sidebar_aberta = not st.session_state.sidebar_aberta
+    st.rerun()
+
+if st.session_state.sidebar_aberta:
 
     st.markdown(
-        f"""
-        <style>
-        div[class*="st-key-{chave}"]{{
-            top:{TOPO_INICIAL_PX + indice * ESPACAMENTO_PX}px;
-        }}
-        </style>
-        """,
+        '<div class="luxiz-sidebar-sub">Navegação</div>',
         unsafe_allow_html=True
     )
 
-    if st.button(
-        f"{icone}  {nome}",
-        key=chave,
-        type="primary" if ativo else "secondary"
-    ):
-        st.session_state.aba_atual = chave
-        st.rerun()
+    for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
+
+        ativo = st.session_state.aba_atual == chave
+
+        st.markdown(
+            f"""
+            <style>
+            div[class*="st-key-{chave}"]{{
+                top:{TOPO_INICIAL_PX + 26 + indice * ESPACAMENTO_PX}px;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            f"{icone}   {nome}",
+            key=chave,
+            type="primary" if ativo else "secondary"
+        ):
+            st.session_state.aba_atual = chave
+            st.rerun()
 
 aba_inicio = st.session_state.aba_atual == "nav_inicio"
 aba_dashboard = st.session_state.aba_atual == "nav_dashboard"
 aba_remanejamento = st.session_state.aba_atual == "nav_remanejamento"
 aba_sac = st.session_state.aba_atual == "nav_sac"
+aba_auditoria = st.session_state.aba_atual == "nav_auditoria"
+aba_rotativo = st.session_state.aba_atual == "nav_rotativo"
+aba_checklist = st.session_state.aba_atual == "nav_checklist"
+aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
 
 
@@ -444,49 +585,91 @@ aba_admin = st.session_state.aba_atual == "nav_administrativo"
 def render_conteudo_inicio():
 
     st.info(
-        "Utilize as bolinhas na lateral esquerda para navegar pelo sistema."
+        "Utilize a barra lateral esquerda para navegar pelo sistema."
     )
 
-    c1, c2, c3, c4 = st.columns(4)
+    DESCRICOES_MODULOS = {
+        "nav_dashboard": "Notas de organização por rua, em tempo real.",
+        "nav_remanejamento": "Prioridades operacionais monitoradas ao vivo.",
+        "nav_sac": "Metas de reclamações e análise técnica por pessoa.",
+        "nav_auditoria": "Acertos e erros de cada colaborador, com histórico.",
+        "nav_rotativo": "Escala automática das atividades de fim de expediente.",
+        "nav_checklist": "Inspeção de hidráulicos, carrinhos, empilhadeiras e pigmentação.",
+        "nav_equipamentos": "Responsáveis por hidráulicos e carrinhos, e carrinhos fixos por local.",
+        "nav_administrativo": "Gestão completa da operação em um só lugar.",
+    }
 
-    with c1:
-        st.metric(
-            "5S",
-            "Online"
-        )
+    CORES_MODULOS = {
+        "nav_dashboard": "#3b82f6",
+        "nav_remanejamento": "#f59e0b",
+        "nav_sac": "#22c55e",
+        "nav_auditoria": "#ec4899",
+        "nav_rotativo": "#06b6d4",
+        "nav_checklist": "#a855f7",
+        "nav_equipamentos": "#0ea5e9",
+        "nav_administrativo": "#64748b",
+    }
 
-    with c2:
-        st.metric(
-            "Remanejamento",
-            "Online"
-        )
+    modulos_disponiveis = [
+        (chave, icone, nome)
+        for chave, icone, nome in NAV_ITENS
+        if chave != "nav_inicio"
+    ]
 
-    with c3:
-        st.metric(
-            "SAC",
-            "Online"
-        )
+    st.write("")
 
-    with c4:
-        st.metric(
-            "Administrativo",
-            "Online"
-        )
+    for inicio_linha in range(0, len(modulos_disponiveis), 3):
 
-    st.divider()
+        linha = st.columns(3)
 
-    st.subheader(
-        "Resumo da Plataforma"
-    )
+        for offset in range(3):
 
-    st.markdown("""
-- ✅ Dashboard operacional em tempo real
-- ✅ Gestão inteligente de remanejamentos
-- ✅ Monitoramento do SAC
-- ✅ Administração centralizada
-- ✅ Indicadores estratégicos
-- ✅ Ambiente corporativo inteligente
-    """)
+            indice = inicio_linha + offset
+
+            if indice >= len(modulos_disponiveis):
+                continue
+
+            chave, icone, nome = modulos_disponiveis[indice]
+
+            cor = CORES_MODULOS.get(chave, "#3b82f6")
+
+            with linha[offset]:
+
+                with st.container(border=True):
+
+                    st.markdown(
+                        f"""
+                        <div style="
+                            width:48px;height:48px;border-radius:12px;
+                            background:{cor}22;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;margin-bottom:.5rem;
+                        ">{icone}</div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                    st.markdown(
+                        f"**{nome}**"
+                    )
+
+                    st.caption(
+                        DESCRICOES_MODULOS.get(chave, "")
+                    )
+
+                    st.markdown(
+                        f"""
+                        <span style="
+                            background:{cor}22;
+                            color:{cor};
+                            padding:.15rem .55rem;
+                            border-radius:999px;
+                            font-size:.72rem;
+                            font-weight:700;
+                        ">🟢 Online</span>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
     st.divider()
 
@@ -518,6 +701,37 @@ def render_conteudo_inicio():
 - Gerenciar operação
         """)
 
+    elif eh_separador:
+
+        st.warning("""
+### 📦 Separador
+
+- Dashboard
+- SAC
+- Rodízio
+- Checklist
+        """)
+
+    elif eh_conferente:
+
+        st.warning("""
+### 🔎 Conferente
+
+- Dashboard
+- SAC
+- Rodízio
+- Checklist
+        """)
+
+    elif eh_recebimento:
+
+        st.warning("""
+### 📥 Recebimento
+
+- Auditoria (apenas o próprio card)
+- Checklist
+        """)
+
     else:
 
         st.warning("""
@@ -526,14 +740,122 @@ def render_conteudo_inicio():
 - Dashboard
 - SAC
 - Remanejamento
+- Auditoria
+- Rodízio
+- Checklist
 - Administrativo operacional
         """)
+
+    st.divider()
+
+    st.subheader(
+        "📖 Modo de Usar"
+    )
+
+    st.caption(
+        "O que cada módulo faz e qual é o seu objetivo dentro da operação."
+    )
+
+    MODO_DE_USAR = [
+        (
+            "📊", "Dashboard", "#3b82f6",
+            "O líder inspeciona presencialmente cada rua/setor e atribui uma nota "
+            "de organização, limpeza e padrão operacional.",
+            "Gerar engajamento e senso de responsabilidade entre as equipes, "
+            "reconhecendo quem está com o melhor desempenho."
+        ),
+        (
+            "⚡", "Remanejamento", "#f59e0b",
+            "Cadastre uma prioridade (docas, coletas urgentes, separações críticas "
+            "etc.) e classifique a urgência: Alta, Média ou Normal.",
+            "Deixar visível, em tempo real, o que precisa de atenção imediata na operação."
+        ),
+        (
+            "😊", "SAC", "#22c55e",
+            "Registre o número de reclamações do mês e a meta estabelecida, e "
+            "acompanhe as ocorrências por pessoa na Análise Técnica.",
+            "Medir a qualidade operacional, identificar gargalos e agir antes que "
+            "as reclamações aumentem."
+        ),
+        (
+            "🎯", "Auditoria", "#ec4899",
+            "Registre os acertos e erros de cada colaborador por função "
+            "(Conferente, Empilhador, Assistente Logístico).",
+            "Acompanhar o aproveitamento individual e direcionar treinamento para "
+            "quem mais precisa."
+        ),
+        (
+            "🔄", "Rodízio", "#06b6d4",
+            "Cadastre as pessoas e as atividades de fim de expediente no "
+            "Administrativo; o sistema gera a escala da semana sozinho.",
+            "Garantir um rodízio justo das atividades de fim de expediente, "
+            "sem depender de planilha manual."
+        ),
+        (
+            "✅", "Checklist", "#a855f7",
+            "Registre a inspeção de hidráulicos, carrinhos, empilhadeiras e "
+            "pigmentação, marcando Conforme ou Não Conforme.",
+            "Manter o histórico de conformidade dos equipamentos e permitir a "
+            "exportação para Excel."
+        ),
+        (
+            "🧰", "Equipamentos", "#0ea5e9",
+            "Consulte quem é responsável por cada hidráulico/carrinho e quais "
+            "carrinhos ficam fixos em cada local.",
+            "Facilitar a localização de equipamentos e de quem é o responsável "
+            "por cada um."
+        ),
+        (
+            "⚙️", "Administrativo", "#64748b",
+            "Cadastre usuários, responsáveis, atividades do rodízio, carrinhos "
+            "fixos e demais parâmetros do sistema.",
+            "Centralizar toda a configuração da operação em um só lugar."
+        ),
+    ]
+
+    modulos_visiveis = {chave for chave, _, _ in NAV_ITENS}
+
+    mapa_modo_de_usar = {
+        "Dashboard": "nav_dashboard",
+        "Remanejamento": "nav_remanejamento",
+        "SAC": "nav_sac",
+        "Auditoria": "nav_auditoria",
+        "Rodízio": "nav_rotativo",
+        "Checklist": "nav_checklist",
+        "Equipamentos": "nav_equipamentos",
+        "Administrativo": "nav_administrativo",
+    }
+
+    for icone, nome, cor, como_usar, objetivo in MODO_DE_USAR:
+
+        if mapa_modo_de_usar.get(nome) not in modulos_visiveis:
+            continue
+
+        with st.expander(f"{icone}  {nome}"):
+
+            st.markdown(f"**🧭 Como usar:** {como_usar}")
+
+            st.markdown(
+                f"""
+                <div style="
+                    background:{cor}18;
+                    border-left:4px solid {cor};
+                    padding:.5rem .7rem;
+                    border-radius:.4rem;
+                    margin-top:.4rem;
+                ">
+                🎯 <strong>Meta:</strong> {objetivo}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
     st.divider()
 
     estilos.rodape()
 
 if aba_inicio:
+    render_cabecalho_inicio()
     render_conteudo_inicio()
 
 @st.fragment(run_every=120)
@@ -544,6 +866,7 @@ def render_aba_dashboard():
 
     st.write("")
     estilos.rodape()
+    botao_sair_rodape("dashboard")
 
 if aba_dashboard:
     render_aba_dashboard()
@@ -560,6 +883,7 @@ def render_aba_remanejamento():
 
     st.write("")
     estilos.rodape()
+    botao_sair_rodape("remanejamento")
 
 if aba_remanejamento:
     render_aba_remanejamento()
@@ -576,9 +900,77 @@ def render_aba_sac():
 
     st.write("")
     estilos.rodape()
+    botao_sair_rodape("sac")
 
 if aba_sac:
     render_aba_sac()
+
+# =====================================================
+# AUDITORIA DE ATIVIDADES
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_auditoria():
+
+    with st.spinner("🔄 Luxiz IA atualizando: Auditoria de Atividades..."):
+        auditoria.render()
+
+    st.write("")
+    estilos.rodape()
+    botao_sair_rodape("auditoria")
+
+if aba_auditoria:
+    render_aba_auditoria()
+
+# =====================================================
+# RODÍZIO - FIM DE EXPEDIENTE
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_rotativo():
+
+    with st.spinner("🔄 Luxiz IA atualizando: Rodízio de Fim de Expediente..."):
+        rotativo.render()
+
+    st.write("")
+    estilos.rodape()
+    botao_sair_rodape("rotativo")
+
+if aba_rotativo:
+    render_aba_rotativo()
+
+# =====================================================
+# CHECKLIST
+# =====================================================
+
+@st.fragment
+def render_aba_checklist():
+
+    checklist.render()
+
+    st.write("")
+    estilos.rodape()
+    botao_sair_rodape("checklist")
+
+if aba_checklist:
+    render_aba_checklist()
+
+# =====================================================
+# EQUIPAMENTOS
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_equipamentos():
+
+    with st.spinner("🔄 Luxiz IA atualizando: Equipamentos..."):
+        equipamentos.render()
+
+    st.write("")
+    estilos.rodape()
+    botao_sair_rodape("equipamentos")
+
+if aba_equipamentos:
+    render_aba_equipamentos()
 
 # =====================================================
 # ADMINISTRATIVO
@@ -594,6 +986,7 @@ def render_aba_admin():
 
     st.write("")
     estilos.rodape()
+    botao_sair_rodape("admin")
 
 if aba_admin:
     render_aba_admin()
@@ -608,6 +1001,6 @@ st.divider()
 estilos.rodape()
 
 st.markdown(
-    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.4</p>",
+    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.5</p>",
     unsafe_allow_html=True
 )

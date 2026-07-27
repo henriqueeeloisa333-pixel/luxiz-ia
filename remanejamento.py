@@ -1,5 +1,6 @@
 import streamlit as st
 import banco
+import estilos
 import re
 
 from datetime import datetime, timezone
@@ -17,10 +18,11 @@ def gerar_chave_css(texto):
 
 def render():
 
-    st.title("⚡ Central de Remanejamento")
-
-    st.caption(
-        "Monitoramento operacional das prioridades em tempo real."
+    estilos.cabecalho_pagina(
+        "⚡",
+        "Central de Remanejamento",
+        "Monitoramento operacional das prioridades em tempo real.",
+        cor="#f59e0b"
     )
 
     st.divider()

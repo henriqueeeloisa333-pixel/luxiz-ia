@@ -10,13 +10,12 @@ from datetime import datetime
 # CONFIGURAÇÃO SUPABASE
 # ==================================================
 
-HOST = os.getenv("SUPABASE_HOST")
-PORT = os.getenv("SUPABASE_PORT")
-DATABASE = os.getenv("SUPABASE_DATABASE")
+HOST = "aws-1-sa-east-1.pooler.supabase.com"
+PORT = 5432
+DATABASE = "postgres"
 
-USER = os.getenv("SUPABASE_USER")
-PASSWORD = os.getenv("SUPABASE_PASSWORD")
-
+USER = "postgres.pisddcbghxqylosviiow"
+PASSWORD = "Lg78963@@97#"
 
 # ==================================================
 # FUNDADOR (SECRETS)
@@ -57,7 +56,30 @@ def _obter_pool():
 
 def conectar():
 
-    return _obter_pool().getconn()
+    pool_obj = _obter_pool()
+    conn = pool_obj.getconn()
+
+    # O Supabase (assim como bancos gerenciados em geral) derruba
+    # conexões que ficam muito tempo ociosas no pool, mas o psycopg2
+    # só percebe isso na hora de usar a conexão — daí o erro
+    # "server closed the connection unexpectedly". Testando com um
+    # SELECT 1 aqui, a gente descarta conexões mortas e pega outra
+    # do pool antes de repassar pro resto do código.
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+
+    except Exception:
+
+        try:
+            pool_obj.putconn(conn, close=True)
+        except Exception:
+            pass
+
+        conn = pool_obj.getconn()
+
+    return conn
 
 
 def liberar(conn):
@@ -169,6 +191,148 @@ def _garantir_schema():
     """)
 
     # ==============================
+    # AUDITORIA DE ATIVIDADES
+    # ==============================
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS auditoria_atividades (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        funcao TEXT NOT NULL,
+        qtd_acertos INTEGER DEFAULT 0,
+        qtd_erros INTEGER DEFAULT 0,
+        data_atividade DATE NOT NULL,
+        descricao TEXT,
+        registrado_por TEXT,
+        data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # ==============================
+    # RODÍZIO - FIM DE EXPEDIENTE
+    # ==============================
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS rotativo_pessoas (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT UNIQUE NOT NULL,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS rotativo_atividades (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT UNIQUE NOT NULL,
+        tipo TEXT DEFAULT 'rotativo',
+        pessoa_fixa TEXT,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # ==============================
+    # CHECKLISTS
+    # ==============================
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS checklist_hidraulicos (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        numero TEXT NOT NULL,
+        data_checklist DATE NOT NULL,
+        status TEXT NOT NULL,
+        descricao TEXT,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS checklist_carrinhos (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        numero TEXT NOT NULL,
+        data_checklist DATE NOT NULL,
+        status TEXT NOT NULL,
+        descricao TEXT,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS checklist_empilhadeiras (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        numero TEXT NOT NULL,
+        data_checklist DATE NOT NULL,
+        status TEXT NOT NULL,
+        descricao TEXT,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS checklist_pigmentacao (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        data_checklist DATE NOT NULL,
+        status TEXT NOT NULL,
+        descricao TEXT,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # ==============================
+    # EQUIPAMENTOS: RESPONSÁVEIS E CARRINHOS FIXOS
+    # ==============================
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS responsaveis_hidraulicos (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        numero TEXT NOT NULL,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS responsaveis_carrinhos (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        numero TEXT NOT NULL,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS carrinhos_fixos (
+        id BIGSERIAL PRIMARY KEY,
+        local TEXT NOT NULL,
+        numero TEXT NOT NULL,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # Carrinhos fixos por local já vêm pré-cadastrados na primeira
+    # vez que o app roda — depois disso, tudo é editável normalmente
+    # pela aba de Equipamentos no Administrativo.
+
+    cursor.execute("SELECT COUNT(*) FROM carrinhos_fixos")
+
+    if cursor.fetchone()[0] == 0:
+
+        carrinhos_padrao = (
+            [("Remanejamento", numero) for numero in ["06", "08", "09", "13"]] +
+            [("Fracionado", numero) for numero in ["10", "11", "12"]]
+        )
+
+        for local, numero in carrinhos_padrao:
+
+            cursor.execute("""
+            INSERT INTO carrinhos_fixos (local, numero)
+            VALUES (%s, %s)
+            """, (local, numero))
+
+    # ==============================
     # USUÁRIOS
     # ==============================
 
@@ -248,6 +412,8 @@ def _garantir_schema():
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS balanca TEXT")
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS conferente TEXT")
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS vinculos_notificados JSONB DEFAULT '[]'::jsonb")
+    cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'rotativo'")
+    cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS pessoa_fixa TEXT")
 
     conn.commit()
     liberar(conn)
@@ -810,6 +976,636 @@ def excluir_analise_tecnica_lote(
     liberar(conn)
 
     ler_analise_tecnica.clear()
+
+# ==================================================
+# AUDITORIA DE ATIVIDADES
+# ==================================================
+
+
+def adicionar_auditoria(
+    nome,
+    funcao,
+    qtd_acertos,
+    qtd_erros,
+    data_atividade,
+    descricao,
+    usuario=None
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO auditoria_atividades
+    (
+        nome, funcao, qtd_acertos, qtd_erros,
+        data_atividade, descricao, registrado_por
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (
+        nome, funcao, qtd_acertos, qtd_erros,
+        data_atividade, descricao, usuario
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_auditoria.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_auditoria():
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT
+        id, nome, funcao, qtd_acertos, qtd_erros,
+        data_atividade, descricao, registrado_por
+    FROM auditoria_atividades
+    ORDER BY data_atividade DESC
+    """)
+
+    colunas = [
+        "id", "nome", "funcao", "qtd_acertos", "qtd_erros",
+        "data_atividade", "descricao", "registrado_por"
+    ]
+
+    dados = []
+
+    for row in cursor.fetchall():
+
+        dados.append(
+            dict(zip(colunas, row))
+        )
+
+    liberar(conn)
+
+    return dados
+
+
+def excluir_auditoria(
+    id_registro
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM auditoria_atividades
+    WHERE id = %s
+    """, (
+        id_registro,
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_auditoria.clear()
+
+
+def excluir_auditoria_lote(
+    ids_registros
+):
+
+    if not ids_registros:
+        return
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM auditoria_atividades
+    WHERE id = ANY(%s)
+    """, (
+        ids_registros,
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_auditoria.clear()
+
+# ==================================================
+# RODÍZIO - FIM DE EXPEDIENTE
+# ==================================================
+
+
+def adicionar_pessoa_rotativo(nome):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO rotativo_pessoas (nome)
+    VALUES (%s)
+    ON CONFLICT (nome) DO NOTHING
+    """, (
+        nome,
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    listar_pessoas_rotativo.clear()
+
+
+@st.cache_data(ttl=30)
+def listar_pessoas_rotativo():
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT id, nome
+    FROM rotativo_pessoas
+    ORDER BY id
+    """)
+
+    dados = cursor.fetchall()
+
+    liberar(conn)
+
+    return dados
+
+
+def excluir_pessoa_rotativo(id_pessoa):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM rotativo_pessoas
+    WHERE id = %s
+    """, (
+        id_pessoa,
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    listar_pessoas_rotativo.clear()
+
+
+def adicionar_atividade_rotativo(
+    nome,
+    tipo="rotativo",
+    pessoa_fixa=None
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO rotativo_atividades (nome, tipo, pessoa_fixa)
+    VALUES (%s, %s, %s)
+    ON CONFLICT (nome) DO NOTHING
+    """, (
+        nome, tipo, pessoa_fixa
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    listar_atividades_rotativo.clear()
+
+
+@st.cache_data(ttl=30)
+def listar_atividades_rotativo():
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT id, nome, tipo, pessoa_fixa
+    FROM rotativo_atividades
+    ORDER BY id
+    """)
+
+    dados = cursor.fetchall()
+
+    liberar(conn)
+
+    return dados
+
+
+def excluir_atividade_rotativo(id_atividade):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM rotativo_atividades
+    WHERE id = %s
+    """, (
+        id_atividade,
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    listar_atividades_rotativo.clear()
+
+# ==================================================
+# CHECKLISTS
+# ==================================================
+
+
+def _adicionar_checklist(tabela, nome, numero, data_checklist, status, descricao):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    INSERT INTO {tabela}
+    (nome, numero, data_checklist, status, descricao)
+    VALUES (%s, %s, %s, %s, %s)
+    """, (
+        nome, numero, data_checklist, status, descricao
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+
+def _ler_checklist(tabela):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    SELECT id, nome, numero, data_checklist, status, descricao
+    FROM {tabela}
+    ORDER BY data_checklist DESC, id DESC
+    """)
+
+    colunas = ["id", "nome", "numero", "data_checklist", "status", "descricao"]
+
+    dados = [
+        dict(zip(colunas, row))
+        for row in cursor.fetchall()
+    ]
+
+    liberar(conn)
+
+    return dados
+
+
+def _editar_checklist(tabela, id_registro, nome, numero, data_checklist, status, descricao):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    UPDATE {tabela}
+    SET nome = %s,
+        numero = %s,
+        data_checklist = %s,
+        status = %s,
+        descricao = %s
+    WHERE id = %s
+    """, (
+        nome, numero, data_checklist, status, descricao, id_registro
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+
+def adicionar_checklist_hidraulico(nome, numero, data_checklist, status, descricao):
+
+    _adicionar_checklist(
+        "checklist_hidraulicos",
+        nome, numero, data_checklist, status, descricao
+    )
+
+    ler_checklist_hidraulicos.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_checklist_hidraulicos():
+
+    return _ler_checklist("checklist_hidraulicos")
+
+
+def editar_checklist_hidraulico(id_registro, nome, numero, data_checklist, status, descricao):
+
+    _editar_checklist(
+        "checklist_hidraulicos",
+        id_registro, nome, numero, data_checklist, status, descricao
+    )
+
+    ler_checklist_hidraulicos.clear()
+
+
+def adicionar_checklist_carrinho(nome, numero, data_checklist, status, descricao):
+
+    _adicionar_checklist(
+        "checklist_carrinhos",
+        nome, numero, data_checklist, status, descricao
+    )
+
+    ler_checklist_carrinhos.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_checklist_carrinhos():
+
+    return _ler_checklist("checklist_carrinhos")
+
+
+def editar_checklist_carrinho(id_registro, nome, numero, data_checklist, status, descricao):
+
+    _editar_checklist(
+        "checklist_carrinhos",
+        id_registro, nome, numero, data_checklist, status, descricao
+    )
+
+    ler_checklist_carrinhos.clear()
+
+
+def adicionar_checklist_empilhadeira(nome, numero, data_checklist, status, descricao):
+
+    _adicionar_checklist(
+        "checklist_empilhadeiras",
+        nome, numero, data_checklist, status, descricao
+    )
+
+    ler_checklist_empilhadeiras.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_checklist_empilhadeiras():
+
+    return _ler_checklist("checklist_empilhadeiras")
+
+
+def editar_checklist_empilhadeira(id_registro, nome, numero, data_checklist, status, descricao):
+
+    _editar_checklist(
+        "checklist_empilhadeiras",
+        id_registro, nome, numero, data_checklist, status, descricao
+    )
+
+    ler_checklist_empilhadeiras.clear()
+
+
+def adicionar_checklist_pigmentacao(nome, data_checklist, status, descricao):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO checklist_pigmentacao
+    (nome, data_checklist, status, descricao)
+    VALUES (%s, %s, %s, %s)
+    """, (
+        nome, data_checklist, status, descricao
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_checklist_pigmentacao.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_checklist_pigmentacao():
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT id, nome, data_checklist, status, descricao
+    FROM checklist_pigmentacao
+    ORDER BY data_checklist DESC, id DESC
+    """)
+
+    colunas = ["id", "nome", "data_checklist", "status", "descricao"]
+
+    dados = [
+        dict(zip(colunas, row))
+        for row in cursor.fetchall()
+    ]
+
+    liberar(conn)
+
+    return dados
+
+
+def editar_checklist_pigmentacao(id_registro, nome, data_checklist, status, descricao):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    UPDATE checklist_pigmentacao
+    SET nome = %s,
+        data_checklist = %s,
+        status = %s,
+        descricao = %s
+    WHERE id = %s
+    """, (
+        nome, data_checklist, status, descricao, id_registro
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_checklist_pigmentacao.clear()
+
+# ==================================================
+# EQUIPAMENTOS: RESPONSÁVEIS E CARRINHOS FIXOS
+# ==================================================
+
+def _ler_responsaveis(tabela):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    SELECT id, nome, numero
+    FROM {tabela}
+    ORDER BY nome ASC
+    """)
+
+    colunas = ["id", "nome", "numero"]
+
+    dados = [
+        dict(zip(colunas, row))
+        for row in cursor.fetchall()
+    ]
+
+    liberar(conn)
+
+    return dados
+
+
+def _adicionar_responsavel(tabela, nome, numero):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    INSERT INTO {tabela} (nome, numero)
+    VALUES (%s, %s)
+    """, (nome, numero))
+
+    conn.commit()
+    liberar(conn)
+
+
+def _editar_responsavel(tabela, id_registro, nome, numero):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    UPDATE {tabela}
+    SET nome = %s,
+        numero = %s
+    WHERE id = %s
+    """, (nome, numero, id_registro))
+
+    conn.commit()
+    liberar(conn)
+
+
+def _excluir_responsavel(tabela, id_registro):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    DELETE FROM {tabela}
+    WHERE id = %s
+    """, (id_registro,))
+
+    conn.commit()
+    liberar(conn)
+
+
+@st.cache_data(ttl=30)
+def ler_responsaveis_hidraulicos():
+
+    return _ler_responsaveis("responsaveis_hidraulicos")
+
+
+def adicionar_responsavel_hidraulico(nome, numero):
+
+    _adicionar_responsavel("responsaveis_hidraulicos", nome, numero)
+    ler_responsaveis_hidraulicos.clear()
+
+
+def editar_responsavel_hidraulico(id_registro, nome, numero):
+
+    _editar_responsavel("responsaveis_hidraulicos", id_registro, nome, numero)
+    ler_responsaveis_hidraulicos.clear()
+
+
+def excluir_responsavel_hidraulico(id_registro):
+
+    _excluir_responsavel("responsaveis_hidraulicos", id_registro)
+    ler_responsaveis_hidraulicos.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_responsaveis_carrinhos():
+
+    return _ler_responsaveis("responsaveis_carrinhos")
+
+
+def adicionar_responsavel_carrinho(nome, numero):
+
+    _adicionar_responsavel("responsaveis_carrinhos", nome, numero)
+    ler_responsaveis_carrinhos.clear()
+
+
+def editar_responsavel_carrinho(id_registro, nome, numero):
+
+    _editar_responsavel("responsaveis_carrinhos", id_registro, nome, numero)
+    ler_responsaveis_carrinhos.clear()
+
+
+def excluir_responsavel_carrinho(id_registro):
+
+    _excluir_responsavel("responsaveis_carrinhos", id_registro)
+    ler_responsaveis_carrinhos.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_carrinhos_fixos():
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT id, local, numero
+    FROM carrinhos_fixos
+    ORDER BY local ASC, numero ASC
+    """)
+
+    colunas = ["id", "local", "numero"]
+
+    dados = [
+        dict(zip(colunas, row))
+        for row in cursor.fetchall()
+    ]
+
+    liberar(conn)
+
+    return dados
+
+
+def adicionar_carrinho_fixo(local, numero):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO carrinhos_fixos (local, numero)
+    VALUES (%s, %s)
+    """, (local, numero))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_carrinhos_fixos.clear()
+
+
+def editar_carrinho_fixo(id_registro, local, numero):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    UPDATE carrinhos_fixos
+    SET local = %s,
+        numero = %s
+    WHERE id = %s
+    """, (local, numero, id_registro))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_carrinhos_fixos.clear()
+
+
+def excluir_carrinho_fixo(id_registro):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM carrinhos_fixos
+    WHERE id = %s
+    """, (id_registro,))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_carrinhos_fixos.clear()
 
 # ==================================================
 # USUÁRIOS

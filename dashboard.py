@@ -1,7 +1,11 @@
 import streamlit as st
 import banco
+import estilos
 import pandas as pd
 import re
+
+from datetime import timezone
+from zoneinfo import ZoneInfo
 
 
 def gerar_chave_css(texto):
@@ -55,10 +59,11 @@ def render():
     notas = banco.ler_notas()
     duplas = banco.ler_duplas()
 
-    st.title("📊 Dashboard Operacional")
-
-    st.caption(
-        "Monitoramento inteligente das equipes em tempo real."
+    estilos.cabecalho_pagina(
+        "📊",
+        "Dashboard Operacional",
+        "Monitoramento inteligente das equipes em tempo real.",
+        cor="#3b82f6"
     )
 
     st.divider()
@@ -212,12 +217,30 @@ def render():
                     if historico:
 
                         ultimo_usuario = historico[0][3]
+                        data_ultima_atualizacao = historico[0][2]
 
                         if ultimo_usuario:
 
-                            st.caption(
-                                f"👤 Última atualização por {ultimo_usuario}"
-                            )
+                            if data_ultima_atualizacao:
+
+                                data_utc = data_ultima_atualizacao.replace(
+                                    tzinfo=timezone.utc
+                                )
+
+                                horario_local = data_utc.astimezone(
+                                    ZoneInfo("America/Campo_Grande")
+                                )
+
+                                st.caption(
+                                    f"👤 Última atualização por {ultimo_usuario} "
+                                    f"em {horario_local.strftime('%d/%m/%Y %H:%M')}"
+                                )
+
+                            else:
+
+                                st.caption(
+                                    f"👤 Última atualização por {ultimo_usuario}"
+                                )
 
                         if tendencia == "Em queda":
 

@@ -131,6 +131,17 @@ def _css_base(tema):
         .footer-luxiz span.cloud{ color:#0284c7; font-weight:700; }
         .footer-luxiz span.refresh{ color:#ca8a04; font-weight:700; }
 
+        div[class*="st-key-toggle_tema"]{
+            position:fixed;
+            bottom:2px;
+            right:18px;
+            z-index:1000000;
+            width:auto;
+        }
+        div[class*="st-key-toggle_tema"] label{
+            gap:.35rem;
+        }
+
         .luxiz-logo{
             display:flex;
             align-items:center;
@@ -176,7 +187,7 @@ def _css_base(tema):
         .luxiz-teaser-wrap{
             display:flex;
             align-items:center;
-            justify-content:flex-end;
+            justify-content:flex-start;
             height:100%;
             min-height:52px;
         }
@@ -327,6 +338,17 @@ def _css_base(tema):
     .footer-luxiz span.cloud{ color:#38bdf8; font-weight:700; }
     .footer-luxiz span.refresh{ color:#facc15; font-weight:700; }
 
+    div[class*="st-key-toggle_tema"]{
+        position:fixed;
+        bottom:2px;
+        right:18px;
+        z-index:1000000;
+        width:auto;
+    }
+    div[class*="st-key-toggle_tema"] label{
+        gap:.35rem;
+    }
+
     .luxiz-logo{
         display:flex;
         align-items:center;
@@ -372,7 +394,7 @@ def _css_base(tema):
     .luxiz-teaser-wrap{
         display:flex;
         align-items:center;
-        justify-content:flex-end;
+        justify-content:flex-start;
         height:100%;
         min-height:52px;
     }
@@ -418,23 +440,40 @@ def _css_fundo(tema, tela):
 
             return """
             <style>
+            @keyframes luxizBgFloat{
+                0%,100%{ background-position:0% 0%,100% 0%,100% 100%,0% 0%; }
+                50%{ background-position:12% 8%,88% 6%,88% 92%,0% 0%; }
+            }
+
+            @keyframes luxizLogoGlow{
+                0%,100%{ box-shadow:0 6px 18px rgba(2,132,199,.35); transform:scale(1); }
+                50%{ box-shadow:0 10px 34px rgba(124,58,237,.55); transform:scale(1.06); }
+            }
+
             .stApp{
                 background:
                     radial-gradient(circle at top left,#e0e7ff 0%,transparent 35%),
                     radial-gradient(circle at top right,#bae6fd 0%,transparent 35%),
                     radial-gradient(circle at bottom right,#ede9fe 0%,transparent 30%),
                     linear-gradient(135deg,#f8fafc,#f1f5f9,#f8fafc);
+                background-size:160% 160%,160% 160%,160% 160%,100% 100%;
+                animation:luxizBgFloat 16s ease-in-out infinite;
                 color:#111827;
             }
 
+            .luxiz-logo-icon{
+                animation:luxizLogoGlow 2.6s ease-in-out infinite;
+            }
+
             .luxiz-teaser{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
+                display:inline-block;
+                text-align:center;
+                line-height:1.5;
+                max-width:440px;
                 background:rgba(255,255,255,.65);
                 border:1px solid rgba(2,132,199,.25);
-                border-radius:999px;
-                padding:8px 18px;
+                border-radius:18px;
+                padding:12px 22px;
                 font-size:.85rem;
                 color:#0369a1;
                 font-weight:600;
@@ -455,23 +494,40 @@ def _css_fundo(tema, tela):
 
         return """
         <style>
+        @keyframes luxizBgFloat{
+            0%,100%{ background-position:0% 0%,100% 0%,100% 100%,0% 0%; }
+            50%{ background-position:12% 8%,88% 6%,88% 92%,0% 0%; }
+        }
+
+        @keyframes luxizLogoGlow{
+            0%,100%{ box-shadow:0 6px 18px rgba(0,200,255,.35); transform:scale(1); }
+            50%{ box-shadow:0 10px 36px rgba(168,85,247,.7); transform:scale(1.06); }
+        }
+
         .stApp{
             background:
                 radial-gradient(circle at top left,#312e81 0%,transparent 35%),
                 radial-gradient(circle at top right,#0ea5e9 0%,transparent 35%),
                 radial-gradient(circle at bottom right,#7c3aed 0%,transparent 30%),
                 linear-gradient(135deg,#010617,#020b24,#010617);
+            background-size:160% 160%,160% 160%,160% 160%,100% 100%;
+            animation:luxizBgFloat 16s ease-in-out infinite;
             color:white;
         }
 
+        .luxiz-logo-icon{
+            animation:luxizLogoGlow 2.6s ease-in-out infinite;
+        }
+
         .luxiz-teaser{
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
+            display:inline-block;
+            text-align:center;
+            line-height:1.5;
+            max-width:440px;
             background:rgba(255,255,255,.06);
             border:1px solid rgba(0,200,255,.3);
-            border-radius:999px;
-            padding:8px 18px;
+            border-radius:18px;
+            padding:12px 22px;
             font-size:.85rem;
             color:#7dd3fc;
             font-weight:600;
@@ -552,6 +608,85 @@ def logo_header(subtitulo="Centro Inteligente de Operações"):
                 <p>{subtitulo}</p>
             </div>
         </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# =====================================================
+# CABEÇALHO DE PÁGINA (animado, leve — só CSS)
+# =====================================================
+# Usado no lugar de st.title()+st.caption() em cada aba, pra dar
+# uma entrada suave (fade + slide), um ícone com leve balanço e
+# uma barrinha de destaque com brilho correndo — tudo via CSS,
+# sem nenhum JS, então não pesa a aba.
+
+def cabecalho_pagina(icone, titulo, subtitulo, cor="#3b82f6"):
+
+    st.markdown(
+        f"""
+        <style>
+        @keyframes luxizFadeUp {{
+            from {{ opacity:0; transform:translateY(12px); }}
+            to {{ opacity:1; transform:translateY(0); }}
+        }}
+        @keyframes luxizFloat {{
+            0%, 100% {{ transform:translateY(0) rotate(0deg); }}
+            50% {{ transform:translateY(-5px) rotate(-4deg); }}
+        }}
+        @keyframes luxizShimmerBar {{
+            0% {{ background-position:0% 50%; }}
+            100% {{ background-position:200% 50%; }}
+        }}
+        .luxiz-page-header{{
+            display:flex;
+            align-items:center;
+            gap:16px;
+            animation:luxizFadeUp .45s ease;
+        }}
+        .luxiz-page-header-icon{{
+            width:54px;
+            height:54px;
+            min-width:54px;
+            border-radius:16px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:1.55rem;
+            background:linear-gradient(135deg, {cor}, {cor}99);
+            box-shadow:0 6px 18px {cor}55;
+            animation:luxizFloat 3.2s ease-in-out infinite;
+        }}
+        .luxiz-page-header-texto h1{{
+            font-size:1.85rem;
+            font-weight:800;
+            margin:0;
+            line-height:1.15;
+        }}
+        .luxiz-page-header-texto p{{
+            margin:.2rem 0 0 0;
+            font-size:.92rem;
+            opacity:.7;
+        }}
+        .luxiz-page-header-bar{{
+            height:3px;
+            width:100%;
+            margin-top:14px;
+            border-radius:999px;
+            background:linear-gradient(90deg, {cor}, transparent, {cor});
+            background-size:200% auto;
+            animation:luxizShimmerBar 3s linear infinite;
+            opacity:.55;
+        }}
+        </style>
+        <div class="luxiz-page-header">
+            <div class="luxiz-page-header-icon">{icone}</div>
+            <div class="luxiz-page-header-texto">
+                <h1>{titulo}</h1>
+                <p>{subtitulo}</p>
+            </div>
+        </div>
+        <div class="luxiz-page-header-bar"></div>
         """,
         unsafe_allow_html=True
     )

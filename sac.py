@@ -1,19 +1,31 @@
 import streamlit as st
 import banco
+import estilos
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import re
 from collections import Counter
+
+
+def gerar_chave_css(texto):
+
+    return re.sub(
+        r'[^a-zA-Z0-9]+',
+        '-',
+        texto
+    ).strip('-').lower()
 
 
 def render():
 
     banco.inicializar_banco()
 
-    st.title("😊 Central SAC Luxiz IA")
-
-    st.caption(
-        "Monitoramento inteligente de reclamações e metas"
+    estilos.cabecalho_pagina(
+        "😊",
+        "Central SAC Luxiz IA",
+        "Monitoramento inteligente de reclamações e metas",
+        cor="#22c55e"
     )
 
     st.divider()
@@ -40,6 +52,29 @@ def render():
             "Atualizado em"
         ]
     )
+
+    # "Mês" vem do banco como texto "AAAA-MM" (ex: "2026-07").
+    # Se deixarmos esse texto ir direto pro eixo X do gráfico, o
+    # Plotly tenta "adivinhar" que é uma data e, com poucos pontos,
+    # cria um eixo quebrado (aquele "23:59:59.9995" sem sentido).
+    # Aqui a gente converte pra um rótulo fixo tipo "Jul/2026" e
+    # trata o eixo como categoria, não como data.
+
+    MESES_ABREVIADOS = [
+        "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+        "Jul", "Ago", "Set", "Out", "Nov", "Dez"
+    ]
+
+    def formatar_mes(mes_ano_texto):
+
+        try:
+            ano, mes = mes_ano_texto.split("-")
+            return f"{MESES_ABREVIADOS[int(mes) - 1]}/{ano}"
+
+        except Exception:
+            return mes_ano_texto
+
+    df["Mês"] = df["Mês"].apply(formatar_mes)
 
     ultimo = df.iloc[-1]
 
@@ -100,22 +135,63 @@ def render():
         "Evolução Mensal"
     )
 
-    fig = px.line(
-        df,
-        x="Mês",
-        y=[
-            "Reclamações",
-            "Meta"
-        ],
-        markers=True
+    cor_grade = "rgba(255,255,255,.08)" if tema == "escuro" else "rgba(0,0,0,.08)"
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["Mês"],
+            y=df["Reclamações"],
+            name="Reclamações",
+            mode="lines+markers",
+            line=dict(color="#f97316", width=3),
+            marker=dict(size=8),
+            fill="tozeroy",
+            fillcolor="rgba(249,115,22,0.12)",
+            hovertemplate="%{x}<br>Reclamações: %{y}<extra></extra>"
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["Mês"],
+            y=df["Meta"],
+            name="Meta",
+            mode="lines+markers",
+            line=dict(color="#38bdf8", width=3, dash="dash"),
+            marker=dict(size=8),
+            hovertemplate="%{x}<br>Meta: %{y}<extra></extra>"
+        )
+    )
+
+    fig.update_xaxes(
+        type="category",
+        title=None,
+        gridcolor=cor_grade
+    )
+
+    fig.update_yaxes(
+        title=None,
+        gridcolor=cor_grade,
+        rangemode="tozero"
     )
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font_color=cor_fonte,
-        height=500,
-        legend_title="Indicadores"
+        height=420,
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            title=None
+        ),
+        margin=dict(t=40, l=10, r=10, b=10)
     )
 
     st.plotly_chart(
@@ -374,21 +450,87 @@ significativamente a meta.
 
             with cols[indice % 3]:
 
-                with st.container(border=True):
+                if total_erros <= 1:
+
+                    cor_fundo = "rgba(34,197,94,0.16)"
+                    cor_borda = "#22c55e"
+                    rotulo_status = "✅ Poucas ocorrências"
+
+                elif total_erros <= 3:
+
+                    cor_fundo = "rgba(245,158,11,0.16)"
+                    cor_borda = "#f59e0b"
+                    rotulo_status = "⚠️ Atenção"
+
+                else:
+
+                    cor_fundo = "rgba(220,38,38,0.16)"
+                    cor_borda = "#dc2626"
+                    rotulo_status = "🚨 Reforço necessário"
+
+                chave_card = f"card-analise-{gerar_chave_css(nome)}"
+
+                st.markdown(
+                    f"""
+                    <style>
+                    .st-key-{chave_card} {{
+                        background-color: {cor_fundo} !important;
+                        border: 2px solid {cor_borda} !important;
+                        border-radius: 0.8rem;
+                    }}
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                with st.container(border=True, key=chave_card):
 
                     st.markdown(
-                        f"### 👤 {nome}"
+                        f"""
+                        <div style="
+                            width:52px;height:52px;border-radius:50%;
+                            background:{cor_borda};
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.5rem;margin-bottom:.4rem;
+                            box-shadow:0 0 14px {cor_borda}88;
+                        ">👤</div>
+                        """,
+                        unsafe_allow_html=True
                     )
+
+                    st.markdown(
+                        f"### {nome}"
+                    )
+
+                    if cor_borda == "#22c55e":
+                        st.success(rotulo_status)
+                    elif cor_borda == "#f59e0b":
+                        st.warning(rotulo_status)
+                    else:
+                        st.error(rotulo_status)
 
                     st.metric(
                         "Total de Erros",
                         total_erros
                     )
 
-                    st.warning(
-                        f"📌 Ponto de melhoria: **{tipo_mais_comum}** "
-                        f"({qtd_mais_comum}x). Recomenda-se reforço nesse ponto."
+                    st.markdown(
+                        f"""
+                        <div style="
+                            background:{cor_borda}22;
+                            border-left:4px solid {cor_borda};
+                            padding:.5rem .7rem;
+                            border-radius:.4rem;
+                            font-size:.85rem;
+                        ">
+                        📌 Ponto de melhoria: <strong>{tipo_mais_comum}</strong>
+                        ({qtd_mais_comum}x). Recomenda-se reforço nesse ponto.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
                     )
+
+                    st.write("")
 
                     with st.popover(
                         "📋 Saber mais"
