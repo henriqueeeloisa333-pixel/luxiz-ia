@@ -286,16 +286,18 @@ tipo = st.session_state.tipo_usuario
 
 usuario_atual = st.session_state.usuario
 
+eh_fundador_prefixo = usuario_atual.startswith("Fundador.")
+eh_gestao_prefixo = usuario_atual.startswith("Gestao.")
 eh_separador = usuario_atual.startswith("Separador.")
 eh_conferente = usuario_atual.startswith("Conferente.")
 eh_recebimento = usuario_atual.startswith("Recebimento.")
 
 acesso_restrito = eh_separador or eh_conferente
 
-if tipo == "fundador":
+if tipo == "fundador" or eh_fundador_prefixo:
     badge = "👑 Fundador"
 
-elif tipo == "gestao":
+elif tipo == "gestao" or eh_gestao_prefixo:
     badge = "🛡️ Gestão"
 
 elif eh_separador:
@@ -567,6 +569,48 @@ if st.session_state.sidebar_aberta:
             st.session_state.aba_atual = chave
             st.rerun()
 
+# =====================================================
+# RODAPÉ DA BARRA LATERAL (bolinha online + usuário logado)
+# =====================================================
+
+rotulo_rodape_sidebar = (
+    f"🟢 {nome_exibicao}"
+    if st.session_state.sidebar_aberta
+    else "🟢"
+)
+
+TOPO_RODAPE_SIDEBAR_PX = (
+    TOPO_INICIAL_PX + 26 + len(NAV_ITENS) * ESPACAMENTO_PX + 24
+)
+
+st.markdown(
+    f"""
+    <style>
+    .luxiz-sidebar-rodape{{
+        position:fixed;
+        left:0;
+        top:{TOPO_RODAPE_SIDEBAR_PX}px;
+        width:{LARGURA_PAINEL_PX}px;
+        box-sizing:border-box;
+        text-align:center;
+        z-index:999997;
+        font-size:.78rem;
+        font-weight:700;
+        color:{COR_TEXTO_TOGGLE};
+        white-space:nowrap;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        padding:14px 12px 0 12px;
+        border-top:1px solid {COR_BORDA_SIDEBAR};
+        margin:0 auto;
+        transition:width .18s ease, top .18s ease;
+    }}
+    </style>
+    <div class="luxiz-sidebar-rodape">{rotulo_rodape_sidebar}</div>
+    """,
+    unsafe_allow_html=True
+)
+
 aba_inicio = st.session_state.aba_atual == "nav_inicio"
 aba_dashboard = st.session_state.aba_atual == "nav_dashboard"
 aba_remanejamento = st.session_state.aba_atual == "nav_remanejamento"
@@ -677,7 +721,7 @@ def render_conteudo_inicio():
         "Permissões do Perfil"
     )
 
-    if tipo == "fundador":
+    if tipo == "fundador" or eh_fundador_prefixo:
 
         st.success("""
 ### 👑 Fundador
@@ -690,7 +734,7 @@ def render_conteudo_inicio():
 - Controle total do sistema
         """)
 
-    elif tipo == "gestao":
+    elif tipo == "gestao" or eh_gestao_prefixo:
 
         st.info("""
 ### 🛡️ Gestão
