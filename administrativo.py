@@ -469,7 +469,7 @@ def render():
             "Gerenciar Prioridades"
         )
 
-       col1, col2 = st.columns([3, 2])
+        col1, col2 = st.columns([3, 2])
 
         with col1:
             novo_item = st.text_input(
@@ -507,18 +507,6 @@ def render():
                 st.warning(
                     "Digite uma prioridade antes de adicionar."
                 )
-
-            if novo_item:
-
-                with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{novo_item}'..."):
-                    banco.adicionar_remanejamento(
-                        novo_item,
-                        prioridade,
-                        usuario=usuario_logado
-                    )
-
-                st.toast(f"✨ Luxiz IA: '{novo_item}' adicionado.")
-                st.rerun()
 
         st.divider()
 
