@@ -641,6 +641,11 @@ def adicionar_remanejamento(
     usuario=None
 ):
 
+    if not item or not item.strip():
+        raise ValueError("O campo 'item' não pode ser vazio.")
+
+    item = item.strip()
+
     conn = conectar()
     cursor = conn.cursor()
 
