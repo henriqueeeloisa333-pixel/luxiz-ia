@@ -2057,21 +2057,41 @@ def listar_usuarios(armazem_id):
 
 def atualizar_ultimo_acesso(usuario):
 
-    conn = conectar()
-    cursor = conn.cursor()
+    # Esse "heartbeat" roda sozinho em segundo plano, a cada 120s,
+    # para TODA sessão logada (ver render_status_footer no app.py).
+    # Por isso precisa ser à prova de falha: se o UPDATE der erro
+    # por qualquer instabilidade momentânea do banco, a conexão tem
+    # que voltar pro pool mesmo assim (senão, rodando sem parar,
+    # acaba vazando as conexões até esgotar o pool) — e o erro não
+    # pode nunca derrubar a tela do usuário.
 
-    cursor.execute("""
-    UPDATE usuarios
-    SET ultimo_acesso = CURRENT_TIMESTAMP
-    WHERE usuario = %s
-    """, (
-        usuario,
-    ))
+    conn = None
 
-    conn.commit()
-    liberar(conn)
+    try:
 
-    listar_usuarios.clear()
+        conn = conectar()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        UPDATE usuarios
+        SET ultimo_acesso = CURRENT_TIMESTAMP
+        WHERE usuario = %s
+        """, (
+            usuario,
+        ))
+
+        conn.commit()
+
+        listar_usuarios.clear()
+
+    except Exception:
+
+        pass
+
+    finally:
+
+        if conn is not None:
+            liberar(conn)
 
 
 def excluir_usuario(usuario):
