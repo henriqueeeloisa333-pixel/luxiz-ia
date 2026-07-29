@@ -39,7 +39,10 @@ def render_status_footer():
     # usuário como ativo agora — é o que alimenta o "quem está
     # logado" na aba Usuários do Administrativo.
     if st.session_state.get("usuario"):
-        banco.atualizar_ultimo_acesso(st.session_state.usuario)
+        try:
+            banco.atualizar_ultimo_acesso(st.session_state.usuario)
+        except Exception:
+            pass
 
     st.markdown(
         f"""
