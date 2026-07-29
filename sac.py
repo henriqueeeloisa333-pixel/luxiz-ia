@@ -21,6 +21,11 @@ def render():
 
     banco.inicializar_banco()
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     estilos.cabecalho_pagina(
         "😊",
         "Central SAC Luxiz IA",
@@ -30,7 +35,7 @@ def render():
 
     st.divider()
 
-    dados = banco.ler_historico_sac()
+    dados = banco.ler_historico_sac(armazem_id_atual)
 
     if not dados:
 
@@ -365,7 +370,7 @@ significativamente a meta.
 
         nome_restrito = usuario_atual.split(".", 1)[1].strip().title()
 
-    registros = banco.ler_analise_tecnica()
+    registros = banco.ler_analise_tecnica(armazem_id_atual)
 
     por_pessoa = {}
 
@@ -550,10 +555,13 @@ significativamente a meta.
 
                             for erro in erros_ordenados:
 
+                                chamado_erro = erro.get("chamado")
+
                                 st.caption(
                                     f"• {erro['tipo_erro']} — "
                                     f"{erro['data_erro'].strftime('%d/%m/%Y')} "
                                     f"({erro['papel_nesta_ocorrencia']})"
+                                    + (f" • Chamado {chamado_erro}" if chamado_erro else "")
                                 )
 
                                 if erro.get("descricao"):

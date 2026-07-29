@@ -18,6 +18,11 @@ def gerar_chave_css(texto):
 
 def render():
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     estilos.cabecalho_pagina(
         "⚡",
         "Central de Remanejamento",
@@ -27,7 +32,7 @@ def render():
 
     st.divider()
 
-    itens = banco.ler_remanejamentos()
+    itens = banco.ler_remanejamentos(armazem_id_atual)
 
     alta = 0
     media = 0
@@ -219,7 +224,7 @@ def render():
 
     with st.popover("🕒 Histórico de Remanejamentos"):
 
-        historico = banco.ler_historico_remanejamento()
+        historico = banco.ler_historico_remanejamento(armazem_id_atual)
 
         if historico:
 

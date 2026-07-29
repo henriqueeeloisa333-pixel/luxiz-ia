@@ -75,6 +75,11 @@ def definir_visual(aproveitamento, total_pessoa):
 
 def render():
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     estilos.cabecalho_pagina(
         "🎯",
         "Auditoria de Atividades",
@@ -84,7 +89,7 @@ def render():
 
     st.divider()
 
-    registros = banco.ler_auditoria()
+    registros = banco.ler_auditoria(armazem_id_atual)
 
     # =====================================================
     # RESTRIÇÃO DE VISÃO (mesmo esquema do SAC/Análise Técnica)

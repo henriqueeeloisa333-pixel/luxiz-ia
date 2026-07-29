@@ -34,6 +34,13 @@ st.set_page_config(
 @st.fragment(run_every=120)
 def render_status_footer():
 
+    # Também serve como "heartbeat" de presença: a cada renovação
+    # automática (e assim que a página carrega logada), marcamos o
+    # usuário como ativo agora — é o que alimenta o "quem está
+    # logado" na aba Usuários do Administrativo.
+    if st.session_state.get("usuario"):
+        banco.atualizar_ultimo_acesso(st.session_state.usuario)
+
     st.markdown(
         f"""
         <div class="footer-luxiz">
@@ -254,10 +261,17 @@ if not st.session_state.logado:
                     st.session_state.usuario = usuario
 
                     # retorno:
-                    # (id, tipo, trocar_senha)
+                    # (id, tipo, trocar_senha, armazem_id, nome_armazem)
 
                     st.session_state.tipo_usuario = resultado[1]
                     st.session_state.trocar_senha = resultado[2]
+                    st.session_state.armazem_id = resultado[3]
+                    st.session_state.armazem_nome = resultado[4]
+
+                    # Fundador começa vendo o próprio armazém, mas
+                    # pode trocar depois pelo seletor no topo.
+                    st.session_state.armazem_visualizado_id = resultado[3]
+                    st.session_state.armazem_visualizado_nome = resultado[4]
 
                     st.rerun()
 
@@ -318,6 +332,18 @@ nome_exibicao = (
     else usuario_atual
 )
 
+# =====================================================
+# ARMAZÉM EM VISUALIZAÇÃO
+# =====================================================
+# Para a maioria dos usuários, é sempre o próprio armazém. Só o
+# Fundador pode trocar (pelo seletor mostrado mais abaixo) e ver
+# os dados de qualquer armazém cadastrado.
+
+armazem_id_atual = st.session_state.get(
+    "armazem_visualizado_id",
+    st.session_state.get("armazem_id")
+)
+
 def botao_sair_rodape(identificador):
 
     st.write("")
@@ -357,6 +383,34 @@ def render_cabecalho_inicio():
     st.success(
         f"Bem-vindo, {nome_exibicao} • {badge}"
     )
+
+    if tipo == "fundador" or eh_fundador_prefixo:
+
+        lista_armazens = banco.listar_armazens()
+
+        nomes_armazens = [nome for _, nome in lista_armazens]
+        ids_armazens = [id_ for id_, _ in lista_armazens]
+
+        indice_atual = (
+            ids_armazens.index(st.session_state.armazem_visualizado_id)
+            if st.session_state.armazem_visualizado_id in ids_armazens
+            else 0
+        )
+
+        nome_escolhido = st.selectbox(
+            "📍 Visualizando dados de:",
+            nomes_armazens,
+            index=indice_atual,
+            key="seletor_armazem_fundador"
+        )
+
+        indice_escolhido = nomes_armazens.index(nome_escolhido)
+
+        if ids_armazens[indice_escolhido] != st.session_state.armazem_visualizado_id:
+
+            st.session_state.armazem_visualizado_id = ids_armazens[indice_escolhido]
+            st.session_state.armazem_visualizado_nome = nome_escolhido
+            st.rerun()
 
     with st.popover("🆕 Novidades da versão 1.0.5"):
 
@@ -438,6 +492,14 @@ LARGURA_PAINEL_PX = 208 if st.session_state.sidebar_aberta else 64
 TOPO_INICIAL_PX = 104
 ESPACAMENTO_PX = 56
 
+# Altura aproximada da barra global "🟢 Sistema Online" fixa no rodapé
+# da página inteira (definida em estilos.py, classe .footer-luxiz).
+ALTURA_RODAPE_GLOBAL_PX = 40
+
+# Altura do rodapé próprio da barra lateral (bolinha + nome do usuário),
+# que fica encaixado logo acima da barra global.
+ALTURA_RODAPE_SIDEBAR_PX = 46
+
 # A barra lateral é um painel próprio (não usa st.sidebar), então
 # precisa seguir manualmente o tema claro/escuro escolhido no topo.
 if st.session_state.tema == "claro":
@@ -503,11 +565,31 @@ st.markdown(
         filter:brightness(1.4);
         transform:scale(1.05);
     }}
-    div[class*="st-key-nav_"]{{
+    div[class*="st-key-painel_navegacao_scroll"]{{
         position:fixed;
-        left:16px;
-        width:{LARGURA_PAINEL_PX - 32}px;
+        left:0;
+        top:{TOPO_INICIAL_PX + 26}px;
+        width:{LARGURA_PAINEL_PX}px;
+        bottom:{ALTURA_RODAPE_GLOBAL_PX + ALTURA_RODAPE_SIDEBAR_PX}px;
+        overflow-y:auto;
+        overflow-x:hidden;
+        padding:0 16px;
+        box-sizing:border-box;
         z-index:999998;
+        transition:width .18s ease;
+    }}
+    div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar{{
+        width:5px;
+    }}
+    div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-thumb{{
+        background:rgba(148,163,184,.45);
+        border-radius:999px;
+    }}
+    div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-track{{
+        background:transparent;
+    }}
+    div[class*="st-key-nav_"]{{
+        margin-bottom:12px;
     }}
     div[class*="st-key-nav_"] button{{
         width:100%;
@@ -546,41 +628,30 @@ if st.session_state.sidebar_aberta:
         unsafe_allow_html=True
     )
 
-    for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
+    with st.container(key="painel_navegacao_scroll"):
 
-        ativo = st.session_state.aba_atual == chave
+        for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
 
-        st.markdown(
-            f"""
-            <style>
-            div[class*="st-key-{chave}"]{{
-                top:{TOPO_INICIAL_PX + 26 + indice * ESPACAMENTO_PX}px;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
+            ativo = st.session_state.aba_atual == chave
 
-        if st.button(
-            f"{icone}   {nome}",
-            key=chave,
-            type="primary" if ativo else "secondary"
-        ):
-            st.session_state.aba_atual = chave
-            st.rerun()
+            if st.button(
+                f"{icone}   {nome}",
+                key=chave,
+                type="primary" if ativo else "secondary"
+            ):
+                st.session_state.aba_atual = chave
+                st.rerun()
 
 # =====================================================
 # RODAPÉ DA BARRA LATERAL (bolinha online + usuário logado)
 # =====================================================
+# Fica sempre fixo, acima da barra global "Sistema Online" do
+# rodapé da página — só a área de navegação (acima) rola.
 
 rotulo_rodape_sidebar = (
     f"🟢 {nome_exibicao}"
     if st.session_state.sidebar_aberta
     else "🟢"
-)
-
-TOPO_RODAPE_SIDEBAR_PX = (
-    TOPO_INICIAL_PX + 26 + len(NAV_ITENS) * ESPACAMENTO_PX + 24
 )
 
 st.markdown(
@@ -589,21 +660,24 @@ st.markdown(
     .luxiz-sidebar-rodape{{
         position:fixed;
         left:0;
-        top:{TOPO_RODAPE_SIDEBAR_PX}px;
+        bottom:{ALTURA_RODAPE_GLOBAL_PX}px;
         width:{LARGURA_PAINEL_PX}px;
+        height:{ALTURA_RODAPE_SIDEBAR_PX}px;
         box-sizing:border-box;
-        text-align:center;
-        z-index:999997;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        z-index:999998;
         font-size:.78rem;
         font-weight:700;
         color:{COR_TEXTO_TOGGLE};
         white-space:nowrap;
         overflow:hidden;
         text-overflow:ellipsis;
-        padding:14px 12px 0 12px;
+        padding:0 12px;
         border-top:1px solid {COR_BORDA_SIDEBAR};
-        margin:0 auto;
-        transition:width .18s ease, top .18s ease;
+        background:{COR_FUNDO_SIDEBAR};
+        transition:width .18s ease;
     }}
     </style>
     <div class="luxiz-sidebar-rodape">{rotulo_rodape_sidebar}</div>

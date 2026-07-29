@@ -44,6 +44,11 @@ def gerar_tendencia(historico):
 
 def render():
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     RUAS = [
         "Rua 01",
         "Rua 02",
@@ -56,8 +61,8 @@ def render():
         "Rua 33&34"
     ]
 
-    notas = banco.ler_notas()
-    duplas = banco.ler_duplas()
+    notas = banco.ler_notas(armazem_id_atual)
+    duplas = banco.ler_duplas(armazem_id_atual)
 
     estilos.cabecalho_pagina(
         "📊",
@@ -127,6 +132,7 @@ def render():
 
             historico = banco.ler_historico_rua(
                 rua,
+                armazem_id_atual,
                 5
             )
 

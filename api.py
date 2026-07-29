@@ -4,9 +4,9 @@ import banco
 app = FastAPI()
 
 @app.get("/dados")
-def get_dados():
-    notas = banco.ler_notas()
-    duplas = banco.ler_duplas()
+def get_dados(armazem_id: int = 1):
+    notas = banco.ler_notas(armazem_id)
+    duplas = banco.ler_duplas(armazem_id)
     
     # Criamos uma lista organizada de dados para enviar ao frontend
     resultado = []
@@ -18,4 +18,4 @@ def get_dados():
             "nota": notas.get(rua, 0.0),
             "dupla": duplas.get(rua, "Sem dupla")
         })
-    return {"status": "sucesso", "dados": resultado}
+    return {"status": "sucesso", "armazem_id": armazem_id, "dados": resultado}

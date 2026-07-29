@@ -4,6 +4,9 @@ import estilos
 import pandas as pd
 import io
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
 
 # =====================================================
 # CONFIRMAÇÕES (renderizadas dentro de st.popover)
@@ -49,7 +52,7 @@ def perguntar_notificacao(pendente, campo):
             st.rerun()
 
 
-def confirmar_exclusao_remanejamento(id_item, nome_item):
+def confirmar_exclusao_remanejamento(id_item, nome_item, armazem_id):
 
     st.write(
         f"Tem certeza que deseja excluir **{nome_item}**?"
@@ -65,12 +68,12 @@ def confirmar_exclusao_remanejamento(id_item, nome_item):
         key=f"confirma_del_remanejamento_{id_item}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: excluindo '{nome_item}'..."):
-            banco.excluir_remanejamento(id_item)
+            banco.excluir_remanejamento(id_item, armazem_id)
         st.toast(f"✨ Luxiz IA: '{nome_item}' excluído.")
         st.rerun()
 
 
-def confirmar_exclusao_multipla_remanejamento(ids_selecionados):
+def confirmar_exclusao_multipla_remanejamento(ids_selecionados, armazem_id):
 
     st.write(
         f"Tem certeza que deseja excluir **{len(ids_selecionados)}** "
@@ -87,7 +90,7 @@ def confirmar_exclusao_multipla_remanejamento(ids_selecionados):
         key="confirma_del_lote_remanejamento"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} prioridade(s)..."):
-            banco.excluir_remanejamento_lote(ids_selecionados)
+            banco.excluir_remanejamento_lote(ids_selecionados, armazem_id)
         st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} prioridade(s) excluída(s).")
         st.rerun()
 
@@ -108,12 +111,12 @@ def confirmar_exclusao_usuario(uid, nome_usuario):
         key=f"confirma_del_usuario_{uid}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: excluindo usuário '{nome_usuario}'..."):
-            banco.excluir_usuario(nome_usuario)
+            banco.excluir_usuario_por_id(uid)
         st.toast(f"✨ Luxiz IA: usuário '{nome_usuario}' excluído.")
         st.rerun()
 
 
-def confirmar_exclusao_analise_tecnica(id_registro, nome_registro):
+def confirmar_exclusao_analise_tecnica(id_registro, nome_registro, armazem_id):
 
     st.write(
         f"Tem certeza que deseja excluir o registro de **{nome_registro}**?"
@@ -129,12 +132,12 @@ def confirmar_exclusao_analise_tecnica(id_registro, nome_registro):
         key=f"confirma_del_analise_{id_registro}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: excluindo registro de {nome_registro}..."):
-            banco.excluir_analise_tecnica(id_registro)
+            banco.excluir_analise_tecnica(id_registro, armazem_id)
         st.toast(f"✨ Luxiz IA: registro de {nome_registro} excluído.")
         st.rerun()
 
 
-def confirmar_exclusao_multipla_analise_tecnica(ids_selecionados):
+def confirmar_exclusao_multipla_analise_tecnica(ids_selecionados, armazem_id):
 
     st.write(
         f"Tem certeza que deseja excluir **{len(ids_selecionados)}** "
@@ -151,12 +154,12 @@ def confirmar_exclusao_multipla_analise_tecnica(ids_selecionados):
         key="confirma_del_lote_analise"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} registro(s)..."):
-            banco.excluir_analise_tecnica_lote(ids_selecionados)
+            banco.excluir_analise_tecnica_lote(ids_selecionados, armazem_id)
         st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} registro(s) excluído(s).")
         st.rerun()
 
 
-def confirmar_exclusao_auditoria(id_registro, nome_registro):
+def confirmar_exclusao_auditoria(id_registro, nome_registro, armazem_id):
 
     st.write(
         f"Tem certeza que deseja excluir o registro de auditoria de **{nome_registro}**?"
@@ -172,12 +175,12 @@ def confirmar_exclusao_auditoria(id_registro, nome_registro):
         key=f"confirma_del_auditoria_{id_registro}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: excluindo registro de {nome_registro}..."):
-            banco.excluir_auditoria(id_registro)
+            banco.excluir_auditoria(id_registro, armazem_id)
         st.toast(f"✨ Luxiz IA: registro de {nome_registro} excluído.")
         st.rerun()
 
 
-def confirmar_exclusao_multipla_auditoria(ids_selecionados):
+def confirmar_exclusao_multipla_auditoria(ids_selecionados, armazem_id):
 
     st.write(
         f"Tem certeza que deseja excluir **{len(ids_selecionados)}** "
@@ -194,12 +197,12 @@ def confirmar_exclusao_multipla_auditoria(ids_selecionados):
         key="confirma_del_lote_auditoria"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} registro(s)..."):
-            banco.excluir_auditoria_lote(ids_selecionados)
+            banco.excluir_auditoria_lote(ids_selecionados, armazem_id)
         st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} registro(s) excluído(s).")
         st.rerun()
 
 
-def confirmar_exclusao_pessoa_rotativo(id_pessoa, nome_pessoa):
+def confirmar_exclusao_pessoa_rotativo(id_pessoa, nome_pessoa, armazem_id):
 
     st.write(
         f"Tem certeza que deseja remover **{nome_pessoa}** do rodízio?"
@@ -215,12 +218,12 @@ def confirmar_exclusao_pessoa_rotativo(id_pessoa, nome_pessoa):
         key=f"confirma_del_pessoa_rot_{id_pessoa}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome_pessoa}'..."):
-            banco.excluir_pessoa_rotativo(id_pessoa)
+            banco.excluir_pessoa_rotativo(id_pessoa, armazem_id)
         st.toast(f"✨ Luxiz IA: '{nome_pessoa}' removido(a) do rodízio.")
         st.rerun()
 
 
-def confirmar_exclusao_atividade_rotativo(id_atividade, nome_atividade):
+def confirmar_exclusao_atividade_rotativo(id_atividade, nome_atividade, armazem_id):
 
     st.write(
         f"Tem certeza que deseja remover a atividade **{nome_atividade}**?"
@@ -236,12 +239,12 @@ def confirmar_exclusao_atividade_rotativo(id_atividade, nome_atividade):
         key=f"confirma_del_ativ_rot_{id_atividade}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome_atividade}'..."):
-            banco.excluir_atividade_rotativo(id_atividade)
+            banco.excluir_atividade_rotativo(id_atividade, armazem_id)
         st.toast(f"✨ Luxiz IA: '{nome_atividade}' removida do rodízio.")
         st.rerun()
 
 
-def confirmar_exclusao_responsavel_hidraulico(id_registro, nome, numero):
+def confirmar_exclusao_responsavel_hidraulico(id_registro, nome, numero, armazem_id):
 
     st.write(
         f"Tem certeza que deseja remover **{nome}** como responsável pelo "
@@ -258,12 +261,12 @@ def confirmar_exclusao_responsavel_hidraulico(id_registro, nome, numero):
         key=f"confirma_del_resp_hid_{id_registro}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome}'..."):
-            banco.excluir_responsavel_hidraulico(id_registro)
+            banco.excluir_responsavel_hidraulico(id_registro, armazem_id)
         st.toast(f"✨ Luxiz IA: '{nome}' removido(a).")
         st.rerun()
 
 
-def confirmar_exclusao_responsavel_carrinho(id_registro, nome, numero):
+def confirmar_exclusao_responsavel_carrinho(id_registro, nome, numero, armazem_id):
 
     st.write(
         f"Tem certeza que deseja remover **{nome}** como responsável pelo "
@@ -280,12 +283,12 @@ def confirmar_exclusao_responsavel_carrinho(id_registro, nome, numero):
         key=f"confirma_del_resp_car_{id_registro}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome}'..."):
-            banco.excluir_responsavel_carrinho(id_registro)
+            banco.excluir_responsavel_carrinho(id_registro, armazem_id)
         st.toast(f"✨ Luxiz IA: '{nome}' removido(a).")
         st.rerun()
 
 
-def confirmar_exclusao_carrinho_fixo(id_registro, local, numero):
+def confirmar_exclusao_carrinho_fixo(id_registro, local, numero, armazem_id):
 
     st.write(
         f"Tem certeza que deseja remover o Carrinho **{numero}** "
@@ -302,7 +305,7 @@ def confirmar_exclusao_carrinho_fixo(id_registro, local, numero):
         key=f"confirma_del_carrinho_fixo_{id_registro}"
     ):
         with st.spinner(f"✨ Luxiz IA atualizando: removendo carrinho {numero}..."):
-            banco.excluir_carrinho_fixo(id_registro)
+            banco.excluir_carrinho_fixo(id_registro, armazem_id)
         st.toast(f"✨ Luxiz IA: Carrinho {numero} removido de {local}.")
         st.rerun()
 
@@ -326,6 +329,11 @@ def render():
 
     admin_master = fundador or gestao
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     estilos.cabecalho_pagina(
         "⚙️",
         "Painel Administrativo Luxiz IA",
@@ -338,10 +346,10 @@ def render():
     total_ruas = 9
 
     total_remanejamentos = len(
-        banco.ler_remanejamentos()
+        banco.ler_remanejamentos(armazem_id_atual)
     )
 
-    historico = banco.ler_historico_sac()
+    historico = banco.ler_historico_sac(armazem_id_atual)
 
     ultimo_sac = 0
 
@@ -382,6 +390,9 @@ def render():
     if admin_master:
         abas.append("👥 Usuários")
 
+    if fundador:
+        abas.append("🏢 Armazéns")
+
     tabs = st.tabs(abas)
 
     tab_dashboard = tabs[0]
@@ -393,6 +404,9 @@ def render():
 
     if admin_master:
         tab_usuarios = tabs[6]
+
+    if fundador:
+        tab_armazens = tabs[7]
 
     # =====================================================
     # DASHBOARD
@@ -416,7 +430,7 @@ def render():
             "Rua 33&34"
         ]
 
-        dados = banco.ler_tudo()
+        dados = banco.ler_tudo(armazem_id_atual)
 
         rua = st.selectbox(
             "Selecione a Rua",
@@ -453,6 +467,7 @@ def render():
                     rua,
                     nota,
                     dupla,
+                    armazem_id_atual,
                     usuario=usuario_logado
                 )
 
@@ -474,7 +489,7 @@ def render():
         with col1:
             novo_item = st.text_input(
                 "Nova prioridade"
-            ).strip()
+            )
 
         with col2:
             prioridade = st.selectbox(
@@ -495,6 +510,7 @@ def render():
                 with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{novo_item}'..."):
                     banco.adicionar_remanejamento(
                         novo_item,
+                        armazem_id_atual,
                         prioridade,
                         usuario=usuario_logado
                     )
@@ -502,15 +518,9 @@ def render():
                 st.toast(f"✨ Luxiz IA: '{novo_item}' adicionado.")
                 st.rerun()
 
-            else:
-
-                st.warning(
-                    "Digite uma prioridade antes de adicionar."
-                )
-
         st.divider()
 
-        itens = banco.ler_remanejamentos()
+        itens = banco.ler_remanejamentos(armazem_id_atual)
 
         if not itens:
             st.info(
@@ -560,7 +570,8 @@ def render():
 
                     confirmar_exclusao_remanejamento(
                         item["id"],
-                        item["nome"]
+                        item["nome"],
+                        armazem_id_atual
                     )
 
         if ids_selecionados_remanejamento:
@@ -572,7 +583,8 @@ def render():
             ):
 
                 confirmar_exclusao_multipla_remanejamento(
-                    ids_selecionados_remanejamento
+                    ids_selecionados_remanejamento,
+                    armazem_id_atual
                 )
 
     # =====================================================
@@ -611,6 +623,7 @@ def render():
                     banco.atualizar_sac_mensal(
                         reclamacoes,
                         meta,
+                        armazem_id_atual,
                         usuario=usuario_logado
                     )
 
@@ -738,6 +751,7 @@ def render():
                     banco.adicionar_analise_tecnica(
                         pendente,
                         vinculos,
+                        armazem_id_atual,
                         usuario=usuario_logado
                     )
 
@@ -882,7 +896,7 @@ def render():
 
         st.divider()
 
-        registros_tecnica = banco.ler_analise_tecnica()
+        registros_tecnica = banco.ler_analise_tecnica(armazem_id_atual)
 
         if registros_tecnica:
 
@@ -917,9 +931,12 @@ def render():
                         or "Ocorrência"
                     )
 
+                    chamado_registro = registro.get("chamado")
+
                     st.caption(
                         f"👤 {identificador} • {registro['tipo_erro']} • "
                         f"{registro['data_erro'].strftime('%d/%m/%Y')}"
+                        + (f" • Chamado {chamado_registro}" if chamado_registro else "")
                     )
 
                 with c2:
@@ -928,7 +945,8 @@ def render():
 
                         confirmar_exclusao_analise_tecnica(
                             registro["id"],
-                            identificador
+                            identificador,
+                            armazem_id_atual
                         )
 
             if ids_selecionados:
@@ -940,7 +958,8 @@ def render():
                 ):
 
                     confirmar_exclusao_multipla_analise_tecnica(
-                        ids_selecionados
+                        ids_selecionados,
+                        armazem_id_atual
                     )
 
             st.divider()
@@ -1057,6 +1076,7 @@ def render():
                             qtd_erros_auditoria,
                             data_auditoria,
                             descricao_auditoria,
+                            armazem_id_atual,
                             usuario=usuario_logado
                         )
 
@@ -1065,7 +1085,7 @@ def render():
 
         st.divider()
 
-        registros_auditoria = banco.ler_auditoria()
+        registros_auditoria = banco.ler_auditoria(armazem_id_atual)
 
         if not registros_auditoria:
 
@@ -1111,7 +1131,8 @@ def render():
 
                         confirmar_exclusao_auditoria(
                             registro["id"],
-                            registro["nome"]
+                            registro["nome"],
+                            armazem_id_atual
                         )
 
             if ids_selecionados_auditoria:
@@ -1124,7 +1145,8 @@ def render():
                 ):
 
                     confirmar_exclusao_multipla_auditoria(
-                        ids_selecionados_auditoria
+                        ids_selecionados_auditoria,
+                        armazem_id_atual
                     )
 
             st.divider()
@@ -1200,13 +1222,14 @@ def render():
 
                         with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{nome_pessoa_rotativo}'..."):
                             banco.adicionar_pessoa_rotativo(
-                                nome_pessoa_rotativo
+                                nome_pessoa_rotativo,
+                                armazem_id_atual
                             )
 
                         st.toast(f"✨ Luxiz IA: '{nome_pessoa_rotativo}' adicionado(a) ao rodízio.")
                         st.rerun()
 
-            pessoas_rotativo = banco.listar_pessoas_rotativo()
+            pessoas_rotativo = banco.listar_pessoas_rotativo(armazem_id_atual)
 
             if not pessoas_rotativo:
 
@@ -1229,7 +1252,8 @@ def render():
 
                             confirmar_exclusao_pessoa_rotativo(
                                 id_pessoa,
-                                nome_pessoa
+                                nome_pessoa,
+                                armazem_id_atual
                             )
 
         # -----------------------------------------------
@@ -1293,6 +1317,7 @@ def render():
                         with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{nome_atividade_rotativo}'..."):
                             banco.adicionar_atividade_rotativo(
                                 nome_atividade_rotativo,
+                                armazem_id_atual,
                                 tipo="fixo" if eh_atividade_fixa else "rotativo",
                                 pessoa_fixa=pessoa_fixa_atividade if eh_atividade_fixa else None
                             )
@@ -1300,7 +1325,7 @@ def render():
                         st.toast(f"✨ Luxiz IA: '{nome_atividade_rotativo}' adicionada ao rodízio.")
                         st.rerun()
 
-            atividades_rotativo = banco.listar_atividades_rotativo()
+            atividades_rotativo = banco.listar_atividades_rotativo(armazem_id_atual)
 
             if not atividades_rotativo:
 
@@ -1335,7 +1360,8 @@ def render():
 
                             confirmar_exclusao_atividade_rotativo(
                                 id_atividade,
-                                nome_atividade
+                                nome_atividade,
+                                armazem_id_atual
                             )
 
     # =====================================================
@@ -1389,13 +1415,14 @@ def render():
                     with st.spinner("✨ Luxiz IA atualizando: adicionando responsável..."):
                         banco.adicionar_responsavel_hidraulico(
                             nome_resp_hid,
-                            numero_resp_hid
+                            numero_resp_hid,
+                            armazem_id_atual
                         )
 
                     st.toast("✨ Luxiz IA: responsável adicionado.")
                     st.rerun()
 
-        responsaveis_hidraulicos = banco.ler_responsaveis_hidraulicos()
+        responsaveis_hidraulicos = banco.ler_responsaveis_hidraulicos(armazem_id_atual)
 
         if responsaveis_hidraulicos:
 
@@ -1435,7 +1462,8 @@ def render():
                                 banco.editar_responsavel_hidraulico(
                                     item["id"],
                                     novo_nome,
-                                    novo_numero
+                                    novo_numero,
+                                    armazem_id_atual
                                 )
                             st.toast("✨ Luxiz IA: responsável atualizado.")
                             st.rerun()
@@ -1447,7 +1475,8 @@ def render():
                         confirmar_exclusao_responsavel_hidraulico(
                             item["id"],
                             item["nome"],
-                            item["numero"]
+                            item["numero"],
+                            armazem_id_atual
                         )
 
         else:
@@ -1491,13 +1520,14 @@ def render():
                     with st.spinner("✨ Luxiz IA atualizando: adicionando responsável..."):
                         banco.adicionar_responsavel_carrinho(
                             nome_resp_car,
-                            numero_resp_car
+                            numero_resp_car,
+                            armazem_id_atual
                         )
 
                     st.toast("✨ Luxiz IA: responsável adicionado.")
                     st.rerun()
 
-        responsaveis_carrinhos = banco.ler_responsaveis_carrinhos()
+        responsaveis_carrinhos = banco.ler_responsaveis_carrinhos(armazem_id_atual)
 
         if responsaveis_carrinhos:
 
@@ -1537,7 +1567,8 @@ def render():
                                 banco.editar_responsavel_carrinho(
                                     item["id"],
                                     novo_nome,
-                                    novo_numero
+                                    novo_numero,
+                                    armazem_id_atual
                                 )
                             st.toast("✨ Luxiz IA: responsável atualizado.")
                             st.rerun()
@@ -1549,7 +1580,8 @@ def render():
                         confirmar_exclusao_responsavel_carrinho(
                             item["id"],
                             item["nome"],
-                            item["numero"]
+                            item["numero"],
+                            armazem_id_atual
                         )
 
         else:
@@ -1569,7 +1601,7 @@ def render():
             "(ex: Remanejamento, Fracionado), sem precisar de remanejamento."
         )
 
-        carrinhos_fixos = banco.ler_carrinhos_fixos()
+        carrinhos_fixos = banco.ler_carrinhos_fixos(armazem_id_atual)
 
         locais_existentes = sorted({
             item["local"] for item in carrinhos_fixos
@@ -1612,7 +1644,8 @@ def render():
                     with st.spinner("✨ Luxiz IA atualizando: adicionando carrinho fixo..."):
                         banco.adicionar_carrinho_fixo(
                             local_carrinho_fixo,
-                            numero_carrinho_fixo
+                            numero_carrinho_fixo,
+                            armazem_id_atual
                         )
 
                     st.toast("✨ Luxiz IA: carrinho fixo adicionado.")
@@ -1663,7 +1696,8 @@ def render():
                                     banco.editar_carrinho_fixo(
                                         item["id"],
                                         novo_local,
-                                        novo_numero
+                                        novo_numero,
+                                        armazem_id_atual
                                     )
                                 st.toast("✨ Luxiz IA: carrinho fixo atualizado.")
                                 st.rerun()
@@ -1675,7 +1709,8 @@ def render():
                             confirmar_exclusao_carrinho_fixo(
                                 item["id"],
                                 item["local"],
-                                item["numero"]
+                                item["numero"],
+                                armazem_id_atual
                             )
 
         else:
@@ -1686,67 +1721,328 @@ def render():
     # USUÁRIOS
     # =====================================================
 
+    BADGES_USUARIO = {
+        "Fundador.": ("👑", "Fundador", "#f59e0b"),
+        "Gestao.": ("🛡️", "Gestão", "#3b82f6"),
+        "Separador.": ("📦", "Separador", "#22c55e"),
+        "Conferente.": ("🔎", "Conferente", "#06b6d4"),
+        "Recebimento.": ("📥", "Recebimento", "#a855f7"),
+        "Empilhador.": ("🏗️", "Empilhador", "#ec4899"),
+        "Assistente.": ("🧑‍💼", "Assistente Logístico", "#64748b"),
+    }
+
+    def badge_usuario(nome):
+
+        nome = nome or ""
+
+        for prefixo, dados in BADGES_USUARIO.items():
+
+            if nome.startswith(prefixo):
+                return dados
+
+        return ("👤", "Usuário", "#64748b")
+
+    def status_presenca(ultimo_acesso):
+
+        if not ultimo_acesso:
+            return "⚪", "Nunca acessou ainda", None
+
+        agora_utc = datetime.now(timezone.utc)
+        acesso_utc = ultimo_acesso.replace(tzinfo=timezone.utc)
+
+        segundos = (agora_utc - acesso_utc).total_seconds()
+
+        horario_local = acesso_utc.astimezone(
+            ZoneInfo("America/Campo_Grande")
+        )
+
+        horario_formatado = horario_local.strftime("%d/%m/%Y %H:%M")
+
+        if segundos <= 240:
+            return "🟢", "Online agora", horario_formatado
+
+        minutos = int(segundos // 60)
+        horas = minutos // 60
+        dias = horas // 24
+
+        if dias >= 1:
+            tempo_texto = f"há {dias} dia(s)"
+        elif horas >= 1:
+            tempo_texto = f"há {horas}h"
+        elif minutos >= 1:
+            tempo_texto = f"há {minutos} min"
+        else:
+            tempo_texto = "há poucos segundos"
+
+        return "⚪", f"Visto {tempo_texto}", horario_formatado
+
     if admin_master:
 
         with tab_usuarios:
 
-            st.subheader(
-                "Gerenciamento de Usuários"
+            estilos.cabecalho_pagina(
+                "👥",
+                "Gerenciamento de Usuários",
+                "Cadastro de acessos e visão de quem está no sistema agora.",
+                cor="#8b5cf6"
             )
 
-            novo_usuario = st.text_input(
-                "Usuário"
+            usuarios = banco.listar_usuarios(armazem_id_atual)
+
+            total_usuarios = len(usuarios)
+
+            total_online = sum(
+                1 for u in usuarios
+                if u[3] and (
+                    datetime.now(timezone.utc)
+                    - u[3].replace(tzinfo=timezone.utc)
+                ).total_seconds() <= 240
             )
 
-            senha_usuario = st.text_input(
-                "Senha Inicial",
-                type="password"
-            )
+            c1, c2 = st.columns(2)
 
-            if st.button(
-                "➕ Criar Usuário"
-            ):
+            with c1:
+                st.metric("👥 Usuários cadastrados", total_usuarios)
 
-                try:
-
-                    with st.spinner(f"✨ Luxiz IA atualizando: criando usuário '{novo_usuario}'..."):
-                        banco.criar_usuario(
-                            novo_usuario,
-                            senha_usuario
-                        )
-
-                    st.toast(f"✨ Luxiz IA: usuário '{novo_usuario}' criado.")
-                    st.rerun()
-
-                except Exception as erro:
-
-                    st.error(
-                        str(erro)
-                    )
+            with c2:
+                st.metric("🟢 Online agora", total_online)
 
             st.divider()
 
-            usuarios = banco.listar_usuarios()
+            with st.expander("➕ Criar novo usuário"):
 
-            for usuario in usuarios:
+                if fundador:
 
-                uid = usuario[0]
-                nome = usuario[1]
+                    st.caption(
+                        f"📍 Os usuários criados abaixo serão vinculados a: "
+                        f"**{st.session_state.get('armazem_visualizado_nome', '—')}**"
+                    )
 
-                c1, c2 = st.columns([8, 1])
+                novo_usuario = st.text_input(
+                    "Usuário"
+                )
+
+                senha_usuario = st.text_input(
+                    "Senha Inicial",
+                    type="password"
+                )
+
+                if st.button(
+                    "➕ Criar Usuário"
+                ):
+
+                    try:
+
+                        with st.spinner(f"✨ Luxiz IA atualizando: criando usuário '{novo_usuario}'..."):
+                            banco.criar_usuario(
+                                novo_usuario,
+                                senha_usuario,
+                                armazem_id_atual
+                            )
+
+                        st.toast(f"✨ Luxiz IA: usuário '{novo_usuario}' criado.")
+                        st.rerun()
+
+                    except Exception as erro:
+
+                        st.error(
+                            str(erro)
+                        )
+
+            st.divider()
+
+            st.markdown("##### 👥 Usuários cadastrados")
+
+            if not usuarios:
+
+                st.info("Nenhum usuário cadastrado ainda.")
+
+            else:
+
+                cols = st.columns(3)
+
+                for indice, usuario in enumerate(usuarios):
+
+                    uid = usuario[0]
+                    nome = usuario[1] or ""
+                    ultimo_acesso = usuario[3]
+
+                    emblema, rotulo_funcao, cor = badge_usuario(nome)
+                    emblema_status, texto_status, horario_acesso = status_presenca(ultimo_acesso)
+
+                    if not nome:
+
+                        nome_exibicao = "⚠️ Usuário sem nome (id " + str(uid) + ")"
+                        rotulo_funcao = "Registro inconsistente — recomendo excluir"
+
+                    else:
+
+                        nome_exibicao = (
+                            nome.split(".", 1)[1].strip().title()
+                            if "." in nome
+                            else nome
+                        )
+
+                    chave_card = f"card-user-{uid}"
+
+                    st.markdown(
+                        f"""
+                        <style>
+                        .st-key-{chave_card} {{
+                            background-color: {cor}22 !important;
+                            border: 2px solid {cor} !important;
+                            border-radius: 0.8rem;
+                        }}
+                        </style>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                    with cols[indice % 3]:
+
+                        with st.container(border=True, key=chave_card):
+
+                            st.markdown(
+                                f"""
+                                <div style="
+                                    width:52px;height:52px;border-radius:50%;
+                                    background:{cor};
+                                    display:flex;align-items:center;justify-content:center;
+                                    font-size:1.5rem;margin-bottom:.4rem;
+                                    box-shadow:0 0 14px {cor}88;
+                                ">{emblema}</div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+
+                            st.markdown(f"### {nome_exibicao}")
+
+                            st.caption(rotulo_funcao)
+
+                            st.markdown(
+                                f"{emblema_status} {texto_status}"
+                            )
+
+                            if horario_acesso:
+
+                                st.caption(
+                                    f"Último acesso: {horario_acesso}"
+                                )
+
+                            if nome == "Fundador.henrique":
+
+                                st.write("")
+                                st.caption("👑 Conta principal — não pode ser excluída.")
+
+                            else:
+
+                                with st.popover("🗑️ Excluir", key=f"pop_del_user_{uid}"):
+
+                                    confirmar_exclusao_usuario(
+                                        uid,
+                                        nome or nome_exibicao
+                                    )
+
+    # =====================================================
+    # ARMAZÉNS (SÓ FUNDADOR)
+    # =====================================================
+
+    if fundador:
+
+        with tab_armazens:
+
+            st.subheader(
+                "🏢 Armazéns Cadastrados"
+            )
+
+            st.caption(
+                "Cada armazém tem seus próprios dados, totalmente "
+                "separados dos demais. Use o seletor '📍 Visualizando "
+                "dados de' no topo do app para trocar entre eles."
+            )
+
+            lista_armazens = banco.listar_armazens()
+
+            for id_armazem, nome_armazem in lista_armazens:
+
+                c1, c2 = st.columns([4, 1])
 
                 with c1:
-                    st.write(nome)
+
+                    novo_nome = st.text_input(
+                        "Nome",
+                        value=nome_armazem,
+                        key=f"nome_armazem_{id_armazem}",
+                        label_visibility="collapsed"
+                    )
 
                 with c2:
 
-                    if nome == "Fundador.henrique":
-                        st.write("👑")
-                        continue
+                    if st.button(
+                        "💾 Salvar",
+                        key=f"salvar_armazem_{id_armazem}"
+                    ):
 
-                    with st.popover("🗑️", key=f"pop_del_user_{uid}"):
+                        if novo_nome.strip() and novo_nome != nome_armazem:
 
-                        confirmar_exclusao_usuario(
-                            uid,
-                            nome
+                            banco.renomear_armazem(
+                                id_armazem,
+                                novo_nome.strip()
+                            )
+
+                            st.toast(
+                                f"✨ Luxiz IA: armazém renomeado para "
+                                f"'{novo_nome.strip()}'."
+                            )
+                            st.rerun()
+
+            st.divider()
+
+            st.subheader(
+                "➕ Cadastrar Novo Armazém"
+            )
+
+            st.caption(
+                "Cria um novo cliente/armazém com dados totalmente "
+                "isolados. Depois, crie o primeiro usuário dele na "
+                "aba '👥 Usuários' (selecione esse armazém no seletor "
+                "do topo antes de criar o usuário)."
+            )
+
+            nome_novo_armazem = st.text_input(
+                "Nome do novo armazém"
+            )
+
+            if st.button(
+                "➕ Criar Armazém"
+            ):
+
+                if not nome_novo_armazem.strip():
+
+                    st.error(
+                        "Informe um nome para o novo armazém."
+                    )
+
+                else:
+
+                    try:
+
+                        novo_id_armazem = banco.criar_armazem(
+                            nome_novo_armazem.strip()
+                        )
+
+                        st.toast(
+                            f"✨ Luxiz IA: armazém "
+                            f"'{nome_novo_armazem.strip()}' criado."
+                        )
+
+                        st.session_state.armazem_visualizado_id = novo_id_armazem
+                        st.session_state.armazem_visualizado_nome = nome_novo_armazem.strip()
+
+                        st.rerun()
+
+                    except Exception as erro:
+
+                        st.error(
+                            str(erro)
                         )

@@ -134,7 +134,7 @@ def _css_base(tema):
         div[class*="st-key-toggle_tema"]{
             position:fixed;
             bottom:2px;
-            right:18px;
+            left:18px;
             z-index:1000000;
             width:auto;
         }
@@ -341,7 +341,7 @@ def _css_base(tema):
     div[class*="st-key-toggle_tema"]{
         position:fixed;
         bottom:2px;
-        right:18px;
+        left:18px;
         z-index:1000000;
         width:auto;
     }

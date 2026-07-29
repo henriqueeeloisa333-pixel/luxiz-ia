@@ -14,7 +14,10 @@ def renderizar_checklist(
     funcao_ler,
     prefixo_key,
     nome_arquivo_excel,
-    funcao_editar=None
+    armazem_id,
+    funcao_editar=None,
+    funcao_enviar_manutencao=None,
+    funcao_retornar_manutencao=None
 ):
 
     st.subheader(
@@ -81,7 +84,8 @@ def renderizar_checklist(
                         numero,
                         data_checklist,
                         status,
-                        descricao
+                        descricao,
+                        armazem_id
                     )
 
                 st.toast("✨ Luxiz IA: checklist registrado com sucesso.")
@@ -89,7 +93,7 @@ def renderizar_checklist(
 
     st.divider()
 
-    registros = funcao_ler()
+    registros = funcao_ler(armazem_id)
 
     if not registros:
 
@@ -174,7 +178,8 @@ def renderizar_checklist(
                             linha_editada[rotulo_numero],
                             linha_editada["Data"],
                             linha_editada["Situação"],
-                            linha_editada["Descrição"]
+                            linha_editada["Descrição"],
+                            armazem_id
                         )
 
                     houve_alteracao = True
@@ -196,12 +201,167 @@ def renderizar_checklist(
             hide_index=True
         )
 
+    # =====================================================
+    # MANUTENÇÃO
+    # =====================================================
+    # A visibilidade de "quais itens estão em manutenção" é liberada
+    # para todos que têm acesso ao checklist. Só os comandos que
+    # alteram o estado (enviar para manutenção / retornar) continuam
+    # restritos ao Fundador e à Gestão.
+
+    usuario_atual = st.session_state.get("usuario", "")
+
+    admin_master = (
+        usuario_atual.startswith("Fundador.")
+        or usuario_atual.startswith("Gestao.")
+    )
+
+    if funcao_enviar_manutencao and funcao_retornar_manutencao:
+
+        itens_em_manutencao = [
+            r for r in registros
+            if r.get("em_manutencao")
+        ]
+
+        if itens_em_manutencao:
+
+            st.write("")
+
+            st.markdown("##### 🚧 Em Manutenção")
+
+            for item in itens_em_manutencao:
+
+                with st.container(border=True):
+
+                    if admin_master:
+                        col_texto, col_botao = st.columns([5, 1])
+                    else:
+                        col_texto = st.container()
+
+                    with col_texto:
+
+                        st.markdown(
+                            f"**{item['nome']}** — {rotulo_numero}: {item['numero']}"
+                        )
+
+                        if item.get("manutencao_motivo"):
+
+                            st.caption(f"Motivo: {item['manutencao_motivo']}")
+
+                        if item.get("manutencao_enviado_em"):
+
+                            st.caption(
+                                f"Enviado por {item.get('manutencao_enviado_por') or '—'} "
+                                f"em {item['manutencao_enviado_em'].strftime('%d/%m/%Y %H:%M')}"
+                            )
+
+                    if admin_master:
+
+                        with col_botao:
+
+                            if st.button(
+                                "↩️",
+                                key=f"retornar_manut_{prefixo_key}_{item['id']}",
+                                help=(
+                                    f"Marcar {item['nome']} ({rotulo_numero} "
+                                    f"{item['numero']}) como retornado da manutenção"
+                                )
+                            ):
+
+                                with st.spinner("✨ Luxiz IA atualizando: registrando retorno..."):
+                                    funcao_retornar_manutencao(
+                                        item["id"],
+                                        usuario_atual,
+                                        armazem_id
+                                    )
+
+                                st.toast(f"↩️ {item['nome']} retornado da manutenção.")
+                                st.rerun()
+
+        if admin_master:
+
+            itens_nao_conformes = [
+                r for r in registros
+                if r["status"] == "Não Conforme" and not r.get("em_manutencao")
+            ]
+
+            if itens_nao_conformes:
+
+                st.write("")
+
+                st.markdown("##### 🔧 Enviar para manutenção")
+
+                for item in itens_nao_conformes:
+
+                    col_texto, col_botao = st.columns([5, 1])
+
+                    with col_texto:
+
+                        st.caption(
+                            f"**{item['nome']}** — {rotulo_numero}: {item['numero']} "
+                            f"({item['data_checklist'].strftime('%d/%m/%Y')})"
+                        )
+
+                    with col_botao:
+
+                        if st.button(
+                            "🔧",
+                            key=f"enviar_manut_{prefixo_key}_{item['id']}",
+                            help=(
+                                f"Enviar {item['nome']} ({rotulo_numero} "
+                                f"{item['numero']}) para manutenção"
+                            )
+                        ):
+
+                            with st.spinner("✨ Luxiz IA atualizando: enviando para manutenção..."):
+                                funcao_enviar_manutencao(
+                                    item["id"],
+                                    item.get("descricao"),
+                                    usuario_atual,
+                                    armazem_id
+                                )
+
+                            st.toast(f"🔧 {item['nome']} enviado para manutenção.")
+                            st.rerun()
+
     st.write("")
+
+    def _formatar_evento_manutencao(pessoa, momento):
+
+        if not momento:
+            return ""
+
+        texto = momento.strftime("%d/%m/%Y %H:%M")
+
+        if pessoa:
+            texto += f" ({pessoa})"
+
+        return texto
+
+    df_exportar = df_exibir.copy()
+
+    if funcao_enviar_manutencao:
+
+        df_exportar["Enviado p/ Manutenção"] = [
+            _formatar_evento_manutencao(
+                registro.get("manutencao_enviado_por"),
+                registro.get("manutencao_enviado_em")
+            )
+            for registro in registros
+        ]
+
+        df_exportar["Retornado da Manutenção"] = [
+            _formatar_evento_manutencao(
+                registro.get("manutencao_retornado_por"),
+                registro.get("manutencao_retornado_em")
+            )
+            for registro in registros
+        ]
 
     buffer_excel = io.BytesIO()
 
     with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
-        df_exibir.to_excel(
+        df_exportar.to_excel(
             writer,
             index=False,
             sheet_name=titulo[:31]
@@ -221,6 +381,7 @@ def renderizar_checklist_pigmentacao(
     funcao_ler,
     prefixo_key,
     nome_arquivo_excel,
+    armazem_id,
     funcao_editar=None
 ):
 
@@ -280,7 +441,8 @@ def renderizar_checklist_pigmentacao(
                         nome,
                         data_checklist,
                         status,
-                        descricao
+                        descricao,
+                        armazem_id
                     )
 
                 st.toast("✨ Luxiz IA: checklist registrado com sucesso.")
@@ -288,7 +450,7 @@ def renderizar_checklist_pigmentacao(
 
     st.divider()
 
-    registros = funcao_ler()
+    registros = funcao_ler(armazem_id)
 
     if not registros:
 
@@ -371,7 +533,8 @@ def renderizar_checklist_pigmentacao(
                             linha_editada["Nome"],
                             linha_editada["Data"],
                             linha_editada["Situação"],
-                            linha_editada["Descrição"]
+                            linha_editada["Descrição"],
+                            armazem_id
                         )
 
                     houve_alteracao = True
@@ -424,6 +587,11 @@ def render():
 
     st.divider()
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     aba_hidraulicos, aba_carrinhos, aba_empilhadeira, aba_pigmentacao = st.tabs([
         "🔧 Hidráulicos",
         "🛒 Carrinhos",
@@ -441,7 +609,10 @@ def render():
             funcao_ler=banco.ler_checklist_hidraulicos,
             prefixo_key="hidraulico",
             nome_arquivo_excel="checklist_hidraulicos_luxiz.xlsx",
-            funcao_editar=banco.editar_checklist_hidraulico
+            armazem_id=armazem_id_atual,
+            funcao_editar=banco.editar_checklist_hidraulico,
+            funcao_enviar_manutencao=banco.enviar_manutencao_hidraulico,
+            funcao_retornar_manutencao=banco.retornar_manutencao_hidraulico
         )
 
     with aba_carrinhos:
@@ -454,7 +625,10 @@ def render():
             funcao_ler=banco.ler_checklist_carrinhos,
             prefixo_key="carrinho",
             nome_arquivo_excel="checklist_carrinhos_luxiz.xlsx",
-            funcao_editar=banco.editar_checklist_carrinho
+            armazem_id=armazem_id_atual,
+            funcao_editar=banco.editar_checklist_carrinho,
+            funcao_enviar_manutencao=banco.enviar_manutencao_carrinho,
+            funcao_retornar_manutencao=banco.retornar_manutencao_carrinho
         )
 
     with aba_empilhadeira:
@@ -467,7 +641,10 @@ def render():
             funcao_ler=banco.ler_checklist_empilhadeiras,
             prefixo_key="empilhadeira",
             nome_arquivo_excel="checklist_empilhadeiras_luxiz.xlsx",
-            funcao_editar=banco.editar_checklist_empilhadeira
+            armazem_id=armazem_id_atual,
+            funcao_editar=banco.editar_checklist_empilhadeira,
+            funcao_enviar_manutencao=banco.enviar_manutencao_empilhadeira,
+            funcao_retornar_manutencao=banco.retornar_manutencao_empilhadeira
         )
 
     with aba_pigmentacao:
@@ -477,6 +654,7 @@ def render():
             funcao_ler=banco.ler_checklist_pigmentacao,
             prefixo_key="pigmentacao",
             nome_arquivo_excel="checklist_pigmentacao_luxiz.xlsx",
+            armazem_id=armazem_id_atual,
             funcao_editar=banco.editar_checklist_pigmentacao
         )
 

@@ -67,6 +67,11 @@ def gerar_escala_rotativa(pessoas, atividades_rotativas):
 
 def render():
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     estilos.cabecalho_pagina(
         "🔄",
         "Atividades Fim de Expediente Rotativo",
@@ -77,10 +82,10 @@ def render():
     st.divider()
 
     pessoas = [
-        nome for _, nome in banco.listar_pessoas_rotativo()
+        nome for _, nome in banco.listar_pessoas_rotativo(armazem_id_atual)
     ]
 
-    atividades_cadastradas = banco.listar_atividades_rotativo()
+    atividades_cadastradas = banco.listar_atividades_rotativo(armazem_id_atual)
 
     if not atividades_cadastradas:
 

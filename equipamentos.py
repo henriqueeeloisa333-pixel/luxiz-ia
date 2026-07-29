@@ -24,6 +24,11 @@ COR_LOCAL_PADRAO = ("rgba(100,116,139,0.14)", "#64748b")
 
 def render():
 
+    armazem_id_atual = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
     estilos.cabecalho_pagina(
         "🧰",
         "Equipamentos",
@@ -33,9 +38,9 @@ def render():
 
     st.divider()
 
-    responsaveis_hidraulicos = banco.ler_responsaveis_hidraulicos()
-    responsaveis_carrinhos = banco.ler_responsaveis_carrinhos()
-    carrinhos_fixos = banco.ler_carrinhos_fixos()
+    responsaveis_hidraulicos = banco.ler_responsaveis_hidraulicos(armazem_id_atual)
+    responsaveis_carrinhos = banco.ler_responsaveis_carrinhos(armazem_id_atual)
+    carrinhos_fixos = banco.ler_carrinhos_fixos(armazem_id_atual)
 
     c1, c2, c3 = st.columns(3)
 
