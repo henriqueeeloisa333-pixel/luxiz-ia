@@ -1,21 +1,22 @@
 import os
+import secrets
 import streamlit as st
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # ==================================================
 # CONFIGURAÇÃO SUPABASE
 # ==================================================
 
-HOST = os.getenv("SUPABASE_HOST")
-PORT = os.getenv("SUPABASE_PORT")
-DATABASE = os.getenv("SUPABASE_DATABASE")
+HOST = "aws-1-sa-east-1.pooler.supabase.com"
+PORT = 5432
+DATABASE = "postgres"
 
-USER = os.getenv("SUPABASE_USER")
-PASSWORD = os.getenv("SUPABASE_PASSWORD")
+USER = "postgres.pisddcbghxqylosviiow"
+PASSWORD = "Lg78963@@97#"
 
 # ==================================================
 # FUNDADOR (SECRETS)
@@ -42,9 +43,16 @@ SENHA_FUNDADOR = os.getenv(
 @st.cache_resource
 def _obter_pool():
 
-    return psycopg2.pool.SimpleConnectionPool(
+    # ThreadedConnectionPool (não SimpleConnectionPool): o pool é
+    # compartilhado por TODAS as sessões/usuários do app ao mesmo
+    # tempo (é um recurso cacheado a nível de processo). O
+    # SimpleConnectionPool não é seguro para uso concorrente por
+    # várias threads — com vários usuários mexendo no app ao mesmo
+    # tempo, isso podia causar lentidão e travamentos aleatórios.
+
+    return psycopg2.pool.ThreadedConnectionPool(
         1,
-        10,
+        20,
         host=HOST,
         port=PORT,
         database=DATABASE,
@@ -343,6 +351,23 @@ def _garantir_schema():
         senha TEXT,
         tipo TEXT DEFAULT 'usuario',
         trocar_senha INTEGER DEFAULT 1
+    )
+    """)
+
+    # ==============================
+    # SESSÕES ATIVAS (login persistente)
+    # ==============================
+    # Guarda um token por login, associado a um link (URL) que o
+    # navegador mantém mesmo depois de um F5 ou de uma queda de
+    # rede rápida — assim, ao reconectar, o app reconhece o token
+    # e restaura a sessão sem pedir login de novo.
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sessoes_ativas (
+        token TEXT PRIMARY KEY,
+        usuario TEXT NOT NULL,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expira_em TIMESTAMP
     )
     """)
 
@@ -1995,6 +2020,106 @@ def autenticar(
     liberar(conn)
 
     return resultado
+
+
+# ==================================================
+# SESSÕES ATIVAS (login persistente)
+# ==================================================
+# Um token é gerado a cada login e colocado na URL da página.
+# Como a URL fica salva no navegador, se a página recarregar
+# sozinha (F5, queda de rede, reconexão) o app consegue validar
+# esse token aqui e devolver o usuário para onde estava, sem
+# precisar fazer login de novo.
+
+def criar_sessao(usuario, dias_validade=30):
+
+    token = secrets.token_urlsafe(32)
+
+    expira_em = datetime.utcnow() + timedelta(days=dias_validade)
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO sessoes_ativas (token, usuario, expira_em)
+    VALUES (%s, %s, %s)
+    """, (
+        token,
+        usuario,
+        expira_em
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    return token
+
+
+def validar_sessao(token):
+
+    if not token:
+        return None
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT
+        u.usuario,
+        u.tipo,
+        u.trocar_senha,
+        u.armazem_id,
+        a.nome
+    FROM sessoes_ativas s
+    JOIN usuarios u ON u.usuario = s.usuario
+    JOIN armazens a ON a.id = u.armazem_id
+    WHERE s.token = %s
+    AND (s.expira_em IS NULL OR s.expira_em > CURRENT_TIMESTAMP)
+    """, (token,))
+
+    resultado = cursor.fetchone()
+
+    liberar(conn)
+
+    return resultado
+
+
+def renovar_sessao(token, dias_validade=30):
+
+    if not token:
+        return
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    UPDATE sessoes_ativas
+    SET expira_em = %s
+    WHERE token = %s
+    """, (
+        datetime.utcnow() + timedelta(days=dias_validade),
+        token
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+
+def encerrar_sessao(token):
+
+    if not token:
+        return
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM sessoes_ativas
+    WHERE token = %s
+    """, (token,))
+
+    conn.commit()
+    liberar(conn)
 
 
 def criar_usuario(

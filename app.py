@@ -44,6 +44,12 @@ def render_status_footer():
         except Exception:
             pass
 
+    if st.session_state.get("token_sessao"):
+        try:
+            banco.renovar_sessao(st.session_state.token_sessao)
+        except Exception:
+            pass
+
     st.markdown(
         f"""
         <div class="footer-luxiz">
@@ -70,18 +76,63 @@ if "logado" not in st.session_state:
 if "usuario" not in st.session_state:
     st.session_state.usuario = ""
 
+# =====================================================
+# BANCO
+# =====================================================
+
+banco.inicializar_banco()
+
+# =====================================================
+# RESTAURA SESSÃO PELO TOKEN DA URL
+# =====================================================
+# O Streamlit perde o session_state toda vez que a página
+# recarrega sozinha (F5, uma queda de rede rápida, o navegador
+# reconectando o "fio" da aplicação). Só que a URL continua a
+# mesma no navegador — por isso, no login, guardamos um token
+# nela (?sessao=...). Se a pessoa cair e a página recarregar,
+# usamos esse token para reconhecer quem era e devolvê-la
+# exatamente para onde estava, sem pedir login de novo.
+
+if not st.session_state.logado:
+
+    token_sessao_url = st.query_params.get("sessao")
+
+    if token_sessao_url:
+
+        sessao_restaurada = banco.validar_sessao(token_sessao_url)
+
+        if sessao_restaurada:
+
+            (
+                usuario_restaurado,
+                tipo_restaurado,
+                trocar_senha_restaurado,
+                armazem_id_restaurado,
+                armazem_nome_restaurado
+            ) = sessao_restaurada
+
+            st.session_state.logado = True
+            st.session_state.usuario = usuario_restaurado
+            st.session_state.tipo_usuario = tipo_restaurado
+            st.session_state.trocar_senha = trocar_senha_restaurado
+            st.session_state.armazem_id = armazem_id_restaurado
+            st.session_state.armazem_nome = armazem_nome_restaurado
+            st.session_state.armazem_visualizado_id = armazem_id_restaurado
+            st.session_state.armazem_visualizado_nome = armazem_nome_restaurado
+            st.session_state.token_sessao = token_sessao_url
+
+        else:
+
+            # Token inválido/expirado: tira da URL para não ficar
+            # tentando de novo a cada recarregamento.
+            del st.query_params["sessao"]
+
 # O rodapé "Sistema Online" só precisa se auto-atualizar
 # depois de logar — antes disso, não há necessidade de
 # ficar recarregando sozinho a cada 120s.
 
 if st.session_state.logado:
     render_status_footer()
-
-# =====================================================
-# BANCO
-# =====================================================
-
-banco.inicializar_banco()
 
 if "tipo_usuario" not in st.session_state:
     st.session_state.tipo_usuario = "usuario"
@@ -276,6 +327,13 @@ if not st.session_state.logado:
                     st.session_state.armazem_visualizado_id = resultado[3]
                     st.session_state.armazem_visualizado_nome = resultado[4]
 
+                    # Token de sessão salvo na URL: se a página
+                    # recarregar sozinha (F5, queda de rede), o
+                    # login é restaurado automaticamente.
+                    token_sessao = banco.criar_sessao(usuario)
+                    st.session_state.token_sessao = token_sessao
+                    st.query_params["sessao"] = token_sessao
+
                     st.rerun()
 
                 else:
@@ -361,6 +419,11 @@ def botao_sair_rodape(identificador):
             key=f"sair_{identificador}"
         ):
 
+            banco.encerrar_sessao(
+                st.session_state.get("token_sessao")
+            )
+
+            st.query_params.clear()
             st.session_state.clear()
             st.rerun()
 
@@ -484,210 +547,215 @@ if (
 ):
     st.session_state.aba_atual = CHAVES_VALIDAS[0]
 
-# =====================================================
-# BARRA LATERAL (construída com CSS, não usa st.sidebar)
-# =====================================================
+@st.fragment
+def render_sidebar():
 
-if "sidebar_aberta" not in st.session_state:
-    st.session_state.sidebar_aberta = True
+    # =====================================================
+    # BARRA LATERAL (construída com CSS, não usa st.sidebar)
+    # =====================================================
 
-LARGURA_PAINEL_PX = 208 if st.session_state.sidebar_aberta else 64
-TOPO_INICIAL_PX = 104
-ESPACAMENTO_PX = 56
+    if "sidebar_aberta" not in st.session_state:
+        st.session_state.sidebar_aberta = True
 
-# Altura aproximada da barra global "🟢 Sistema Online" fixa no rodapé
-# da página inteira (definida em estilos.py, classe .footer-luxiz).
-ALTURA_RODAPE_GLOBAL_PX = 40
+    LARGURA_PAINEL_PX = 208 if st.session_state.sidebar_aberta else 64
+    TOPO_INICIAL_PX = 104
+    ESPACAMENTO_PX = 56
 
-# Altura do rodapé próprio da barra lateral (bolinha + nome do usuário),
-# que fica encaixado logo acima da barra global.
-ALTURA_RODAPE_SIDEBAR_PX = 46
+    # Altura aproximada da barra global "🟢 Sistema Online" fixa no rodapé
+    # da página inteira (definida em estilos.py, classe .footer-luxiz).
+    ALTURA_RODAPE_GLOBAL_PX = 40
 
-# A barra lateral é um painel próprio (não usa st.sidebar), então
-# precisa seguir manualmente o tema claro/escuro escolhido no topo.
-if st.session_state.tema == "claro":
-    COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.94))"
-    COR_BORDA_SIDEBAR = "rgba(0,0,0,.08)"
-    COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.06)"
-    COR_TEXTO_TOGGLE = "#0f172a"
-else:
-    COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(8,12,24,.95), rgba(8,12,24,.88))"
-    COR_BORDA_SIDEBAR = "rgba(255,255,255,.08)"
-    COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.25)"
-    COR_TEXTO_TOGGLE = "#e2e8f0"
+    # Altura do rodapé próprio da barra lateral (bolinha + nome do usuário),
+    # que fica encaixado logo acima da barra global.
+    ALTURA_RODAPE_SIDEBAR_PX = 46
 
-st.markdown(
-    f"""
-    <style>
-    .luxiz-sidebar-fundo{{
-        position:fixed;
-        left:0;
-        top:0;
-        width:{LARGURA_PAINEL_PX}px;
-        height:100vh;
-        background:{COR_FUNDO_SIDEBAR};
-        border-right:1px solid {COR_BORDA_SIDEBAR};
-        box-shadow:{COR_SOMBRA_SIDEBAR};
-        z-index:999996;
-        transition:width .18s ease, background .18s ease;
-    }}
-    .luxiz-sidebar-sub{{
-        position:fixed;
-        left:0;
-        top:70px;
-        width:{LARGURA_PAINEL_PX}px;
-        text-align:center;
-        z-index:999997;
-        color:#64748b;
-        font-size:.68rem;
-        letter-spacing:1px;
-        text-transform:uppercase;
-        pointer-events:none;
-    }}
-    div[class*="st-key-toggle_sidebar_luxiz"]{{
-        position:fixed;
-        left:0;
-        top:16px;
-        width:{LARGURA_PAINEL_PX}px;
-        z-index:999999;
-        text-align:center;
-        transition:width .18s ease;
-    }}
-    div[class*="st-key-toggle_sidebar_luxiz"] button{{
-        background:transparent !important;
-        border:none !important;
-        box-shadow:none !important;
-        color:{COR_TEXTO_TOGGLE} !important;
-        font-weight:800 !important;
-        font-size:1.05rem !important;
-        letter-spacing:.4px;
-        width:100%;
-        padding:.3rem 0 !important;
-    }}
-    div[class*="st-key-toggle_sidebar_luxiz"] button:hover{{
-        filter:brightness(1.4);
-        transform:scale(1.05);
-    }}
-    div[class*="st-key-painel_navegacao_scroll"]{{
-        position:fixed;
-        left:0;
-        top:{TOPO_INICIAL_PX + 26}px;
-        width:{LARGURA_PAINEL_PX}px;
-        bottom:{ALTURA_RODAPE_GLOBAL_PX + ALTURA_RODAPE_SIDEBAR_PX}px;
-        overflow-y:auto;
-        overflow-x:hidden;
-        padding:0 16px;
-        box-sizing:border-box;
-        z-index:999998;
-        transition:width .18s ease;
-    }}
-    div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar{{
-        width:5px;
-    }}
-    div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-thumb{{
-        background:rgba(148,163,184,.45);
-        border-radius:999px;
-    }}
-    div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-track{{
-        background:transparent;
-    }}
-    div[class*="st-key-nav_"]{{
-        margin-bottom:12px;
-    }}
-    div[class*="st-key-nav_"] button{{
-        width:100%;
-        height:44px;
-        border-radius:10px !important;
-        text-align:left;
-        padding-left:16px !important;
-        font-size:.92rem;
-        white-space:nowrap;
-        transition:transform .15s ease, filter .15s ease;
-    }}
-    div[class*="st-key-nav_"] button:hover{{
-        transform:translateX(3px);
-        filter:brightness(1.15);
-    }}
-    .block-container{{
-        padding-left:{LARGURA_PAINEL_PX + (32 if st.session_state.sidebar_aberta else 24)}px !important;
-        transition:padding-left .18s ease;
-    }}
-    </style>
-    <div class="luxiz-sidebar-fundo"></div>
-    """,
-    unsafe_allow_html=True
-)
-
-rotulo_toggle = "✨  Luxiz IA" if st.session_state.sidebar_aberta else "✨"
-
-if st.button(rotulo_toggle, key="toggle_sidebar_luxiz"):
-    st.session_state.sidebar_aberta = not st.session_state.sidebar_aberta
-    st.rerun()
-
-if st.session_state.sidebar_aberta:
+    # A barra lateral é um painel próprio (não usa st.sidebar), então
+    # precisa seguir manualmente o tema claro/escuro escolhido no topo.
+    if st.session_state.tema == "claro":
+        COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.94))"
+        COR_BORDA_SIDEBAR = "rgba(0,0,0,.08)"
+        COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.06)"
+        COR_TEXTO_TOGGLE = "#0f172a"
+    else:
+        COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(8,12,24,.95), rgba(8,12,24,.88))"
+        COR_BORDA_SIDEBAR = "rgba(255,255,255,.08)"
+        COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.25)"
+        COR_TEXTO_TOGGLE = "#e2e8f0"
 
     st.markdown(
-        '<div class="luxiz-sidebar-sub">Navegação</div>',
+        f"""
+        <style>
+        .luxiz-sidebar-fundo{{
+            position:fixed;
+            left:0;
+            top:0;
+            width:{LARGURA_PAINEL_PX}px;
+            height:100vh;
+            background:{COR_FUNDO_SIDEBAR};
+            border-right:1px solid {COR_BORDA_SIDEBAR};
+            box-shadow:{COR_SOMBRA_SIDEBAR};
+            z-index:999996;
+            transition:width .18s ease, background .18s ease;
+        }}
+        .luxiz-sidebar-sub{{
+            position:fixed;
+            left:0;
+            top:70px;
+            width:{LARGURA_PAINEL_PX}px;
+            text-align:center;
+            z-index:999997;
+            color:#64748b;
+            font-size:.68rem;
+            letter-spacing:1px;
+            text-transform:uppercase;
+            pointer-events:none;
+        }}
+        div[class*="st-key-toggle_sidebar_luxiz"]{{
+            position:fixed;
+            left:0;
+            top:16px;
+            width:{LARGURA_PAINEL_PX}px;
+            z-index:999999;
+            text-align:center;
+            transition:width .18s ease;
+        }}
+        div[class*="st-key-toggle_sidebar_luxiz"] button{{
+            background:transparent !important;
+            border:none !important;
+            box-shadow:none !important;
+            color:{COR_TEXTO_TOGGLE} !important;
+            font-weight:800 !important;
+            font-size:1.05rem !important;
+            letter-spacing:.4px;
+            width:100%;
+            padding:.3rem 0 !important;
+        }}
+        div[class*="st-key-toggle_sidebar_luxiz"] button:hover{{
+            filter:brightness(1.4);
+            transform:scale(1.05);
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]{{
+            position:fixed;
+            left:0;
+            top:{TOPO_INICIAL_PX + 26}px;
+            width:{LARGURA_PAINEL_PX}px;
+            bottom:{ALTURA_RODAPE_GLOBAL_PX + ALTURA_RODAPE_SIDEBAR_PX}px;
+            overflow-y:auto;
+            overflow-x:hidden;
+            padding:0 16px;
+            box-sizing:border-box;
+            z-index:999998;
+            transition:width .18s ease;
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar{{
+            width:5px;
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-thumb{{
+            background:rgba(148,163,184,.45);
+            border-radius:999px;
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-track{{
+            background:transparent;
+        }}
+        div[class*="st-key-nav_"]{{
+            margin-bottom:12px;
+        }}
+        div[class*="st-key-nav_"] button{{
+            width:100%;
+            height:44px;
+            border-radius:10px !important;
+            text-align:left;
+            padding-left:16px !important;
+            font-size:.92rem;
+            white-space:nowrap;
+            transition:transform .15s ease, filter .15s ease;
+        }}
+        div[class*="st-key-nav_"] button:hover{{
+            transform:translateX(3px);
+            filter:brightness(1.15);
+        }}
+        .block-container{{
+            padding-left:{LARGURA_PAINEL_PX + (32 if st.session_state.sidebar_aberta else 24)}px !important;
+            transition:padding-left .18s ease;
+        }}
+        </style>
+        <div class="luxiz-sidebar-fundo"></div>
+        """,
         unsafe_allow_html=True
     )
 
-    with st.container(key="painel_navegacao_scroll"):
+    rotulo_toggle = "✨  Luxiz IA" if st.session_state.sidebar_aberta else "✨"
 
-        for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
+    if st.button(rotulo_toggle, key="toggle_sidebar_luxiz"):
+        st.session_state.sidebar_aberta = not st.session_state.sidebar_aberta
+        st.rerun(scope="fragment")
 
-            ativo = st.session_state.aba_atual == chave
+    if st.session_state.sidebar_aberta:
 
-            if st.button(
-                f"{icone}   {nome}",
-                key=chave,
-                type="primary" if ativo else "secondary"
-            ):
-                st.session_state.aba_atual = chave
-                st.rerun()
+        st.markdown(
+            '<div class="luxiz-sidebar-sub">Navegação</div>',
+            unsafe_allow_html=True
+        )
 
-# =====================================================
-# RODAPÉ DA BARRA LATERAL (bolinha online + usuário logado)
-# =====================================================
-# Fica sempre fixo, acima da barra global "Sistema Online" do
-# rodapé da página — só a área de navegação (acima) rola.
+        with st.container(key="painel_navegacao_scroll"):
 
-rotulo_rodape_sidebar = (
-    f"🟢 {nome_exibicao}"
-    if st.session_state.sidebar_aberta
-    else "🟢"
-)
+            for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
 
-st.markdown(
-    f"""
-    <style>
-    .luxiz-sidebar-rodape{{
-        position:fixed;
-        left:0;
-        bottom:{ALTURA_RODAPE_GLOBAL_PX}px;
-        width:{LARGURA_PAINEL_PX}px;
-        height:{ALTURA_RODAPE_SIDEBAR_PX}px;
-        box-sizing:border-box;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        z-index:999998;
-        font-size:.78rem;
-        font-weight:700;
-        color:{COR_TEXTO_TOGGLE};
-        white-space:nowrap;
-        overflow:hidden;
-        text-overflow:ellipsis;
-        padding:0 12px;
-        border-top:1px solid {COR_BORDA_SIDEBAR};
-        background:{COR_FUNDO_SIDEBAR};
-        transition:width .18s ease;
-    }}
-    </style>
-    <div class="luxiz-sidebar-rodape">{rotulo_rodape_sidebar}</div>
-    """,
-    unsafe_allow_html=True
-)
+                ativo = st.session_state.aba_atual == chave
 
+                if st.button(
+                    f"{icone}   {nome}",
+                    key=chave,
+                    type="primary" if ativo else "secondary"
+                ):
+                    st.session_state.aba_atual = chave
+                    st.rerun()
+
+    # =====================================================
+    # RODAPÉ DA BARRA LATERAL (bolinha online + usuário logado)
+    # =====================================================
+    # Fica sempre fixo, acima da barra global "Sistema Online" do
+    # rodapé da página — só a área de navegação (acima) rola.
+
+    rotulo_rodape_sidebar = (
+        f"🟢 {nome_exibicao}"
+        if st.session_state.sidebar_aberta
+        else "🟢"
+    )
+
+    st.markdown(
+        f"""
+        <style>
+        .luxiz-sidebar-rodape{{
+            position:fixed;
+            left:0;
+            bottom:{ALTURA_RODAPE_GLOBAL_PX}px;
+            width:{LARGURA_PAINEL_PX}px;
+            height:{ALTURA_RODAPE_SIDEBAR_PX}px;
+            box-sizing:border-box;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            z-index:999998;
+            font-size:.78rem;
+            font-weight:700;
+            color:{COR_TEXTO_TOGGLE};
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            padding:0 12px;
+            border-top:1px solid {COR_BORDA_SIDEBAR};
+            background:{COR_FUNDO_SIDEBAR};
+            transition:width .18s ease;
+        }}
+        </style>
+        <div class="luxiz-sidebar-rodape">{rotulo_rodape_sidebar}</div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+render_sidebar()
 aba_inicio = st.session_state.aba_atual == "nav_inicio"
 aba_dashboard = st.session_state.aba_atual == "nav_dashboard"
 aba_remanejamento = st.session_state.aba_atual == "nav_remanejamento"
@@ -982,7 +1050,7 @@ if aba_inicio:
 @st.fragment(run_every=120)
 def render_aba_dashboard():
 
-    with st.spinner("🔄 Luxiz IA atualizando: Dashboard..."):
+    with estilos.mostrar_processando("Dashboard..."):
         dashboard.render()
 
     st.write("")
@@ -999,7 +1067,7 @@ if aba_dashboard:
 @st.fragment(run_every=120)
 def render_aba_remanejamento():
 
-    with st.spinner("🔄 Luxiz IA atualizando: Remanejamento..."):
+    with estilos.mostrar_processando("Remanejamento..."):
         remanejamento.render()
 
     st.write("")
@@ -1016,7 +1084,7 @@ if aba_remanejamento:
 @st.fragment(run_every=120)
 def render_aba_sac():
 
-    with st.spinner("🔄 Luxiz IA atualizando: Central SAC..."):
+    with estilos.mostrar_processando("Central SAC..."):
         sac.render()
 
     st.write("")
@@ -1033,7 +1101,7 @@ if aba_sac:
 @st.fragment(run_every=120)
 def render_aba_auditoria():
 
-    with st.spinner("🔄 Luxiz IA atualizando: Auditoria de Atividades..."):
+    with estilos.mostrar_processando("Auditoria de Atividades..."):
         auditoria.render()
 
     st.write("")
@@ -1050,7 +1118,7 @@ if aba_auditoria:
 @st.fragment(run_every=120)
 def render_aba_rotativo():
 
-    with st.spinner("🔄 Luxiz IA atualizando: Rodízio de Fim de Expediente..."):
+    with estilos.mostrar_processando("Rodízio de Fim de Expediente..."):
         rotativo.render()
 
     st.write("")
@@ -1083,7 +1151,7 @@ if aba_checklist:
 @st.fragment(run_every=120)
 def render_aba_equipamentos():
 
-    with st.spinner("🔄 Luxiz IA atualizando: Equipamentos..."):
+    with estilos.mostrar_processando("Equipamentos..."):
         equipamentos.render()
 
     st.write("")

@@ -40,7 +40,7 @@ def perguntar_notificacao(pendente, campo):
             key=f"notificar_sim_{campo}"
         ):
             st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = True
-            st.rerun()
+            st.rerun(scope="fragment")
 
     with c2:
         if st.button(
@@ -49,7 +49,7 @@ def perguntar_notificacao(pendente, campo):
             key=f"notificar_nao_{campo}"
         ):
             st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = False
-            st.rerun()
+            st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_remanejamento(id_item, nome_item, armazem_id):
@@ -67,10 +67,10 @@ def confirmar_exclusao_remanejamento(id_item, nome_item, armazem_id):
         use_container_width=True,
         key=f"confirma_del_remanejamento_{id_item}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: excluindo '{nome_item}'..."):
+        with estilos.mostrar_processando(f"excluindo '{nome_item}'..."):
             banco.excluir_remanejamento(id_item, armazem_id)
-        st.toast(f"✨ Luxiz IA: '{nome_item}' excluído.")
-        st.rerun()
+        estilos.notificar_sucesso(f"'{nome_item}' excluído.")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_multipla_remanejamento(ids_selecionados, armazem_id):
@@ -89,10 +89,10 @@ def confirmar_exclusao_multipla_remanejamento(ids_selecionados, armazem_id):
         use_container_width=True,
         key="confirma_del_lote_remanejamento"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} prioridade(s)..."):
+        with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} prioridade(s)..."):
             banco.excluir_remanejamento_lote(ids_selecionados, armazem_id)
-        st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} prioridade(s) excluída(s).")
-        st.rerun()
+        estilos.notificar_sucesso(f"{len(ids_selecionados)} prioridade(s) excluída(s).")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_usuario(uid, nome_usuario):
@@ -110,10 +110,10 @@ def confirmar_exclusao_usuario(uid, nome_usuario):
         use_container_width=True,
         key=f"confirma_del_usuario_{uid}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: excluindo usuário '{nome_usuario}'..."):
+        with estilos.mostrar_processando(f"excluindo usuário '{nome_usuario}'..."):
             banco.excluir_usuario_por_id(uid)
-        st.toast(f"✨ Luxiz IA: usuário '{nome_usuario}' excluído.")
-        st.rerun()
+        estilos.notificar_sucesso(f"usuário '{nome_usuario}' excluído.")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_analise_tecnica(id_registro, nome_registro, armazem_id):
@@ -131,10 +131,10 @@ def confirmar_exclusao_analise_tecnica(id_registro, nome_registro, armazem_id):
         use_container_width=True,
         key=f"confirma_del_analise_{id_registro}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: excluindo registro de {nome_registro}..."):
+        with estilos.mostrar_processando(f"excluindo registro de {nome_registro}..."):
             banco.excluir_analise_tecnica(id_registro, armazem_id)
-        st.toast(f"✨ Luxiz IA: registro de {nome_registro} excluído.")
-        st.rerun()
+        estilos.notificar_sucesso(f"registro de {nome_registro} excluído.")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_multipla_analise_tecnica(ids_selecionados, armazem_id):
@@ -153,10 +153,10 @@ def confirmar_exclusao_multipla_analise_tecnica(ids_selecionados, armazem_id):
         use_container_width=True,
         key="confirma_del_lote_analise"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} registro(s)..."):
+        with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} registro(s)..."):
             banco.excluir_analise_tecnica_lote(ids_selecionados, armazem_id)
-        st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} registro(s) excluído(s).")
-        st.rerun()
+        estilos.notificar_sucesso(f"{len(ids_selecionados)} registro(s) excluído(s).")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_auditoria(id_registro, nome_registro, armazem_id):
@@ -174,10 +174,10 @@ def confirmar_exclusao_auditoria(id_registro, nome_registro, armazem_id):
         use_container_width=True,
         key=f"confirma_del_auditoria_{id_registro}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: excluindo registro de {nome_registro}..."):
+        with estilos.mostrar_processando(f"excluindo registro de {nome_registro}..."):
             banco.excluir_auditoria(id_registro, armazem_id)
-        st.toast(f"✨ Luxiz IA: registro de {nome_registro} excluído.")
-        st.rerun()
+        estilos.notificar_sucesso(f"registro de {nome_registro} excluído.")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_multipla_auditoria(ids_selecionados, armazem_id):
@@ -196,10 +196,10 @@ def confirmar_exclusao_multipla_auditoria(ids_selecionados, armazem_id):
         use_container_width=True,
         key="confirma_del_lote_auditoria"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: excluindo {len(ids_selecionados)} registro(s)..."):
+        with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} registro(s)..."):
             banco.excluir_auditoria_lote(ids_selecionados, armazem_id)
-        st.toast(f"✨ Luxiz IA: {len(ids_selecionados)} registro(s) excluído(s).")
-        st.rerun()
+        estilos.notificar_sucesso(f"{len(ids_selecionados)} registro(s) excluído(s).")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_pessoa_rotativo(id_pessoa, nome_pessoa, armazem_id):
@@ -217,10 +217,10 @@ def confirmar_exclusao_pessoa_rotativo(id_pessoa, nome_pessoa, armazem_id):
         use_container_width=True,
         key=f"confirma_del_pessoa_rot_{id_pessoa}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome_pessoa}'..."):
+        with estilos.mostrar_processando(f"removendo '{nome_pessoa}'..."):
             banco.excluir_pessoa_rotativo(id_pessoa, armazem_id)
-        st.toast(f"✨ Luxiz IA: '{nome_pessoa}' removido(a) do rodízio.")
-        st.rerun()
+        estilos.notificar_sucesso(f"'{nome_pessoa}' removido(a) do rodízio.")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_atividade_rotativo(id_atividade, nome_atividade, armazem_id):
@@ -238,10 +238,10 @@ def confirmar_exclusao_atividade_rotativo(id_atividade, nome_atividade, armazem_
         use_container_width=True,
         key=f"confirma_del_ativ_rot_{id_atividade}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome_atividade}'..."):
+        with estilos.mostrar_processando(f"removendo '{nome_atividade}'..."):
             banco.excluir_atividade_rotativo(id_atividade, armazem_id)
-        st.toast(f"✨ Luxiz IA: '{nome_atividade}' removida do rodízio.")
-        st.rerun()
+        estilos.notificar_sucesso(f"'{nome_atividade}' removida do rodízio.")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_responsavel_hidraulico(id_registro, nome, numero, armazem_id):
@@ -260,10 +260,10 @@ def confirmar_exclusao_responsavel_hidraulico(id_registro, nome, numero, armazem
         use_container_width=True,
         key=f"confirma_del_resp_hid_{id_registro}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome}'..."):
+        with estilos.mostrar_processando(f"removendo '{nome}'..."):
             banco.excluir_responsavel_hidraulico(id_registro, armazem_id)
-        st.toast(f"✨ Luxiz IA: '{nome}' removido(a).")
-        st.rerun()
+        estilos.notificar_sucesso(f"'{nome}' removido(a).")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_responsavel_carrinho(id_registro, nome, numero, armazem_id):
@@ -282,10 +282,10 @@ def confirmar_exclusao_responsavel_carrinho(id_registro, nome, numero, armazem_i
         use_container_width=True,
         key=f"confirma_del_resp_car_{id_registro}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: removendo '{nome}'..."):
+        with estilos.mostrar_processando(f"removendo '{nome}'..."):
             banco.excluir_responsavel_carrinho(id_registro, armazem_id)
-        st.toast(f"✨ Luxiz IA: '{nome}' removido(a).")
-        st.rerun()
+        estilos.notificar_sucesso(f"'{nome}' removido(a).")
+        st.rerun(scope="fragment")
 
 
 def confirmar_exclusao_carrinho_fixo(id_registro, local, numero, armazem_id):
@@ -304,13 +304,15 @@ def confirmar_exclusao_carrinho_fixo(id_registro, local, numero, armazem_id):
         use_container_width=True,
         key=f"confirma_del_carrinho_fixo_{id_registro}"
     ):
-        with st.spinner(f"✨ Luxiz IA atualizando: removendo carrinho {numero}..."):
+        with estilos.mostrar_processando(f"removendo carrinho {numero}..."):
             banco.excluir_carrinho_fixo(id_registro, armazem_id)
-        st.toast(f"✨ Luxiz IA: Carrinho {numero} removido de {local}.")
-        st.rerun()
+        estilos.notificar_sucesso(f"Carrinho {numero} removido de {local}.")
+        st.rerun(scope="fragment")
 
 
 def render():
+
+    estilos.exibir_notificacao_pendente()
 
     banco.inicializar_banco()
 
@@ -462,7 +464,7 @@ def render():
             "💾 Salvar Dashboard"
         ):
 
-            with st.spinner(f"✨ Luxiz IA atualizando: Dashboard da {rua}..."):
+            with estilos.mostrar_processando(f"Dashboard da {rua}..."):
                 banco.salvar_dados(
                     rua,
                     nota,
@@ -471,8 +473,8 @@ def render():
                     usuario=usuario_logado
                 )
 
-            st.toast(f"✨ Luxiz IA: Dashboard da {rua} atualizado.")
-            st.rerun()
+            estilos.notificar_sucesso(f"Dashboard da {rua} atualizado.")
+            st.rerun(scope="fragment")
 
     # =====================================================
     # REMANEJAMENTO
@@ -507,7 +509,7 @@ def render():
 
             if novo_item:
 
-                with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{novo_item}'..."):
+                with estilos.mostrar_processando(f"adicionando '{novo_item}'..."):
                     banco.adicionar_remanejamento(
                         novo_item,
                         armazem_id_atual,
@@ -515,8 +517,8 @@ def render():
                         usuario=usuario_logado
                     )
 
-                st.toast(f"✨ Luxiz IA: '{novo_item}' adicionado.")
-                st.rerun()
+                estilos.notificar_sucesso(f"'{novo_item}' adicionado.")
+                st.rerun(scope="fragment")
 
         st.divider()
 
@@ -619,7 +621,7 @@ def render():
 
             if salvar:
 
-                with st.spinner("✨ Luxiz IA atualizando: dados do SAC..."):
+                with estilos.mostrar_processando("dados do SAC..."):
                     banco.atualizar_sac_mensal(
                         reclamacoes,
                         meta,
@@ -627,8 +629,8 @@ def render():
                         usuario=usuario_logado
                     )
 
-                st.toast("✨ Luxiz IA: SAC atualizado.")
-                st.rerun()
+                estilos.notificar_sucesso("SAC atualizado.")
+                st.rerun(scope="fragment")
 
         st.divider()
 
@@ -747,7 +749,7 @@ def render():
                     or "nova ocorrência"
                 )
 
-                with st.spinner(f"✨ Luxiz IA atualizando: registrando {rotulo_ocorrencia}..."):
+                with estilos.mostrar_processando(f"registrando {rotulo_ocorrencia}..."):
                     banco.adicionar_analise_tecnica(
                         pendente,
                         vinculos,
@@ -755,11 +757,11 @@ def render():
                         usuario=usuario_logado
                     )
 
-                st.toast(f"✨ Luxiz IA: {rotulo_ocorrencia} registrada.")
+                estilos.notificar_sucesso(f"{rotulo_ocorrencia} registrada.")
 
                 del st.session_state["pendente_analise_tecnica"]
 
-                st.rerun()
+                st.rerun(scope="fragment")
 
         with st.form(
             "form_analise_tecnica"
@@ -892,7 +894,7 @@ def render():
                     "notificar_conferente": None if conferente else False
                 }
 
-                st.rerun()
+                st.rerun(scope="fragment")
 
         st.divider()
 
@@ -1068,7 +1070,7 @@ def render():
 
                 else:
 
-                    with st.spinner(f"✨ Luxiz IA atualizando: registrando auditoria de {nome_auditoria}..."):
+                    with estilos.mostrar_processando(f"registrando auditoria de {nome_auditoria}..."):
                         banco.adicionar_auditoria(
                             nome_auditoria,
                             funcao_auditoria,
@@ -1080,8 +1082,8 @@ def render():
                             usuario=usuario_logado
                         )
 
-                    st.toast(f"✨ Luxiz IA: auditoria de {nome_auditoria} registrada.")
-                    st.rerun()
+                    estilos.notificar_sucesso(f"auditoria de {nome_auditoria} registrada.")
+                    st.rerun(scope="fragment")
 
         st.divider()
 
@@ -1220,14 +1222,14 @@ def render():
 
                     else:
 
-                        with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{nome_pessoa_rotativo}'..."):
+                        with estilos.mostrar_processando(f"adicionando '{nome_pessoa_rotativo}'..."):
                             banco.adicionar_pessoa_rotativo(
                                 nome_pessoa_rotativo,
                                 armazem_id_atual
                             )
 
-                        st.toast(f"✨ Luxiz IA: '{nome_pessoa_rotativo}' adicionado(a) ao rodízio.")
-                        st.rerun()
+                        estilos.notificar_sucesso(f"'{nome_pessoa_rotativo}' adicionado(a) ao rodízio.")
+                        st.rerun(scope="fragment")
 
             pessoas_rotativo = banco.listar_pessoas_rotativo(armazem_id_atual)
 
@@ -1314,7 +1316,7 @@ def render():
 
                     else:
 
-                        with st.spinner(f"✨ Luxiz IA atualizando: adicionando '{nome_atividade_rotativo}'..."):
+                        with estilos.mostrar_processando(f"adicionando '{nome_atividade_rotativo}'..."):
                             banco.adicionar_atividade_rotativo(
                                 nome_atividade_rotativo,
                                 armazem_id_atual,
@@ -1322,8 +1324,8 @@ def render():
                                 pessoa_fixa=pessoa_fixa_atividade if eh_atividade_fixa else None
                             )
 
-                        st.toast(f"✨ Luxiz IA: '{nome_atividade_rotativo}' adicionada ao rodízio.")
-                        st.rerun()
+                        estilos.notificar_sucesso(f"'{nome_atividade_rotativo}' adicionada ao rodízio.")
+                        st.rerun(scope="fragment")
 
             atividades_rotativo = banco.listar_atividades_rotativo(armazem_id_atual)
 
@@ -1412,15 +1414,15 @@ def render():
 
                 else:
 
-                    with st.spinner("✨ Luxiz IA atualizando: adicionando responsável..."):
+                    with estilos.mostrar_processando("adicionando responsável..."):
                         banco.adicionar_responsavel_hidraulico(
                             nome_resp_hid,
                             numero_resp_hid,
                             armazem_id_atual
                         )
 
-                    st.toast("✨ Luxiz IA: responsável adicionado.")
-                    st.rerun()
+                    estilos.notificar_sucesso("responsável adicionado.")
+                    st.rerun(scope="fragment")
 
         responsaveis_hidraulicos = banco.ler_responsaveis_hidraulicos(armazem_id_atual)
 
@@ -1458,15 +1460,15 @@ def render():
                             use_container_width=True,
                             key=f"salvar_edit_resp_hid_{item['id']}"
                         ):
-                            with st.spinner("✨ Luxiz IA atualizando: salvando alterações..."):
+                            with estilos.mostrar_processando("salvando alterações..."):
                                 banco.editar_responsavel_hidraulico(
                                     item["id"],
                                     novo_nome,
                                     novo_numero,
                                     armazem_id_atual
                                 )
-                            st.toast("✨ Luxiz IA: responsável atualizado.")
-                            st.rerun()
+                            estilos.notificar_sucesso("responsável atualizado.")
+                            st.rerun(scope="fragment")
 
                 with c3:
 
@@ -1517,15 +1519,15 @@ def render():
 
                 else:
 
-                    with st.spinner("✨ Luxiz IA atualizando: adicionando responsável..."):
+                    with estilos.mostrar_processando("adicionando responsável..."):
                         banco.adicionar_responsavel_carrinho(
                             nome_resp_car,
                             numero_resp_car,
                             armazem_id_atual
                         )
 
-                    st.toast("✨ Luxiz IA: responsável adicionado.")
-                    st.rerun()
+                    estilos.notificar_sucesso("responsável adicionado.")
+                    st.rerun(scope="fragment")
 
         responsaveis_carrinhos = banco.ler_responsaveis_carrinhos(armazem_id_atual)
 
@@ -1563,15 +1565,15 @@ def render():
                             use_container_width=True,
                             key=f"salvar_edit_resp_car_{item['id']}"
                         ):
-                            with st.spinner("✨ Luxiz IA atualizando: salvando alterações..."):
+                            with estilos.mostrar_processando("salvando alterações..."):
                                 banco.editar_responsavel_carrinho(
                                     item["id"],
                                     novo_nome,
                                     novo_numero,
                                     armazem_id_atual
                                 )
-                            st.toast("✨ Luxiz IA: responsável atualizado.")
-                            st.rerun()
+                            estilos.notificar_sucesso("responsável atualizado.")
+                            st.rerun(scope="fragment")
 
                 with c3:
 
@@ -1641,15 +1643,15 @@ def render():
 
                 else:
 
-                    with st.spinner("✨ Luxiz IA atualizando: adicionando carrinho fixo..."):
+                    with estilos.mostrar_processando("adicionando carrinho fixo..."):
                         banco.adicionar_carrinho_fixo(
                             local_carrinho_fixo,
                             numero_carrinho_fixo,
                             armazem_id_atual
                         )
 
-                    st.toast("✨ Luxiz IA: carrinho fixo adicionado.")
-                    st.rerun()
+                    estilos.notificar_sucesso("carrinho fixo adicionado.")
+                    st.rerun(scope="fragment")
 
         if carrinhos_fixos:
 
@@ -1692,15 +1694,15 @@ def render():
                                 use_container_width=True,
                                 key=f"salvar_edit_carfixo_{item['id']}"
                             ):
-                                with st.spinner("✨ Luxiz IA atualizando: salvando alterações..."):
+                                with estilos.mostrar_processando("salvando alterações..."):
                                     banco.editar_carrinho_fixo(
                                         item["id"],
                                         novo_local,
                                         novo_numero,
                                         armazem_id_atual
                                     )
-                                st.toast("✨ Luxiz IA: carrinho fixo atualizado.")
-                                st.rerun()
+                                estilos.notificar_sucesso("carrinho fixo atualizado.")
+                                st.rerun(scope="fragment")
 
                     with c3:
 
@@ -1833,15 +1835,15 @@ def render():
 
                     try:
 
-                        with st.spinner(f"✨ Luxiz IA atualizando: criando usuário '{novo_usuario}'..."):
+                        with estilos.mostrar_processando(f"criando usuário '{novo_usuario}'..."):
                             banco.criar_usuario(
                                 novo_usuario,
                                 senha_usuario,
                                 armazem_id_atual
                             )
 
-                        st.toast(f"✨ Luxiz IA: usuário '{novo_usuario}' criado.")
-                        st.rerun()
+                        estilos.notificar_sucesso(f"usuário '{novo_usuario}' criado.")
+                        st.rerun(scope="fragment")
 
                     except Exception as erro:
 
@@ -1990,11 +1992,11 @@ def render():
                                 novo_nome.strip()
                             )
 
-                            st.toast(
+                            estilos.notificar_sucesso(
                                 f"✨ Luxiz IA: armazém renomeado para "
                                 f"'{novo_nome.strip()}'."
                             )
-                            st.rerun()
+                            st.rerun(scope="fragment")
 
             st.divider()
 
@@ -2031,7 +2033,7 @@ def render():
                             nome_novo_armazem.strip()
                         )
 
-                        st.toast(
+                        estilos.notificar_sucesso(
                             f"✨ Luxiz IA: armazém "
                             f"'{nome_novo_armazem.strip()}' criado."
                         )
@@ -2039,7 +2041,7 @@ def render():
                         st.session_state.armazem_visualizado_id = novo_id_armazem
                         st.session_state.armazem_visualizado_nome = nome_novo_armazem.strip()
 
-                        st.rerun()
+                        st.rerun(scope="fragment")
 
                     except Exception as erro:
 

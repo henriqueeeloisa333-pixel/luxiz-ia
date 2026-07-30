@@ -1,4 +1,5 @@
 import streamlit as st
+import contextlib
 
 
 # =====================================================
@@ -422,6 +423,117 @@ def _css_base(tema):
         margin-top:2px;
     }
 
+    /* =====================================================
+       AVISO CENTRAL "LUXIZ IA" (carregando / sucesso)
+       Sempre com o mesmo visual (escuro translúcido), para não
+       depender do tema claro/escuro — é uma camada por cima de
+       tudo, some sozinha, e nunca bloqueia cliques por baixo.
+       ===================================================== */
+
+    @keyframes luxizGirar{
+        to{ transform:rotate(360deg); }
+    }
+
+    @keyframes luxizOverlayEntra{
+        from{ opacity:0; transform:translateY(10px) scale(.94); }
+        to{ opacity:1; transform:translateY(0) scale(1); }
+    }
+
+    @keyframes luxizOverlayVidaCurta{
+        0%{   opacity:0; transform:translateY(10px) scale(.94); }
+        6%{   opacity:1; transform:translateY(0) scale(1); }
+        90%{  opacity:1; transform:translateY(0) scale(1); }
+        100%{ opacity:0; transform:translateY(-8px) scale(.97); }
+    }
+
+    @keyframes luxizCheckPulso{
+        0%{   transform:scale(.6); opacity:0; }
+        55%{  transform:scale(1.15); opacity:1; }
+        100%{ transform:scale(1); opacity:1; }
+    }
+
+    .luxiz-overlay{
+        position:fixed;
+        inset:0;
+        width:100vw;
+        height:100vh;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        z-index:3000000;
+        pointer-events:none;
+    }
+
+    .luxiz-overlay-card{
+        pointer-events:none;
+        min-width:280px;
+        max-width:90vw;
+        padding:34px 46px;
+        border-radius:1.25rem;
+        text-align:center;
+        background:linear-gradient(180deg, rgba(15,20,36,.96), rgba(8,11,22,.96));
+        border:1.5px solid rgba(56,189,248,.35);
+        box-shadow:
+            0 28px 70px rgba(0,0,0,.55),
+            0 0 0 1px rgba(255,255,255,.04),
+            0 0 46px rgba(56,189,248,.16);
+        backdrop-filter:blur(14px);
+        animation:luxizOverlayEntra .25s ease;
+    }
+
+    .luxiz-overlay-sucesso .luxiz-overlay-card{
+        border-color:rgba(34,197,94,.45);
+        box-shadow:
+            0 28px 70px rgba(0,0,0,.55),
+            0 0 0 1px rgba(255,255,255,.04),
+            0 0 46px rgba(34,197,94,.20);
+        animation:luxizOverlayVidaCurta 4.5s ease forwards;
+    }
+
+    .luxiz-overlay-spinner{
+        width:40px;
+        height:40px;
+        margin:0 auto 16px;
+        border-radius:50%;
+        border:4px solid rgba(255,255,255,.14);
+        border-top-color:#38bdf8;
+        animation:luxizGirar .75s linear infinite;
+    }
+
+    .luxiz-overlay-check{
+        width:52px;
+        height:52px;
+        margin:0 auto 12px;
+        border-radius:50%;
+        background:rgba(34,197,94,.16);
+        border:2px solid #22c55e;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:1.7rem;
+        line-height:1;
+        box-shadow:0 0 22px rgba(34,197,94,.35);
+        animation:luxizCheckPulso .4s ease;
+    }
+
+    .luxiz-overlay-titulo{
+        font-size:1.25rem;
+        font-weight:800;
+        letter-spacing:.4px;
+        margin-bottom:8px;
+        background:linear-gradient(90deg,#00c8ff,#a855f7);
+        -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent;
+        background-clip:text;
+    }
+
+    .luxiz-overlay-texto{
+        font-size:1.08rem;
+        color:#f1f5f9;
+        line-height:1.45;
+        font-weight:500;
+    }
+
     </style>
     """
 
@@ -703,6 +815,81 @@ def rodape():
         <div class="luxiz-dev-footer">
             <div class="marca">✨ Luxiz IA</div>
             <div class="sub">Centro Inteligente de Operações</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# =====================================================
+# AVISO CENTRAL "LUXIZ IA" (carregando / sucesso)
+# =====================================================
+# Substitui st.spinner (cantinho da tela, passava despercebido)
+# e st.toast (sumia rápido demais / em local que ninguém olhava)
+# por um aviso bem no centro da tela, sempre com a marca
+# "✨ Luxiz IA" — um enquanto a ação está rodando, outro
+# confirmando o que foi feito, sumindo sozinho.
+
+@contextlib.contextmanager
+def mostrar_processando(mensagem):
+    """
+    Uso: with estilos.mostrar_processando("atualizando..."):
+             banco.fazer_algo()
+    Mostra o aviso central enquanto o bloco roda e some assim
+    que ele termina (sozinho, sem precisar de rerun).
+    """
+
+    marcador = st.empty()
+
+    marcador.markdown(
+        f"""
+        <div class="luxiz-overlay">
+            <div class="luxiz-overlay-card">
+                <div class="luxiz-overlay-spinner"></div>
+                <div class="luxiz-overlay-titulo">✨ Luxiz IA</div>
+                <div class="luxiz-overlay-texto">{mensagem}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    try:
+        yield
+    finally:
+        marcador.empty()
+
+
+def notificar_sucesso(mensagem):
+    """
+    Guarda uma mensagem para ser exibida, centralizada na tela,
+    assim que a página recarregar (chamar logo antes do
+    st.rerun() que normalmente já vem depois de salvar algo).
+    """
+
+    st.session_state["_luxiz_notificacao"] = mensagem
+
+
+def exibir_notificacao_pendente():
+    """
+    Mostra (uma única vez, sumindo sozinha) a mensagem de sucesso
+    deixada por notificar_sucesso(), se houver alguma. Chamada no
+    topo de cada página/fragmento que executa ações.
+    """
+
+    mensagem = st.session_state.pop("_luxiz_notificacao", None)
+
+    if not mensagem:
+        return
+
+    st.markdown(
+        f"""
+        <div class="luxiz-overlay luxiz-overlay-sucesso">
+            <div class="luxiz-overlay-card">
+                <div class="luxiz-overlay-check">✅</div>
+                <div class="luxiz-overlay-titulo">✨ Luxiz IA</div>
+                <div class="luxiz-overlay-texto">{mensagem}</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True

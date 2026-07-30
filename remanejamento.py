@@ -56,32 +56,37 @@ def render():
         else:
             normal += 1
 
-    c1, c2, c3, c4 = st.columns(4)
-    
-    with c1:
-        st.metric(
-            "📦 Total",
-            len(itens)
-        )
+    # =====================================================
+    # SELO DE PRIORIDADE (CSS do efeito suave, injetado 1x)
+    # =====================================================
+    # Um "ping" suave e contínuo no selo do lado direito de
+    # cada card, preenchendo o espaço vago sem chamar atenção
+    # demais — a cor do brilho vem de --pulso-cor, definida
+    # individualmente em cada selo (via style inline).
 
-    with c2:
-        st.metric(
-            "🔴 Alta",
-            alta
-        )
-
-    with c3:
-        st.metric(
-            "🟠 Média",
-            media
-        )
-
-    with c4:
-        st.metric(
-            "🟢 Normal",
-            normal
-        )
-    st.divider()
+    st.markdown(
+        """
+        <style>
+        @keyframes luxizPulsoSuave {
+            0%   { box-shadow: 0 0 0 0 var(--pulso-cor); }
+            70%  { box-shadow: 0 0 0 14px rgba(0,0,0,0); }
+            100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+        }
+        .luxiz-selo-prioridade {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.7rem;
+            margin: 4px auto 0;
+            animation: luxizPulsoSuave 2.6s ease-in-out infinite;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     # =====================================================
     # PRIORIDADES
@@ -116,6 +121,7 @@ def render():
                     tipo_alerta = "error"
                     progresso = 100
                     descricao = "Execução imediata recomendada."
+                    emblema_selo = "🚨"
 
                 elif prioridade == "Média":
 
@@ -125,6 +131,7 @@ def render():
                     tipo_alerta = "warning"
                     progresso = 60
                     descricao = "Monitoramento operacional ativo."
+                    emblema_selo = "⚠️"
 
                 else:
 
@@ -134,6 +141,7 @@ def render():
                     tipo_alerta = "success"
                     progresso = 30
                     descricao = "Fluxo operacional dentro do esperado."
+                    emblema_selo = "✅"
 
                 chave_card = f"card-reman-{item['id']}-{gerar_chave_css(item['nome'])}"
 
@@ -152,35 +160,84 @@ def render():
 
                 with st.container(border=True, key=chave_card):
 
-                    if tipo_alerta == "error":
+                    col_conteudo, col_selo = st.columns([4, 1])
 
-                        st.error(rotulo_status)
+                    with col_conteudo:
 
-                    elif tipo_alerta == "warning":
+                        if tipo_alerta == "error":
 
-                        st.warning(rotulo_status)
+                            st.error(rotulo_status)
 
-                    else:
+                        elif tipo_alerta == "warning":
 
-                        st.success(rotulo_status)
+                            st.warning(rotulo_status)
 
-                    st.markdown(
-                        f"### ⚡ {item['nome']}"
-                    )
+                        else:
 
-                    st.caption(
-                        descricao
-                    )
+                            st.success(rotulo_status)
 
-                    if item.get("criado_por"):
+                        st.markdown(
+                            f"### ⚡ {item['nome']}"
+                        )
 
                         st.caption(
-                            f"👤 Criado por {item['criado_por']}"
+                            descricao
+                        )
+
+                        if item.get("criado_por"):
+
+                            st.caption(
+                                f"👤 Criado por {item['criado_por']}"
+                            )
+
+                    with col_selo:
+
+                        st.markdown(
+                            f"""
+                            <div class="luxiz-selo-prioridade" style="
+                                background:{cor_borda}22;
+                                border:2px solid {cor_borda};
+                                --pulso-cor:{cor_borda}77;
+                            ">{emblema_selo}</div>
+                            """,
+                            unsafe_allow_html=True
                         )
 
                     st.progress(
                         progresso
                     )
+
+    st.divider()
+
+    # =====================================================
+    # TOTAIS (agora logo abaixo dos cards)
+    # =====================================================
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric(
+            "📦 Total",
+            len(itens)
+        )
+
+    with c2:
+        st.metric(
+            "🔴 Alta",
+            alta
+        )
+
+    with c3:
+        st.metric(
+            "🟠 Média",
+            media
+        )
+
+    with c4:
+        st.metric(
+            "🟢 Normal",
+            normal
+        )
 
     st.divider()
 

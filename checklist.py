@@ -78,7 +78,7 @@ def renderizar_checklist(
 
             else:
 
-                with st.spinner(f"✨ Luxiz IA atualizando: registrando checklist..."):
+                with estilos.mostrar_processando(f"registrando checklist..."):
                     funcao_adicionar(
                         nome,
                         numero,
@@ -88,8 +88,8 @@ def renderizar_checklist(
                         armazem_id
                     )
 
-                st.toast("✨ Luxiz IA: checklist registrado com sucesso.")
-                st.rerun()
+                estilos.notificar_sucesso("checklist registrado com sucesso.")
+                st.rerun(scope="fragment")
 
     st.divider()
 
@@ -171,7 +171,7 @@ def renderizar_checklist(
 
                 if not linha_original.equals(linha_editada):
 
-                    with st.spinner("✨ Luxiz IA atualizando: salvando alterações..."):
+                    with estilos.mostrar_processando("salvando alterações..."):
                         funcao_editar(
                             id_registro,
                             linha_editada["Nome"],
@@ -186,8 +186,8 @@ def renderizar_checklist(
 
             if houve_alteracao:
 
-                st.toast("✨ Luxiz IA: alterações salvas com sucesso.")
-                st.rerun()
+                estilos.notificar_sucesso("alterações salvas com sucesso.")
+                st.rerun(scope="fragment")
 
             else:
 
@@ -268,15 +268,15 @@ def renderizar_checklist(
                                 )
                             ):
 
-                                with st.spinner("✨ Luxiz IA atualizando: registrando retorno..."):
+                                with estilos.mostrar_processando("registrando retorno..."):
                                     funcao_retornar_manutencao(
                                         item["id"],
                                         usuario_atual,
                                         armazem_id
                                     )
 
-                                st.toast(f"↩️ {item['nome']} retornado da manutenção.")
-                                st.rerun()
+                                estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
+                                st.rerun(scope="fragment")
 
         if admin_master:
 
@@ -313,7 +313,7 @@ def renderizar_checklist(
                             )
                         ):
 
-                            with st.spinner("✨ Luxiz IA atualizando: enviando para manutenção..."):
+                            with estilos.mostrar_processando("enviando para manutenção..."):
                                 funcao_enviar_manutencao(
                                     item["id"],
                                     item.get("descricao"),
@@ -321,8 +321,8 @@ def renderizar_checklist(
                                     armazem_id
                                 )
 
-                            st.toast(f"🔧 {item['nome']} enviado para manutenção.")
-                            st.rerun()
+                            estilos.notificar_sucesso(f"🔧 {item['nome']} enviado para manutenção.")
+                            st.rerun(scope="fragment")
 
     st.write("")
 
@@ -436,7 +436,7 @@ def renderizar_checklist_pigmentacao(
 
             else:
 
-                with st.spinner("✨ Luxiz IA atualizando: registrando checklist..."):
+                with estilos.mostrar_processando("registrando checklist..."):
                     funcao_adicionar(
                         nome,
                         data_checklist,
@@ -445,8 +445,8 @@ def renderizar_checklist_pigmentacao(
                         armazem_id
                     )
 
-                st.toast("✨ Luxiz IA: checklist registrado com sucesso.")
-                st.rerun()
+                estilos.notificar_sucesso("checklist registrado com sucesso.")
+                st.rerun(scope="fragment")
 
     st.divider()
 
@@ -527,7 +527,7 @@ def renderizar_checklist_pigmentacao(
 
                 if not linha_original.equals(linha_editada):
 
-                    with st.spinner("✨ Luxiz IA atualizando: salvando alterações..."):
+                    with estilos.mostrar_processando("salvando alterações..."):
                         funcao_editar(
                             id_registro,
                             linha_editada["Nome"],
@@ -541,8 +541,8 @@ def renderizar_checklist_pigmentacao(
 
             if houve_alteracao:
 
-                st.toast("✨ Luxiz IA: alterações salvas com sucesso.")
-                st.rerun()
+                estilos.notificar_sucesso("alterações salvas com sucesso.")
+                st.rerun(scope="fragment")
 
             else:
 
@@ -577,6 +577,8 @@ def renderizar_checklist_pigmentacao(
 
 
 def render():
+
+    estilos.exibir_notificacao_pendente()
 
     estilos.cabecalho_pagina(
         "✅",
