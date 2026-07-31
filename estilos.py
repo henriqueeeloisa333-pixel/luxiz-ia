@@ -757,13 +757,13 @@ def marca_desenvolvedor_login():
 
         .luxiz-marca-dev{
             position:fixed;
-            right:18px;
-            bottom:14px;
+            left:18px;
+            top:12px;
             font-size:.72rem;
             font-weight:600;
             color:rgba(148,163,184,.85);
             letter-spacing:.2px;
-            z-index:999999;
+            z-index:1000000;
             pointer-events:none;
         }
 
