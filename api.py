@@ -10,7 +10,7 @@ def get_dados(armazem_id: int = 1):
     
     # Criamos uma lista organizada de dados para enviar ao frontend
     resultado = []
-    ruas = ["Rua 01", "Rua 02", "Rua 03", "Rua 04", "Rua 05", "Rua 06", "Rua 07", "Rua 35&32", "Rua 33&34"]
+    ruas = banco.listar_ruas(armazem_id)
     
     for rua in ruas:
         resultado.append({

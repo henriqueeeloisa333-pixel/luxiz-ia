@@ -19,6 +19,22 @@ USER = os.getenv("SUPABASE_USER")
 PASSWORD = os.getenv("SUPABASE_PASSWORD")
 
 # ==================================================
+# RUAS PADRÃO (usadas só para semear um armazém novo)
+# ==================================================
+
+RUAS_PADRAO = [
+    "Rua 01",
+    "Rua 02",
+    "Rua 03",
+    "Rua 04",
+    "Rua 05",
+    "Rua 06",
+    "Rua 07",
+    "Rua 35&32",
+    "Rua 33&34"
+]
+
+# ==================================================
 # FUNDADOR (SECRETS)
 # ==================================================
 
@@ -177,6 +193,7 @@ def _garantir_schema():
         nome TEXT,
         tipo_erro TEXT NOT NULL,
         data_erro DATE NOT NULL,
+        data_fechamento DATE,
         descricao TEXT,
         chamado TEXT,
         cliente TEXT,
@@ -405,6 +422,7 @@ def _garantir_schema():
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS balanca TEXT")
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS conferente TEXT")
     cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS vinculos_notificados JSONB DEFAULT '[]'::jsonb")
+    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS data_fechamento DATE")
     cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'rotativo'")
     cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS pessoa_fixa TEXT")
 
@@ -462,6 +480,53 @@ def _garantir_schema():
         linha_armazem_padrao = cursor.fetchone()
 
     ID_ARMAZEM_PADRAO = linha_armazem_padrao[0]
+
+    # ==============================
+    # RUAS (cadastro dinâmico por armazém)
+    # ==============================
+    # Antes a lista de ruas era fixa (9 ruas "hardcoded" no código).
+    # Agora cada armazém tem seu próprio cadastro de ruas, editável
+    # no Administrativo > Dashboard ("Criar rua" / "Excluir rua").
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ruas (
+        id BIGSERIAL PRIMARY KEY,
+        armazem_id BIGINT REFERENCES armazens(id),
+        nome TEXT NOT NULL,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (armazem_id, nome)
+    )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ruas_armazem ON ruas (armazem_id)")
+
+    # Semeia as 9 ruas padrão em qualquer armazém que ainda não
+    # tenha nenhuma rua cadastrada — preserva o comportamento atual
+    # sem perder nada para quem já usa o app.
+    cursor.execute("SELECT id FROM armazens")
+    ids_todos_armazens = [linha[0] for linha in cursor.fetchall()]
+
+    for id_armazem in ids_todos_armazens:
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM ruas WHERE armazem_id = %s",
+            (id_armazem,)
+        )
+
+        if cursor.fetchone()[0] == 0:
+
+            for nome_rua in RUAS_PADRAO:
+
+                cursor.execute(
+                    """
+                    INSERT INTO ruas (armazem_id, nome)
+                    VALUES (%s, %s)
+                    ON CONFLICT (armazem_id, nome) DO NOTHING
+                    """,
+                    (id_armazem, nome_rua)
+                )
+
+    conn.commit()
 
     TABELAS_COM_ARMAZEM = [
         "notas", "historico_notas",
@@ -634,6 +699,76 @@ def inicializar_banco():
 # ==================================================
 # DASHBOARD
 # ==================================================
+
+@st.cache_data(ttl=30)
+def listar_ruas(armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT nome
+    FROM ruas
+    WHERE armazem_id = %s
+    ORDER BY criado_em ASC, id ASC
+    """, (armazem_id,))
+
+    dados = [row[0] for row in cursor.fetchall()]
+
+    liberar(conn)
+
+    return dados
+
+
+def criar_rua(nome, armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO ruas (armazem_id, nome)
+    VALUES (%s, %s)
+    ON CONFLICT (armazem_id, nome) DO NOTHING
+    """, (armazem_id, nome))
+
+    conn.commit()
+    liberar(conn)
+
+    listar_ruas.clear()
+
+
+def excluir_rua(nome, armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    # Remove o cadastro da rua e também os dados que já existiam
+    # dela no Dashboard (nota atual + histórico), já que a rua
+    # deixa de existir para esse armazém.
+    cursor.execute(
+        "DELETE FROM ruas WHERE armazem_id = %s AND nome = %s",
+        (armazem_id, nome)
+    )
+
+    cursor.execute(
+        "DELETE FROM notas WHERE armazem_id = %s AND rua = %s",
+        (armazem_id, nome)
+    )
+
+    cursor.execute(
+        "DELETE FROM historico_notas WHERE armazem_id = %s AND rua = %s",
+        (armazem_id, nome)
+    )
+
+    conn.commit()
+    liberar(conn)
+
+    listar_ruas.clear()
+    ler_notas.clear()
+    ler_duplas.clear()
+    ler_tudo.clear()
+    ler_historico_rua.clear()
+
 
 @st.cache_data(ttl=30)
 def ler_notas(armazem_id):
@@ -1114,21 +1249,21 @@ def adicionar_analise_tecnica(
     cursor.execute("""
     INSERT INTO analise_tecnica
     (
-        nome, tipo_erro, data_erro, descricao,
+        nome, tipo_erro, data_erro, data_fechamento, descricao,
         chamado, cliente, nota_fiscal, cod_produto, produto,
         tratativa, hora, separador, volume, carga, regiao,
         motorista, balanca, conferente, vinculos_notificados,
         registrado_por, armazem_id
     )
     VALUES (
-        %s, %s, %s, %s,
+        %s, %s, %s, %s, %s,
         %s, %s, %s, %s, %s,
         %s, %s, %s, %s, %s, %s,
         %s, %s, %s, %s,
         %s, %s
     )
     """, (
-        None, dados["tipo_erro"], dados["data_erro"], dados["descricao"],
+        None, dados["tipo_erro"], dados["data_erro"], dados.get("data_fechamento"), dados["descricao"],
         dados["chamado"], dados["cliente"], dados["nota_fiscal"], dados["cod_produto"], dados["produto"],
         dados["tratativa"], dados["hora"], dados["separador"], dados["volume"], dados["carga"], dados["regiao"],
         dados["motorista"], dados["balanca"], dados["conferente"], Json(vinculos),
@@ -1149,7 +1284,7 @@ def ler_analise_tecnica(armazem_id):
 
     cursor.execute("""
     SELECT
-        id, nome, tipo_erro, data_erro, descricao,
+        id, nome, tipo_erro, data_erro, data_fechamento, descricao,
         chamado, cliente, nota_fiscal, cod_produto, produto,
         tratativa, hora, separador, volume, carga, regiao,
         motorista, balanca, conferente, vinculos_notificados,
@@ -1160,7 +1295,7 @@ def ler_analise_tecnica(armazem_id):
     """, (armazem_id,))
 
     colunas = [
-        "id", "nome", "tipo_erro", "data_erro", "descricao",
+        "id", "nome", "tipo_erro", "data_erro", "data_fechamento", "descricao",
         "chamado", "cliente", "nota_fiscal", "cod_produto", "produto",
         "tratativa", "hora", "separador", "volume", "carga", "regiao",
         "motorista", "balanca", "conferente", "vinculos_notificados",
@@ -1178,6 +1313,32 @@ def ler_analise_tecnica(armazem_id):
     liberar(conn)
 
     return dados
+
+
+def finalizar_analise_tecnica(
+    id_registro,
+    data_fechamento,
+    armazem_id
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    UPDATE analise_tecnica
+    SET data_fechamento = %s
+    WHERE id = %s
+    AND armazem_id = %s
+    """, (
+        data_fechamento,
+        id_registro,
+        armazem_id
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_analise_tecnica.clear()
 
 
 def excluir_analise_tecnica(
@@ -2352,10 +2513,22 @@ def criar_armazem(nome):
 
     novo_id = cursor.fetchone()[0]
 
+    for nome_rua in RUAS_PADRAO:
+
+        cursor.execute(
+            """
+            INSERT INTO ruas (armazem_id, nome)
+            VALUES (%s, %s)
+            ON CONFLICT (armazem_id, nome) DO NOTHING
+            """,
+            (novo_id, nome_rua)
+        )
+
     conn.commit()
     liberar(conn)
 
     listar_armazens.clear()
+    listar_ruas.clear()
 
     return novo_id
 

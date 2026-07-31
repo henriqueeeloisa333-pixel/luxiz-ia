@@ -249,6 +249,8 @@ Transformar indicadores operacionais em informações simples, rápidas e visuai
 
 if not st.session_state.logado:
 
+    estilos.marca_desenvolvedor_login()
+
     _, col_centro, _ = st.columns([1, 1.1, 1])
 
     with col_centro:
@@ -576,11 +578,19 @@ def render_sidebar():
         COR_BORDA_SIDEBAR = "rgba(0,0,0,.08)"
         COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.06)"
         COR_TEXTO_TOGGLE = "#0f172a"
+        COR_BOTAO_NAV_INATIVO = "rgba(15,23,42,.035)"
+        COR_BOTAO_NAV_INATIVO_HOVER = "rgba(15,23,42,.07)"
+        COR_BORDA_BOTAO_NAV = "rgba(15,23,42,.08)"
+        COR_TEXTO_BOTAO_NAV = "#334155"
     else:
         COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(8,12,24,.95), rgba(8,12,24,.88))"
         COR_BORDA_SIDEBAR = "rgba(255,255,255,.08)"
         COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.25)"
         COR_TEXTO_TOGGLE = "#e2e8f0"
+        COR_BOTAO_NAV_INATIVO = "rgba(255,255,255,.04)"
+        COR_BOTAO_NAV_INATIVO_HOVER = "rgba(255,255,255,.09)"
+        COR_BORDA_BOTAO_NAV = "rgba(255,255,255,.08)"
+        COR_TEXTO_BOTAO_NAV = "#cbd5e1"
 
     st.markdown(
         f"""
@@ -658,21 +668,79 @@ def render_sidebar():
             background:transparent;
         }}
         div[class*="st-key-nav_"]{{
-            margin-bottom:12px;
+            margin-bottom:8px;
+            width:100%;
+        }}
+        div[class*="st-key-nav_"] > div{{
+            width:100%;
+        }}
+        div[class*="st-key-nav_"] div[data-testid="stButton"]{{
+            width:100%;
         }}
         div[class*="st-key-nav_"] button{{
-            width:100%;
+            width:100% !important;
+            display:block;
             height:44px;
-            border-radius:10px !important;
+            min-height:44px;
+            max-height:44px;
+            border-radius:12px !important;
+            border-width:1px !important;
+            border-style:solid !important;
             text-align:left;
             padding-left:16px !important;
             font-size:.92rem;
+            font-weight:600 !important;
             white-space:nowrap;
-            transition:transform .15s ease, filter .15s ease;
+            position:relative;
+            overflow:hidden;
+            box-sizing:border-box;
+            transition:transform .15s ease, filter .15s ease,
+                background .15s ease, box-shadow .15s ease, border-color .15s ease;
         }}
-        div[class*="st-key-nav_"] button:hover{{
-            transform:translateX(3px);
-            filter:brightness(1.15);
+        div[class*="st-key-nav_"] button p{{
+            font-weight:inherit !important;
+            position:relative;
+            z-index:1;
+        }}
+
+        /* Reflexo de vidro: uma faixa de brilho que desliza sobre o
+           botão quando o mouse passa por cima — igual nos dois estados. */
+        div[class*="st-key-nav_"] button::before{{
+            content:"";
+            position:absolute;
+            top:0;
+            left:-130%;
+            width:55%;
+            height:100%;
+            background:linear-gradient(115deg, transparent, rgba(255,255,255,.55), transparent);
+            transform:skewX(-18deg);
+            transition:left .55s ease;
+            pointer-events:none;
+            z-index:0;
+        }}
+        div[class*="st-key-nav_"] button:hover::before{{
+            left:140%;
+        }}
+
+        div[class*="st-key-nav_"] button[kind="secondary"]{{
+            background:{COR_BOTAO_NAV_INATIVO} !important;
+            border-color:{COR_BORDA_BOTAO_NAV} !important;
+            color:{COR_TEXTO_BOTAO_NAV} !important;
+            box-shadow:none !important;
+        }}
+        div[class*="st-key-nav_"] button[kind="secondary"]:hover{{
+            background:{COR_BOTAO_NAV_INATIVO_HOVER} !important;
+            border-color:rgba(0,200,255,.35) !important;
+            color:{COR_TEXTO_TOGGLE} !important;
+        }}
+        div[class*="st-key-nav_"] button[kind="primary"]{{
+            background:linear-gradient(135deg,#00c8ff,#a855f7) !important;
+            border-color:transparent !important;
+            color:#ffffff !important;
+            box-shadow:0 2px 8px rgba(124,58,237,.30) !important;
+        }}
+        div[class*="st-key-nav_"] button[kind="primary"]:hover{{
+            filter:brightness(1.08);
         }}
         .block-container{{
             padding-left:{LARGURA_PAINEL_PX + (32 if st.session_state.sidebar_aberta else 24)}px !important;
@@ -1164,9 +1232,13 @@ if aba_equipamentos:
 # =====================================================
 # ADMINISTRATIVO
 # =====================================================
-# Sem run_every: esta aba é cheia de formulários e inputs.
-# O fragmento aqui serve só para isolar cliques/digitação
-# nesta aba, evitando que eles recarreguem o app inteiro.
+# Cada aba interna (Dashboard, Remanejamento, SAC, etc.) agora é
+# seu próprio fragmento (veja administrativo.py) — salvar algo em
+# uma aba só recarrega aquela aba, rápido e isolado, sem precisar
+# de um run_every aqui em cima. Isso também evita um bug antigo:
+# st.tabs() sendo recarregado sozinho por um run_every enquanto a
+# pessoa mexe nele podia deixar a tela "duplicada" (conteúdo antigo
+# em cima, novo embaixo).
 
 @st.fragment
 def render_aba_admin():

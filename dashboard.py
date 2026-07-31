@@ -49,17 +49,7 @@ def render():
         st.session_state.get("armazem_id")
     )
 
-    RUAS = [
-        "Rua 01",
-        "Rua 02",
-        "Rua 03",
-        "Rua 04",
-        "Rua 05",
-        "Rua 06",
-        "Rua 07",
-        "Rua 35&32",
-        "Rua 33&34"
-    ]
+    RUAS = banco.listar_ruas(armazem_id_atual)
 
     notas = banco.ler_notas(armazem_id_atual)
     duplas = banco.ler_duplas(armazem_id_atual)

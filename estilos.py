@@ -1,5 +1,6 @@
 import streamlit as st
 import contextlib
+import time
 
 
 # =====================================================
@@ -557,9 +558,9 @@ def _css_fundo(tema, tela):
                 50%{ background-position:12% 8%,88% 6%,88% 92%,0% 0%; }
             }
 
-            @keyframes luxizLogoGlow{
-                0%,100%{ box-shadow:0 6px 18px rgba(2,132,199,.35); transform:scale(1); }
-                50%{ box-shadow:0 10px 34px rgba(124,58,237,.55); transform:scale(1.06); }
+            @keyframes luxizReflexoVidro{
+                0%{ left:-60%; }
+                100%{ left:130%; }
             }
 
             .stApp{
@@ -571,10 +572,6 @@ def _css_fundo(tema, tela):
                 background-size:160% 160%,160% 160%,160% 160%,100% 100%;
                 animation:luxizBgFloat 16s ease-in-out infinite;
                 color:#111827;
-            }
-
-            .luxiz-logo-icon{
-                animation:luxizLogoGlow 2.6s ease-in-out infinite;
             }
 
             .luxiz-teaser{
@@ -594,12 +591,31 @@ def _css_fundo(tema, tela):
             }
 
             .st-key-login-card{
+                position:relative;
+                overflow:hidden;
                 background:rgba(255,255,255,.55) !important;
                 border:1px solid rgba(0,0,0,.08) !important;
                 border-radius:20px !important;
                 backdrop-filter:blur(20px);
                 box-shadow:0 8px 32px rgba(2,132,199,.12);
                 padding:8px;
+            }
+
+            /* Leve reflexo de vidro: uma faixa fina de brilho que
+               atravessa o card de login devagar, num loop contínuo,
+               como o reflexo natural sobre um vidro. */
+            .st-key-login-card::before{
+                content:"";
+                position:absolute;
+                top:0;
+                left:-60%;
+                width:35%;
+                height:100%;
+                background:linear-gradient(115deg, transparent, rgba(255,255,255,.35), transparent);
+                transform:skewX(-18deg);
+                animation:luxizReflexoVidro 5.5s ease-in-out infinite;
+                pointer-events:none;
+                z-index:1;
             }
             </style>
             """
@@ -611,9 +627,9 @@ def _css_fundo(tema, tela):
             50%{ background-position:12% 8%,88% 6%,88% 92%,0% 0%; }
         }
 
-        @keyframes luxizLogoGlow{
-            0%,100%{ box-shadow:0 6px 18px rgba(0,200,255,.35); transform:scale(1); }
-            50%{ box-shadow:0 10px 36px rgba(168,85,247,.7); transform:scale(1.06); }
+        @keyframes luxizReflexoVidro{
+            0%{ left:-60%; }
+            100%{ left:130%; }
         }
 
         .stApp{
@@ -625,10 +641,6 @@ def _css_fundo(tema, tela):
             background-size:160% 160%,160% 160%,160% 160%,100% 100%;
             animation:luxizBgFloat 16s ease-in-out infinite;
             color:white;
-        }
-
-        .luxiz-logo-icon{
-            animation:luxizLogoGlow 2.6s ease-in-out infinite;
         }
 
         .luxiz-teaser{
@@ -648,12 +660,31 @@ def _css_fundo(tema, tela):
         }
 
         .st-key-login-card{
+            position:relative;
+            overflow:hidden;
             background:rgba(255,255,255,.05) !important;
             border:1px solid rgba(255,255,255,.1) !important;
             border-radius:20px !important;
             backdrop-filter:blur(20px);
             box-shadow:0 8px 32px rgba(0,0,0,.35);
             padding:8px;
+        }
+
+        /* Leve reflexo de vidro: uma faixa fina de brilho que
+           atravessa o card de login devagar, num loop contínuo,
+           como o reflexo natural sobre um vidro. */
+        .st-key-login-card::before{
+            content:"";
+            position:absolute;
+            top:0;
+            left:-60%;
+            width:35%;
+            height:100%;
+            background:linear-gradient(115deg, transparent, rgba(255,255,255,.22), transparent);
+            transform:skewX(-18deg);
+            animation:luxizReflexoVidro 5.5s ease-in-out infinite;
+            pointer-events:none;
+            z-index:1;
         }
         </style>
         """
@@ -708,6 +739,57 @@ def aplicar_fundo(tema="escuro", tela="app"):
 # =====================================================
 # LOGO / CABEÇALHO PADRÃO
 # =====================================================
+
+def marca_desenvolvedor_login():
+    """
+    Mensagem discreta em um canto da tela de login, com um leve
+    efeito de brilho passando sobre "Luxiz IA" — só usada na tela
+    de login.
+    """
+
+    st.markdown(
+        """
+        <style>
+        @keyframes luxizBrilhoTexto{
+            0%{ background-position:-120% 0; }
+            100%{ background-position:220% 0; }
+        }
+
+        .luxiz-marca-dev{
+            position:fixed;
+            right:18px;
+            bottom:14px;
+            font-size:.72rem;
+            font-weight:600;
+            color:rgba(148,163,184,.85);
+            letter-spacing:.2px;
+            z-index:999999;
+            pointer-events:none;
+        }
+
+        .luxiz-marca-dev-nome{
+            background:linear-gradient(
+                90deg,
+                #7dd3fc 0%,
+                #ffffff 18%,
+                #a855f7 36%,
+                #7dd3fc 54%
+            );
+            background-size:300% 100%;
+            -webkit-background-clip:text;
+            background-clip:text;
+            -webkit-text-fill-color:transparent;
+            animation:luxizBrilhoTexto 3.2s linear infinite;
+            font-weight:800;
+        }
+        </style>
+        <div class="luxiz-marca-dev">
+            desenvolvido por <span class="luxiz-marca-dev-nome">Luxiz IA</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 def logo_header(subtitulo="Centro Inteligente de Operações"):
 
@@ -894,3 +976,86 @@ def exibir_notificacao_pendente():
         """,
         unsafe_allow_html=True
     )
+
+
+# =====================================================
+# AVISO DA ATUALIZAÇÃO AUTOMÁTICA (em fases)
+# =====================================================
+# Usado só na aba Administrativo: como agora ela não recarrega
+# tudo na hora que alguém adiciona/exclui algo (isso deixava a
+# aba lenta), quem avisa que os dados foram atualizados é a
+# atualização automática (a cada 120s). Esse aviso mostra as
+# fases "Lendo dados" -> "Atualizando dados" -> "Concluído com
+# sucesso" só quando é de fato essa atualização de fundo — se o
+# recarregamento foi por causa de um clique (adicionar, excluir,
+# editar), não faz sentido atrasar a pessoa com esse aviso, já
+# que o próprio clique já mostrou seu aviso de "processando" e o
+# toast de sucesso.
+
+@contextlib.contextmanager
+def mostrar_atualizacao_automatica(segundos_entre_ciclos=120):
+    """
+    Uso: with estilos.mostrar_atualizacao_automatica():
+             administrativo.render()
+    """
+
+    agora = time.time()
+
+    ultima_execucao = st.session_state.get(
+        "_luxiz_ultima_leitura_admin"
+    )
+
+    st.session_state["_luxiz_ultima_leitura_admin"] = agora
+
+    # Só trata como "atualização automática de fundo" se já tinha
+    # passado tempo suficiente desde a última vez — um clique
+    # (adicionar/excluir/editar) recarrega de novo bem mais rápido
+    # que isso, então não entra nessa condição.
+    eh_atualizacao_de_fundo = (
+        ultima_execucao is not None
+        and (agora - ultima_execucao) >= (segundos_entre_ciclos - 30)
+    )
+
+    if not eh_atualizacao_de_fundo:
+
+        yield
+        return
+
+    marcador = st.empty()
+
+    def _mostrar_fase(texto, concluido=False):
+
+        icone_fase = (
+            '<div class="luxiz-overlay-check">✅</div>'
+            if concluido else
+            '<div class="luxiz-overlay-spinner"></div>'
+        )
+
+        classe_extra = " luxiz-overlay-sucesso" if concluido else ""
+
+        marcador.markdown(
+            f"""
+            <div class="luxiz-overlay{classe_extra}">
+                <div class="luxiz-overlay-card">
+                    {icone_fase}
+                    <div class="luxiz-overlay-titulo">✨ Luxiz IA</div>
+                    <div class="luxiz-overlay-texto">{texto}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    _mostrar_fase("Lendo dados...")
+    time.sleep(.5)
+
+    try:
+        yield
+    finally:
+        _mostrar_fase("Atualizando dados...")
+        time.sleep(.5)
+
+        _mostrar_fase("Concluído com sucesso", concluido=True)
+        time.sleep(1.1)
+
+        marcador.empty()
