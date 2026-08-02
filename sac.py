@@ -381,7 +381,19 @@ significativamente a meta.
 
         nome_restrito = usuario_atual.split(".", 1)[1].strip().title()
 
-    registros = banco.ler_analise_tecnica(armazem_id_atual)
+    registros_todos = banco.ler_analise_tecnica(armazem_id_atual)
+
+    # Os cards de Análise Técnica zeram no começo de cada mês — só
+    # contam as ocorrências do mês atual. O histórico completo
+    # continua acessível de outras formas (ex.: Administrativo),
+    # este filtro afeta só os cards mostrados aqui.
+    hoje_local = estilos.agora_local().date()
+
+    registros = [
+        registro for registro in registros_todos
+        if registro["data_erro"].year == hoje_local.year
+        and registro["data_erro"].month == hoje_local.month
+    ]
 
     por_pessoa = {}
 
