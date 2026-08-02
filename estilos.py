@@ -2,6 +2,45 @@ import streamlit as st
 import contextlib
 import time
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+
+# =====================================================
+# FUSO HORÁRIO (conversão UTC -> Campo Grande)
+# =====================================================
+# Todo horário gravado no banco (CURRENT_TIMESTAMP do Postgres) fica
+# em UTC. Isso é o correto — o servidor e o banco já têm o relógio
+# certo via NTP, não é um problema de sincronização. O que precisa
+# acontecer é converter esse horário UTC para o fuso local sempre
+# que ele for exibido na tela. Use estas duas funções em vez de
+# lidar com timezone "na mão" em cada página.
+
+FUSO_PADRAO = ZoneInfo("America/Campo_Grande")
+
+
+def horario_local(momento):
+    """
+    Converte um datetime vindo do banco (gravado em UTC, geralmente
+    sem timezone/"ingênuo") para o horário de Campo Grande. Se já
+    vier com timezone, só faz a conversão direto. Devolve None se
+    `momento` for None.
+    """
+
+    if momento is None:
+        return None
+
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=timezone.utc)
+
+    return momento.astimezone(FUSO_PADRAO)
+
+
+def agora_local():
+    """Horário atual já no fuso de Campo Grande (para relógios/rodapé)."""
+
+    return datetime.now(FUSO_PADRAO)
+
 
 # =====================================================
 # CSS COMPARTILHADO

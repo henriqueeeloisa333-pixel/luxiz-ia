@@ -4,7 +4,8 @@ import streamlit as st
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 
 
 # ==================================================
@@ -528,6 +529,59 @@ def _garantir_schema():
 
     conn.commit()
 
+    # ==============================
+    # CONTROLE DE EPI's
+    # ==============================
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS epis (
+        id BIGSERIAL PRIMARY KEY,
+        armazem_id BIGINT REFERENCES armazens(id),
+        nome TEXT NOT NULL,
+        epi TEXT NOT NULL,
+        data DATE NOT NULL,
+        assinatura TEXT,
+        assinado_por TEXT,
+        assinado_em TIMESTAMP,
+        criado_por TEXT,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_epis_armazem ON epis (armazem_id)")
+
+    # ==============================
+    # NOTIFICAÇÕES (lidas / excluídas)
+    # ==============================
+    # "notificacoes_lidas" é individual: cada usuário marca a sua
+    # como lida, sem afetar os outros. "notificacoes_excluidas" é
+    # global: quando a Gestão/Fundador exclui, some para todo mundo.
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS notificacoes_lidas (
+        usuario TEXT NOT NULL,
+        notificacao_id TEXT NOT NULL,
+        armazem_id BIGINT REFERENCES armazens(id),
+        lida_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (usuario, notificacao_id, armazem_id)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS notificacoes_excluidas (
+        notificacao_id TEXT NOT NULL,
+        armazem_id BIGINT REFERENCES armazens(id),
+        excluida_por TEXT,
+        excluida_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (notificacao_id, armazem_id)
+    )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_lidas_usuario ON notificacoes_lidas (usuario, armazem_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_excluidas_armazem ON notificacoes_excluidas (armazem_id)")
+
+    conn.commit()
+
     TABELAS_COM_ARMAZEM = [
         "notas", "historico_notas",
         "remanejamento", "historico_remanejamento",
@@ -770,8 +824,396 @@ def excluir_rua(nome, armazem_id):
     ler_historico_rua.clear()
 
 
+# ==================================================
+# CONTROLE DE EPI's
+# ==================================================
+# Prefixos de usuário que podem receber a notificação de
+# assinatura pendente para um determinado Nome (ex.: se o EPI
+# foi registrado para "João", os usuários "Separador.João",
+# "Conferente.João" e "Recebimento.João" — os que existirem —
+# verão a pendência.
+
+PREFIXOS_NOTIFICAVEIS_EPI = ["Separador.", "Conferente.", "Recebimento."]
+
+
+def usuarios_alvo_epi(nome):
+
+    nome_normalizado = nome.strip()
+
+    return [
+        f"{prefixo}{nome_normalizado}"
+        for prefixo in PREFIXOS_NOTIFICAVEIS_EPI
+    ]
+
+
+def epi_pertence_ao_usuario(nome_epi, usuario_atual):
+    """
+    Compara sem diferenciar maiúsculas/minúsculas — "Separador.teste"
+    (usuário) deve bater com um EPI cadastrado para "Teste", "TESTE"
+    ou "teste".
+    """
+
+    usuario_normalizado = (usuario_atual or "").strip().lower()
+
+    return any(
+        candidato.strip().lower() == usuario_normalizado
+        for candidato in usuarios_alvo_epi(nome_epi)
+    )
+
+
+@st.cache_data(ttl=30)
+def ler_epis(armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT id, nome, epi, data, assinatura, assinado_por,
+        assinado_em, criado_por, criado_em
+    FROM epis
+    WHERE armazem_id = %s
+    ORDER BY data DESC, id DESC
+    """, (armazem_id,))
+
+    colunas = [
+        "id", "nome", "epi", "data", "assinatura", "assinado_por",
+        "assinado_em", "criado_por", "criado_em"
+    ]
+
+    dados = [
+        dict(zip(colunas, row))
+        for row in cursor.fetchall()
+    ]
+
+    liberar(conn)
+
+    return dados
+
+
+def criar_epi(nome, epi, data_epi, armazem_id, criado_por):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO epis (armazem_id, nome, epi, data, criado_por)
+    VALUES (%s, %s, %s, %s, %s)
+    """, (armazem_id, nome, epi, data_epi, criado_por))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_epis.clear()
+
+
+def assinar_epi(id_epi, usuario, armazem_id):
+
+    texto_assinatura = (
+        f'Eu "{usuario}" assino declarando que recebi o item '
+        f'conforme preenchido'
+    )
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    UPDATE epis
+    SET assinatura = %s,
+        assinado_por = %s,
+        assinado_em = CURRENT_TIMESTAMP
+    WHERE id = %s
+    AND armazem_id = %s
+    """, (texto_assinatura, usuario, id_epi, armazem_id))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_epis.clear()
+
+
+def excluir_epi(id_epi, armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "DELETE FROM epis WHERE id = %s AND armazem_id = %s",
+        (id_epi, armazem_id)
+    )
+
+    conn.commit()
+    liberar(conn)
+
+    ler_epis.clear()
+
+
+# ==================================================
+# ALERTA: CHECKLIST DA SEXTA-FEIRA NÃO REALIZADO
+# ==================================================
+# Toda sexta-feira, cada responsável por hidráulico/carrinho
+# (cadastrado em Equipamentos) deveria preencher o Checklist
+# daquele equipamento. Esta função aponta quem ficou pendente
+# na sexta-feira mais recente.
+
+def _sexta_feira_mais_recente():
+
+    hoje = date.today()
+
+    # weekday(): segunda=0 ... sexta=4 ... domingo=6
+    dias_desde_sexta = (hoje.weekday() - 4) % 7
+
+    return hoje - timedelta(days=dias_desde_sexta)
+
+
+def listar_pendentes_checklist_sexta(armazem_id):
+
+    sexta_referencia = _sexta_feira_mais_recente()
+
+    responsaveis_hidraulicos = ler_responsaveis_hidraulicos(armazem_id)
+    responsaveis_carrinhos = ler_responsaveis_carrinhos(armazem_id)
+
+    checklist_hidraulicos = ler_checklist_hidraulicos(armazem_id)
+    checklist_carrinhos = ler_checklist_carrinhos(armazem_id)
+
+    def _feito(nome, numero, registros):
+
+        nome_normalizado = nome.strip().title()
+        numero_normalizado = str(numero).strip()
+
+        for registro in registros:
+
+            if registro["data_checklist"] != sexta_referencia:
+                continue
+
+            if str(registro["numero"]).strip() != numero_normalizado:
+                continue
+
+            if registro["nome"].strip().title() != nome_normalizado:
+                continue
+
+            return True
+
+        return False
+
+    pendentes = []
+
+    for item in responsaveis_hidraulicos:
+
+        if not _feito(item["nome"], item["numero"], checklist_hidraulicos):
+
+            pendentes.append({
+                "nome": item["nome"],
+                "numero": item["numero"],
+                "tipo": "Hidráulico"
+            })
+
+    for item in responsaveis_carrinhos:
+
+        if not _feito(item["nome"], item["numero"], checklist_carrinhos):
+
+            pendentes.append({
+                "nome": item["nome"],
+                "numero": item["numero"],
+                "tipo": "Carrinho"
+            })
+
+    return pendentes, sexta_referencia
+
+
+# ==================================================
+# TOP 3 DO MÊS FECHADO (RANKING DO DASHBOARD)
+# ==================================================
+# No último dia de cada mês, o Dashboard "fecha" o mês: aqui a
+# gente reconstrói qual era a nota de cada rua naquele fechamento
+# (a última nota registrada no histórico até aquela data) e monta
+# o pódio das 3 melhores.
+
+def _ultimo_dia_do_mes(ano, mes):
+
+    if mes == 12:
+        proximo_mes = date(ano + 1, 1, 1)
+    else:
+        proximo_mes = date(ano, mes + 1, 1)
+
+    return proximo_mes - timedelta(days=1)
+
+
+def _mes_fechado_mais_recente():
+
+    # O servidor roda em UTC, então usar date.today() direto pode
+    # considerar "hoje" um dia adiantado em relação ao horário real
+    # de Campo Grande (ex.: 21h de 31/07 em Campo Grande já é
+    # 01h de 01/08 em UTC). Por isso a data de "hoje" é sempre
+    # calculada no fuso local antes de decidir qual mês fechou.
+    hoje = datetime.now(ZoneInfo("America/Campo_Grande")).date()
+
+    ultimo_dia_deste_mes = _ultimo_dia_do_mes(hoje.year, hoje.month)
+
+    # Se hoje já é o último dia do mês, o fechamento é o de hoje.
+    if hoje == ultimo_dia_deste_mes:
+        return ultimo_dia_deste_mes
+
+    # Senão, o fechamento é o do mês anterior.
+    primeiro_dia_deste_mes = hoje.replace(day=1)
+
+    return primeiro_dia_deste_mes - timedelta(days=1)
+
+
+@st.cache_data(ttl=300)
+def ler_top3_fechamento_mes(armazem_id):
+    """
+    Devolve (top3, data_fechamento): o pódio (até 3 ruas) com base
+    na nota que cada rua tinha no fechamento do mês mais recente já
+    encerrado (ou de hoje, se hoje for o último dia do mês).
+    """
+
+    data_fechamento = _mes_fechado_mais_recente()
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT DISTINCT ON (rua)
+        rua,
+        nota,
+        dupla
+    FROM historico_notas
+    WHERE armazem_id = %s
+    AND (data_atualizacao AT TIME ZONE 'UTC' AT TIME ZONE 'America/Campo_Grande')::date <= %s
+    ORDER BY rua, data_atualizacao DESC
+    """, (
+        armazem_id,
+        data_fechamento
+    ))
+
+    dados = cursor.fetchall()
+
+    liberar(conn)
+
+    ranking = [
+        {
+            "rua": linha[0],
+            "nota": float(linha[1]) if linha[1] is not None else 0.0,
+            "dupla": linha[2] or "Sem dupla"
+        }
+        for linha in dados
+        if linha[1] is not None and linha[1] > 0
+    ]
+
+    ranking.sort(
+        key=lambda item: item["nota"],
+        reverse=True
+    )
+
+    return ranking[:3], data_fechamento
+
+
+# ==================================================
+# NOTIFICAÇÕES LIDAS (individual, por usuário)
+# ==================================================
+# Cada usuário tem seu próprio conjunto de notificações já lidas.
+# Marcar uma como lida não afeta os outros usuários — cada um só
+# deixa de ver a que ele mesmo marcou.
+
+@st.cache_data(ttl=15)
+def notificacoes_lidas_usuario(usuario, armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT notificacao_id
+    FROM notificacoes_lidas
+    WHERE usuario = %s
+    AND armazem_id = %s
+    """, (
+        usuario,
+        armazem_id
+    ))
+
+    ids_lidas = {row[0] for row in cursor.fetchall()}
+
+    liberar(conn)
+
+    return ids_lidas
+
+
+def marcar_notificacao_lida(usuario, notificacao_id, armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO notificacoes_lidas
+        (usuario, notificacao_id, armazem_id)
+    VALUES (%s, %s, %s)
+    ON CONFLICT (usuario, notificacao_id, armazem_id) DO NOTHING
+    """, (
+        usuario,
+        notificacao_id,
+        armazem_id
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    notificacoes_lidas_usuario.clear()
+
+
+# ==================================================
+# NOTIFICAÇÕES EXCLUÍDAS (global — Gestão/Fundador)
+# ==================================================
+# Ao excluir, a notificação some da central de notificações para
+# TODOS os usuários daquele armazém (diferente de "lida", que é
+# só individual).
+
+@st.cache_data(ttl=15)
+def notificacoes_excluidas(armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT notificacao_id
+    FROM notificacoes_excluidas
+    WHERE armazem_id = %s
+    """, (
+        armazem_id,
+    ))
+
+    ids_excluidas = {row[0] for row in cursor.fetchall()}
+
+    liberar(conn)
+
+    return ids_excluidas
+
+
+def excluir_notificacao(notificacao_id, armazem_id, usuario):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO notificacoes_excluidas
+        (notificacao_id, armazem_id, excluida_por)
+    VALUES (%s, %s, %s)
+    ON CONFLICT (notificacao_id, armazem_id) DO NOTHING
+    """, (
+        notificacao_id,
+        armazem_id,
+        usuario
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    notificacoes_excluidas.clear()
+
+
 @st.cache_data(ttl=30)
 def ler_notas(armazem_id):
+
+    conn = conectar()
 
     conn = conectar()
     cursor = conn.cursor()

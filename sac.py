@@ -58,6 +58,17 @@ def render():
         ]
     )
 
+    # "Atualizado em" vem do banco em UTC (CURRENT_TIMESTAMP do
+    # Postgres). Convertemos para o horário de Campo Grande antes de
+    # exibir na tabela — senão o horário aparece com ~4h de diferença.
+
+    df["Atualizado em"] = df["Atualizado em"].apply(
+        lambda momento: (
+            estilos.horario_local(momento).strftime("%d/%m/%Y %H:%M")
+            if momento else ""
+        )
+    )
+
     # "Mês" vem do banco como texto "AAAA-MM" (ex: "2026-07").
     # Se deixarmos esse texto ir direto pro eixo X do gráfico, o
     # Plotly tenta "adivinhar" que é uma data e, com poucos pontos,

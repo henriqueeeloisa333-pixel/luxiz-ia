@@ -10,8 +10,8 @@ import auditoria
 import rotativo
 import checklist
 import equipamentos
-
-from datetime import datetime
+import epi
+import notificacoes
 
 # =====================================================
 # CONFIGURAÇÃO
@@ -60,7 +60,7 @@ def render_status_footer():
             <span class="refresh">🔄 Atualização Automática</span>
             &nbsp;&nbsp;|&nbsp;&nbsp;
             Última sincronização:
-            {datetime.now().strftime('%H:%M:%S')}
+            {estilos.agora_local().strftime('%H:%M:%S')}
         </div>
         """,
         unsafe_allow_html=True
@@ -442,10 +442,12 @@ def render_cabecalho_inicio():
 
         st.success("🟢 Online")
 
+        notificacoes.sino(usuario_atual, armazem_id_atual)
+
         st.caption(
             f"☁️ Sincronizado com o servidor\n\n"
             f"Última atualização: "
-            f"{datetime.now().strftime('%H:%M:%S')}"
+            f"{estilos.agora_local().strftime('%H:%M:%S')}"
         )
 
     st.success(
@@ -516,6 +518,7 @@ if acesso_restrito:
         ("nav_rotativo", "🔄", "Rodízio"),
         ("nav_checklist", "✅", "Checklist"),
         ("nav_equipamentos", "🧰", "Equipamentos"),
+        ("nav_epi", "🦺", "Controle de EPI's"),
     ]
 
 elif eh_recebimento:
@@ -525,6 +528,7 @@ elif eh_recebimento:
         ("nav_auditoria", "🎯", "Auditoria"),
         ("nav_checklist", "✅", "Checklist"),
         ("nav_equipamentos", "🧰", "Equipamentos"),
+        ("nav_epi", "🦺", "Controle de EPI's"),
     ]
 
 else:
@@ -538,6 +542,7 @@ else:
         ("nav_rotativo", "🔄", "Rodízio"),
         ("nav_checklist", "✅", "Checklist"),
         ("nav_equipamentos", "🧰", "Equipamentos"),
+        ("nav_epi", "🦺", "Controle de EPI's"),
         ("nav_administrativo", "⚙️", "Administrativo"),
     ]
 
@@ -591,6 +596,14 @@ def render_sidebar():
         COR_BOTAO_NAV_INATIVO_HOVER = "rgba(255,255,255,.09)"
         COR_BORDA_BOTAO_NAV = "rgba(255,255,255,.08)"
         COR_TEXTO_BOTAO_NAV = "#cbd5e1"
+
+    extra_css_fechado = "" if st.session_state.sidebar_aberta else """
+        div[class*="st-key-nav_"] button{
+            text-align:center !important;
+            padding-left:0 !important;
+            font-size:1.15rem !important;
+        }
+    """
 
     st.markdown(
         f"""
@@ -742,6 +755,7 @@ def render_sidebar():
         div[class*="st-key-nav_"] button[kind="primary"]:hover{{
             filter:brightness(1.08);
         }}
+        {extra_css_fechado}
         .block-container{{
             padding-left:{LARGURA_PAINEL_PX + (32 if st.session_state.sidebar_aberta else 24)}px !important;
             transition:padding-left .18s ease;
@@ -765,19 +779,25 @@ def render_sidebar():
             unsafe_allow_html=True
         )
 
-        with st.container(key="painel_navegacao_scroll"):
+    with st.container(key="painel_navegacao_scroll"):
 
-            for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
+        for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
 
-                ativo = st.session_state.aba_atual == chave
+            ativo = st.session_state.aba_atual == chave
 
-                if st.button(
-                    f"{icone}   {nome}",
-                    key=chave,
-                    type="primary" if ativo else "secondary"
-                ):
-                    st.session_state.aba_atual = chave
-                    st.rerun()
+            rotulo_nav = (
+                f"{icone}   {nome}"
+                if st.session_state.sidebar_aberta
+                else icone
+            )
+
+            if st.button(
+                rotulo_nav,
+                key=chave,
+                type="primary" if ativo else "secondary"
+            ):
+                st.session_state.aba_atual = chave
+                st.rerun()
 
     # =====================================================
     # RODAPÉ DA BARRA LATERAL (bolinha online + usuário logado)
@@ -832,6 +852,7 @@ aba_auditoria = st.session_state.aba_atual == "nav_auditoria"
 aba_rotativo = st.session_state.aba_atual == "nav_rotativo"
 aba_checklist = st.session_state.aba_atual == "nav_checklist"
 aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
+aba_epi = st.session_state.aba_atual == "nav_epi"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
 
 
@@ -853,6 +874,7 @@ def render_conteudo_inicio():
         "nav_rotativo": "Escala automática das atividades de fim de expediente.",
         "nav_checklist": "Inspeção de hidráulicos, carrinhos, empilhadeiras e pigmentação.",
         "nav_equipamentos": "Responsáveis por hidráulicos e carrinhos, e carrinhos fixos por local.",
+        "nav_epi": "Registro de entrega de EPIs, com assinatura digital do colaborador.",
         "nav_administrativo": "Gestão completa da operação em um só lugar.",
     }
 
@@ -864,6 +886,7 @@ def render_conteudo_inicio():
         "nav_rotativo": "#06b6d4",
         "nav_checklist": "#a855f7",
         "nav_equipamentos": "#0ea5e9",
+        "nav_epi": "#f97316",
         "nav_administrativo": "#64748b",
     }
 
@@ -1063,6 +1086,13 @@ def render_conteudo_inicio():
             "por cada um."
         ),
         (
+            "🦺", "Controle de EPI's", "#f97316",
+            "Registre o EPI entregue a cada colaborador. A pessoa (usuário "
+            "Separador/Conferente/Recebimento com o mesmo nome) vê a "
+            "pendência e assina digitalmente confirmando o recebimento.",
+            "Ter um registro confiável, com assinatura, de cada EPI entregue."
+        ),
+        (
             "⚙️", "Administrativo", "#64748b",
             "Cadastre usuários, responsáveis, atividades do rodízio, carrinhos "
             "fixos e demais parâmetros do sistema.",
@@ -1080,6 +1110,7 @@ def render_conteudo_inicio():
         "Rodízio": "nav_rotativo",
         "Checklist": "nav_checklist",
         "Equipamentos": "nav_equipamentos",
+        "Controle de EPI's": "nav_epi",
         "Administrativo": "nav_administrativo",
     }
 
@@ -1113,6 +1144,7 @@ def render_conteudo_inicio():
 
 if aba_inicio:
     render_cabecalho_inicio()
+    notificacoes.renderizar(usuario_atual, armazem_id_atual)
     render_conteudo_inicio()
 
 @st.fragment(run_every=120)
@@ -1228,6 +1260,22 @@ def render_aba_equipamentos():
 
 if aba_equipamentos:
     render_aba_equipamentos()
+
+# =====================================================
+# CONTROLE DE EPI's
+# =====================================================
+
+@st.fragment
+def render_aba_epi():
+
+    epi.render()
+
+    st.write("")
+    estilos.rodape()
+    botao_sair_rodape("epi")
+
+if aba_epi:
+    render_aba_epi()
 
 # =====================================================
 # ADMINISTRATIVO

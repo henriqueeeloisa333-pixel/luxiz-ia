@@ -250,9 +250,13 @@ def renderizar_checklist(
 
                         if item.get("manutencao_enviado_em"):
 
+                            enviado_em_local = estilos.horario_local(
+                                item["manutencao_enviado_em"]
+                            )
+
                             st.caption(
                                 f"Enviado por {item.get('manutencao_enviado_por') or '—'} "
-                                f"em {item['manutencao_enviado_em'].strftime('%d/%m/%Y %H:%M')}"
+                                f"em {enviado_em_local.strftime('%d/%m/%Y %H:%M')}"
                             )
 
                     if admin_master:
@@ -331,7 +335,9 @@ def renderizar_checklist(
         if not momento:
             return ""
 
-        texto = momento.strftime("%d/%m/%Y %H:%M")
+        momento_local = estilos.horario_local(momento)
+
+        texto = momento_local.strftime("%d/%m/%Y %H:%M")
 
         if pessoa:
             texto += f" ({pessoa})"
