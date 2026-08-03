@@ -65,6 +65,17 @@ SENHA_FUNDADOR = os.getenv(
 # já abertas prontas para uso — conectar() pega uma
 # emprestada, liberar() devolve pro pool (sem fechar de
 # verdade), evitando repetir esse custo a cada ação.
+#
+# IMPORTANTE (limite do Supabase): o pooler do Supabase em
+# "session mode" (porta 5432) aceita no máximo 15 conexões
+# simultâneas no total — esse limite é do Postgres/pooler,
+# não do psycopg2. Por isso o maxconn do pool abaixo fica
+# em 10 (com folga), e não em 15 ou mais: se o app tiver
+# mais de um processo rodando ao mesmo tempo (ex.: durante
+# um redeploy, o processo antigo e o novo convivendo por
+# alguns segundos), CADA processo cria o seu próprio pool
+# — os limites não são compartilhados entre processos, e
+# só a soma de todos eles é que precisa caber nos 15.
 
 @st.cache_resource
 def _obter_pool():
@@ -78,7 +89,7 @@ def _obter_pool():
 
     return psycopg2.pool.ThreadedConnectionPool(
         1,
-        20,
+        10,
         host=HOST,
         port=PORT,
         database=DATABASE,
@@ -153,294 +164,298 @@ def _garantir_schema():
     except Exception as e:
         print(f"❌ ERRO AO CONECTAR: {e}", flush=True)
         raise
-    cursor = conn.cursor()
 
-    # ==============================
-    # NOTAS
-    # ==============================
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS notas (
-        rua TEXT PRIMARY KEY,
-        nota REAL,
-        dupla TEXT
-    )
-    """)
+        # ==============================
+        # NOTAS
+        # ==============================
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS historico_notas (
-        id BIGSERIAL PRIMARY KEY,
-        rua TEXT NOT NULL,
-        nota REAL,
-        dupla TEXT,
-        data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # REMANEJAMENTO
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS remanejamento (
-        id BIGSERIAL PRIMARY KEY,
-        item TEXT NOT NULL,
-        prioridade TEXT DEFAULT 'Normal'
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS historico_remanejamento (
-        id BIGSERIAL PRIMARY KEY,
-        item TEXT NOT NULL,
-        prioridade TEXT,
-        data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # REMANEJAMENTO AGENDADO (por horário/dia da semana)
-    # ==============================
-    # Itens que entram e saem do painel sozinhos, de acordo com o
-    # horário e os dias da semana configurados — sem precisar ser
-    # criados/apagados na mão. dias_semana usa a convenção do Python
-    # (date.weekday()): 0=Segunda ... 6=Domingo.
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS remanejamento_agendado (
-        id BIGSERIAL PRIMARY KEY,
-        armazem_id BIGINT NOT NULL REFERENCES armazens(id),
-        item TEXT NOT NULL,
-        prioridade TEXT DEFAULT 'Normal',
-        hora_inicio TIME NOT NULL,
-        hora_fim TIME NOT NULL,
-        dias_semana INTEGER[] NOT NULL,
-        criado_por TEXT,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reman_agendado_armazem ON remanejamento_agendado (armazem_id)")
-
-    # ==============================
-    # SAC
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sac_historico (
-        mes_ano TEXT PRIMARY KEY,
-        reclamacoes INTEGER,
-        meta INTEGER
-    )
-    """)
-
-    # ==============================
-    # ANÁLISE TÉCNICA (SAC)
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS analise_tecnica (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT,
-        tipo_erro TEXT NOT NULL,
-        data_erro DATE NOT NULL,
-        data_fechamento DATE,
-        descricao TEXT,
-        chamado TEXT,
-        cliente TEXT,
-        nota_fiscal TEXT,
-        cod_produto TEXT,
-        produto TEXT,
-        tratativa TEXT,
-        hora TIME,
-        separador TEXT,
-        volume TEXT,
-        carga TEXT,
-        regiao TEXT,
-        motorista TEXT,
-        balanca TEXT,
-        conferente TEXT,
-        vinculos_notificados JSONB DEFAULT '[]'::jsonb,
-        registrado_por TEXT,
-        data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # AUDITORIA DE ATIVIDADES
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS auditoria_atividades (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        funcao TEXT NOT NULL,
-        qtd_acertos INTEGER DEFAULT 0,
-        qtd_erros INTEGER DEFAULT 0,
-        data_atividade DATE NOT NULL,
-        descricao TEXT,
-        registrado_por TEXT,
-        data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # RODÍZIO - FIM DE EXPEDIENTE
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS rotativo_pessoas (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT UNIQUE NOT NULL,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS rotativo_atividades (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT UNIQUE NOT NULL,
-        tipo TEXT DEFAULT 'rotativo',
-        pessoa_fixa TEXT,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # CHECKLISTS
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS checklist_hidraulicos (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        numero TEXT NOT NULL,
-        data_checklist DATE NOT NULL,
-        status TEXT NOT NULL,
-        descricao TEXT,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS checklist_carrinhos (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        numero TEXT NOT NULL,
-        data_checklist DATE NOT NULL,
-        status TEXT NOT NULL,
-        descricao TEXT,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS checklist_empilhadeiras (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        numero TEXT NOT NULL,
-        data_checklist DATE NOT NULL,
-        status TEXT NOT NULL,
-        descricao TEXT,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS checklist_pigmentacao (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        data_checklist DATE NOT NULL,
-        status TEXT NOT NULL,
-        descricao TEXT,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # ==============================
-    # EQUIPAMENTOS: RESPONSÁVEIS E CARRINHOS FIXOS
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS responsaveis_hidraulicos (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        numero TEXT NOT NULL,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS responsaveis_carrinhos (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        numero TEXT NOT NULL,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS carrinhos_fixos (
-        id BIGSERIAL PRIMARY KEY,
-        local TEXT NOT NULL,
-        numero TEXT NOT NULL,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # Carrinhos fixos por local já vêm pré-cadastrados na primeira
-    # vez que o app roda — depois disso, tudo é editável normalmente
-    # pela aba de Equipamentos no Administrativo.
-
-    cursor.execute("SELECT COUNT(*) FROM carrinhos_fixos")
-
-    if cursor.fetchone()[0] == 0:
-
-        carrinhos_padrao = (
-            [("Remanejamento", numero) for numero in ["06", "08", "09", "13"]] +
-            [("Fracionado", numero) for numero in ["10", "11", "12"]]
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notas (
+            rua TEXT PRIMARY KEY,
+            nota REAL,
+            dupla TEXT
         )
+        """)
 
-        for local, numero in carrinhos_padrao:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historico_notas (
+            id BIGSERIAL PRIMARY KEY,
+            rua TEXT NOT NULL,
+            nota REAL,
+            dupla TEXT,
+            data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
 
-            cursor.execute("""
-            INSERT INTO carrinhos_fixos (local, numero)
-            VALUES (%s, %s)
-            """, (local, numero))
+        # ==============================
+        # REMANEJAMENTO
+        # ==============================
 
-    # ==============================
-    # USUÁRIOS
-    # ==============================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS remanejamento (
+            id BIGSERIAL PRIMARY KEY,
+            item TEXT NOT NULL,
+            prioridade TEXT DEFAULT 'Normal'
+        )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios (
-        id BIGSERIAL PRIMARY KEY,
-        usuario TEXT UNIQUE,
-        senha TEXT,
-        tipo TEXT DEFAULT 'usuario',
-        trocar_senha INTEGER DEFAULT 1
-    )
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historico_remanejamento (
+            id BIGSERIAL PRIMARY KEY,
+            item TEXT NOT NULL,
+            prioridade TEXT,
+            data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
 
-    # ==============================
-    # SESSÕES ATIVAS (login persistente)
-    # ==============================
-    # Guarda um token por login, associado a um link (URL) que o
-    # navegador mantém mesmo depois de um F5 ou de uma queda de
-    # rede rápida — assim, ao reconectar, o app reconhece o token
-    # e restaura a sessão sem pedir login de novo.
+        # ==============================
+        # REMANEJAMENTO AGENDADO (por horário/dia da semana)
+        # ==============================
+        # Itens que entram e saem do painel sozinhos, de acordo com o
+        # horário e os dias da semana configurados — sem precisar ser
+        # criados/apagados na mão. dias_semana usa a convenção do Python
+        # (date.weekday()): 0=Segunda ... 6=Domingo.
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sessoes_ativas (
-        token TEXT PRIMARY KEY,
-        usuario TEXT NOT NULL,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expira_em TIMESTAMP
-    )
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS remanejamento_agendado (
+            id BIGSERIAL PRIMARY KEY,
+            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
+            item TEXT NOT NULL,
+            prioridade TEXT DEFAULT 'Normal',
+            hora_inicio TIME NOT NULL,
+            hora_fim TIME NOT NULL,
+            dias_semana INTEGER[] NOT NULL,
+            criado_por TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reman_agendado_armazem ON remanejamento_agendado (armazem_id)")
+
+        # ==============================
+        # SAC
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sac_historico (
+            mes_ano TEXT PRIMARY KEY,
+            reclamacoes INTEGER,
+            meta INTEGER
+        )
+        """)
+
+        # ==============================
+        # ANÁLISE TÉCNICA (SAC)
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS analise_tecnica (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT,
+            tipo_erro TEXT NOT NULL,
+            data_erro DATE NOT NULL,
+            data_fechamento DATE,
+            descricao TEXT,
+            chamado TEXT,
+            cliente TEXT,
+            nota_fiscal TEXT,
+            cod_produto TEXT,
+            produto TEXT,
+            tratativa TEXT,
+            hora TIME,
+            separador TEXT,
+            volume TEXT,
+            carga TEXT,
+            regiao TEXT,
+            motorista TEXT,
+            balanca TEXT,
+            conferente TEXT,
+            vinculos_notificados JSONB DEFAULT '[]'::jsonb,
+            registrado_por TEXT,
+            data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        # ==============================
+        # AUDITORIA DE ATIVIDADES
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS auditoria_atividades (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            funcao TEXT NOT NULL,
+            qtd_acertos INTEGER DEFAULT 0,
+            qtd_erros INTEGER DEFAULT 0,
+            data_atividade DATE NOT NULL,
+            descricao TEXT,
+            registrado_por TEXT,
+            data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        # ==============================
+        # RODÍZIO - FIM DE EXPEDIENTE
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS rotativo_pessoas (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT UNIQUE NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS rotativo_atividades (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT UNIQUE NOT NULL,
+            tipo TEXT DEFAULT 'rotativo',
+            pessoa_fixa TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        # ==============================
+        # CHECKLISTS
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_hidraulicos (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            numero TEXT NOT NULL,
+            data_checklist DATE NOT NULL,
+            status TEXT NOT NULL,
+            descricao TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_carrinhos (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            numero TEXT NOT NULL,
+            data_checklist DATE NOT NULL,
+            status TEXT NOT NULL,
+            descricao TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_empilhadeiras (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            numero TEXT NOT NULL,
+            data_checklist DATE NOT NULL,
+            status TEXT NOT NULL,
+            descricao TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS checklist_pigmentacao (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            data_checklist DATE NOT NULL,
+            status TEXT NOT NULL,
+            descricao TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        # ==============================
+        # EQUIPAMENTOS: RESPONSÁVEIS E CARRINHOS FIXOS
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS responsaveis_hidraulicos (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            numero TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS responsaveis_carrinhos (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            numero TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS carrinhos_fixos (
+            id BIGSERIAL PRIMARY KEY,
+            local TEXT NOT NULL,
+            numero TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        # Carrinhos fixos por local já vêm pré-cadastrados na primeira
+        # vez que o app roda — depois disso, tudo é editável normalmente
+        # pela aba de Equipamentos no Administrativo.
+
+        cursor.execute("SELECT COUNT(*) FROM carrinhos_fixos")
+
+        if cursor.fetchone()[0] == 0:
+
+            carrinhos_padrao = (
+                [("Remanejamento", numero) for numero in ["06", "08", "09", "13"]] +
+                [("Fracionado", numero) for numero in ["10", "11", "12"]]
+            )
+
+            for local, numero in carrinhos_padrao:
+
+                cursor.execute("""
+                INSERT INTO carrinhos_fixos (local, numero)
+                VALUES (%s, %s)
+                """, (local, numero))
+
+        # ==============================
+        # USUÁRIOS
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id BIGSERIAL PRIMARY KEY,
+            usuario TEXT UNIQUE,
+            senha TEXT,
+            tipo TEXT DEFAULT 'usuario',
+            trocar_senha INTEGER DEFAULT 1
+        )
+        """)
+
+        # ==============================
+        # SESSÕES ATIVAS (login persistente)
+        # ==============================
+        # Guarda um token por login, associado a um link (URL) que o
+        # navegador mantém mesmo depois de um F5 ou de uma queda de
+        # rede rápida — assim, ao reconectar, o app reconhece o token
+        # e restaura a sessão sem pedir login de novo.
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessoes_ativas (
+            token TEXT PRIMARY KEY,
+            usuario TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expira_em TIMESTAMP
+        )
+        """)
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     # ==============================
     # MIGRAÇÃO: colunas de auditoria
@@ -448,54 +463,58 @@ def _garantir_schema():
     # ==============================
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
-    cursor.execute("ALTER TABLE historico_notas ADD COLUMN IF NOT EXISTS usuario TEXT")
-    cursor.execute("ALTER TABLE remanejamento ADD COLUMN IF NOT EXISTS criado_por TEXT")
-    cursor.execute("ALTER TABLE historico_remanejamento ADD COLUMN IF NOT EXISTS usuario TEXT")
-    cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
-    cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    cursor.execute("ALTER TABLE analise_tecnica ALTER COLUMN nome DROP NOT NULL")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS descricao TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS chamado TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS cliente TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS nota_fiscal TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS cod_produto TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS produto TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS tratativa TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS hora TIME")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS separador TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS volume TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS carga TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS regiao TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS motorista TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS balanca TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS conferente TEXT")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS vinculos_notificados JSONB DEFAULT '[]'::jsonb")
-    cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS data_fechamento DATE")
-    cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'rotativo'")
-    cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS pessoa_fixa TEXT")
+    try:
+        cursor = conn.cursor()
 
-    # Rastreio de "quem está logado agora": guarda o momento do último
-    # acesso/atividade de cada usuário, atualizado no login e a cada
-    # renovação automática do rodapé (ver render_status_footer no app.py).
-    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acesso TIMESTAMP")
+        cursor.execute("ALTER TABLE notas ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
+        cursor.execute("ALTER TABLE historico_notas ADD COLUMN IF NOT EXISTS usuario TEXT")
+        cursor.execute("ALTER TABLE remanejamento ADD COLUMN IF NOT EXISTS criado_por TEXT")
+        cursor.execute("ALTER TABLE historico_remanejamento ADD COLUMN IF NOT EXISTS usuario TEXT")
+        cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_por TEXT")
+        cursor.execute("ALTER TABLE sac_historico ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        cursor.execute("ALTER TABLE analise_tecnica ALTER COLUMN nome DROP NOT NULL")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS descricao TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS chamado TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS cliente TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS nota_fiscal TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS cod_produto TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS produto TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS tratativa TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS hora TIME")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS separador TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS volume TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS carga TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS regiao TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS motorista TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS balanca TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS conferente TEXT")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS vinculos_notificados JSONB DEFAULT '[]'::jsonb")
+        cursor.execute("ALTER TABLE analise_tecnica ADD COLUMN IF NOT EXISTS data_fechamento DATE")
+        cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'rotativo'")
+        cursor.execute("ALTER TABLE rotativo_atividades ADD COLUMN IF NOT EXISTS pessoa_fixa TEXT")
 
-    # Manutenção de equipamentos (checklist de hidráulicos, carrinhos e
-    # empilhadeiras): permite marcar um item "Não Conforme" como enviado
-    # para manutenção, e depois registrar o retorno.
-    for tabela_checklist in ("checklist_hidraulicos", "checklist_carrinhos", "checklist_empilhadeiras"):
+        # Rastreio de "quem está logado agora": guarda o momento do último
+        # acesso/atividade de cada usuário, atualizado no login e a cada
+        # renovação automática do rodapé (ver render_status_footer no app.py).
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acesso TIMESTAMP")
 
-        cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS em_manutencao BOOLEAN DEFAULT FALSE")
-        cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_motivo TEXT")
-        cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_enviado_por TEXT")
-        cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_enviado_em TIMESTAMP")
-        cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_retornado_por TEXT")
-        cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_retornado_em TIMESTAMP")
+        # Manutenção de equipamentos (checklist de hidráulicos, carrinhos e
+        # empilhadeiras): permite marcar um item "Não Conforme" como enviado
+        # para manutenção, e depois registrar o retorno.
+        for tabela_checklist in ("checklist_hidraulicos", "checklist_carrinhos", "checklist_empilhadeiras"):
 
-    conn.commit()
-    liberar(conn)
+            cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS em_manutencao BOOLEAN DEFAULT FALSE")
+            cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_motivo TEXT")
+            cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_enviado_por TEXT")
+            cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_enviado_em TIMESTAMP")
+            cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_retornado_por TEXT")
+            cursor.execute(f"ALTER TABLE {tabela_checklist} ADD COLUMN IF NOT EXISTS manutencao_retornado_em TIMESTAMP")
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     # ==============================
     # MIGRAÇÃO: MULTI-ARMAZÉM
@@ -507,291 +526,295 @@ def _garantir_schema():
     # — nada se perde.
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS armazens (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT UNIQUE NOT NULL,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("SELECT id FROM armazens ORDER BY id ASC LIMIT 1")
-    linha_armazem_padrao = cursor.fetchone()
-
-    if not linha_armazem_padrao:
+    try:
+        cursor = conn.cursor()
 
         cursor.execute("""
-        INSERT INTO armazens (nome)
-        VALUES (%s)
-        RETURNING id
-        """, ("Armazém Principal",))
+        CREATE TABLE IF NOT EXISTS armazens (
+            id BIGSERIAL PRIMARY KEY,
+            nome TEXT UNIQUE NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
 
+        cursor.execute("SELECT id FROM armazens ORDER BY id ASC LIMIT 1")
         linha_armazem_padrao = cursor.fetchone()
 
-    ID_ARMAZEM_PADRAO = linha_armazem_padrao[0]
-
-    # ==============================
-    # RUAS (cadastro dinâmico por armazém)
-    # ==============================
-    # Antes a lista de ruas era fixa (9 ruas "hardcoded" no código).
-    # Agora cada armazém tem seu próprio cadastro de ruas, editável
-    # no Administrativo > Dashboard ("Criar rua" / "Excluir rua").
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS ruas (
-        id BIGSERIAL PRIMARY KEY,
-        armazem_id BIGINT REFERENCES armazens(id),
-        nome TEXT NOT NULL,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (armazem_id, nome)
-    )
-    """)
-
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ruas_armazem ON ruas (armazem_id)")
-
-    # Semeia as 9 ruas padrão em qualquer armazém que ainda não
-    # tenha nenhuma rua cadastrada — preserva o comportamento atual
-    # sem perder nada para quem já usa o app.
-    cursor.execute("SELECT id FROM armazens")
-    ids_todos_armazens = [linha[0] for linha in cursor.fetchall()]
-
-    for id_armazem in ids_todos_armazens:
-
-        cursor.execute(
-            "SELECT COUNT(*) FROM ruas WHERE armazem_id = %s",
-            (id_armazem,)
-        )
-
-        if cursor.fetchone()[0] == 0:
-
-            for nome_rua in RUAS_PADRAO:
-
-                cursor.execute(
-                    """
-                    INSERT INTO ruas (armazem_id, nome)
-                    VALUES (%s, %s)
-                    ON CONFLICT (armazem_id, nome) DO NOTHING
-                    """,
-                    (id_armazem, nome_rua)
-                )
-
-    conn.commit()
-
-    # ==============================
-    # CONTROLE DE EPI's
-    # ==============================
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS epis (
-        id BIGSERIAL PRIMARY KEY,
-        armazem_id BIGINT REFERENCES armazens(id),
-        nome TEXT NOT NULL,
-        epi TEXT NOT NULL,
-        data DATE NOT NULL,
-        assinatura TEXT,
-        assinado_por TEXT,
-        assinado_em TIMESTAMP,
-        criado_por TEXT,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_epis_armazem ON epis (armazem_id)")
-
-    # ==============================
-    # NOTIFICAÇÕES (lidas / excluídas)
-    # ==============================
-    # "notificacoes_lidas" é individual: cada usuário marca a sua
-    # como lida, sem afetar os outros. "notificacoes_excluidas" é
-    # global: quando a Gestão/Fundador exclui, some para todo mundo.
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS notificacoes_lidas (
-        usuario TEXT NOT NULL,
-        notificacao_id TEXT NOT NULL,
-        armazem_id BIGINT REFERENCES armazens(id),
-        lida_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (usuario, notificacao_id, armazem_id)
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS notificacoes_excluidas (
-        notificacao_id TEXT NOT NULL,
-        armazem_id BIGINT REFERENCES armazens(id),
-        excluida_por TEXT,
-        excluida_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (notificacao_id, armazem_id)
-    )
-    """)
-
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_lidas_usuario ON notificacoes_lidas (usuario, armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_excluidas_armazem ON notificacoes_excluidas (armazem_id)")
-
-    conn.commit()
-
-    TABELAS_COM_ARMAZEM = [
-        "notas", "historico_notas",
-        "remanejamento", "historico_remanejamento",
-        "sac_historico",
-        "analise_tecnica",
-        "auditoria_atividades",
-        "rotativo_pessoas", "rotativo_atividades",
-        "checklist_hidraulicos", "checklist_carrinhos",
-        "checklist_empilhadeiras", "checklist_pigmentacao",
-        "responsaveis_hidraulicos", "responsaveis_carrinhos",
-        "carrinhos_fixos",
-        "usuarios",
-    ]
-
-    for tabela in TABELAS_COM_ARMAZEM:
-
-        cursor.execute(
-            f"ALTER TABLE {tabela} ADD COLUMN IF NOT EXISTS "
-            f"armazem_id BIGINT REFERENCES armazens(id)"
-        )
-
-        cursor.execute(
-            f"UPDATE {tabela} SET armazem_id = %s WHERE armazem_id IS NULL",
-            (ID_ARMAZEM_PADRAO,)
-        )
-
-        cursor.execute(
-            f"ALTER TABLE {tabela} ALTER COLUMN armazem_id SET NOT NULL"
-        )
-
-    # notas: cada armazém tem sua própria "Rua 01", "Rua 02"... então
-    # a chave única passa a ser (armazem_id, rua), não só "rua".
-    cursor.execute("""
-    DO $$
-    BEGIN
-        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notas_pkey') THEN
-            ALTER TABLE notas DROP CONSTRAINT notas_pkey;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notas_armazem_rua_key') THEN
-            ALTER TABLE notas ADD CONSTRAINT notas_armazem_rua_key UNIQUE (armazem_id, rua);
-        END IF;
-    END $$;
-    """)
-
-    # sac_historico: (armazem_id, mes_ano) em vez de só "mes_ano".
-    cursor.execute("""
-    DO $$
-    BEGIN
-        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sac_historico_pkey') THEN
-            ALTER TABLE sac_historico DROP CONSTRAINT sac_historico_pkey;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sac_historico_armazem_mes_key') THEN
-            ALTER TABLE sac_historico ADD CONSTRAINT sac_historico_armazem_mes_key UNIQUE (armazem_id, mes_ano);
-        END IF;
-    END $$;
-    """)
-
-    # rotativo_pessoas / rotativo_atividades: nome único por armazém,
-    # não mais globalmente (dois armazéns podem ter uma pessoa "João").
-    cursor.execute("""
-    DO $$
-    BEGIN
-        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_pessoas_nome_key') THEN
-            ALTER TABLE rotativo_pessoas DROP CONSTRAINT rotativo_pessoas_nome_key;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_pessoas_armazem_nome_key') THEN
-            ALTER TABLE rotativo_pessoas ADD CONSTRAINT rotativo_pessoas_armazem_nome_key UNIQUE (armazem_id, nome);
-        END IF;
-    END $$;
-    """)
-
-    cursor.execute("""
-    DO $$
-    BEGIN
-        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_atividades_nome_key') THEN
-            ALTER TABLE rotativo_atividades DROP CONSTRAINT rotativo_atividades_nome_key;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_atividades_armazem_nome_key') THEN
-            ALTER TABLE rotativo_atividades ADD CONSTRAINT rotativo_atividades_armazem_nome_key UNIQUE (armazem_id, nome);
-        END IF;
-    END $$;
-    """)
-
-    # ==============================
-    # CRIA FUNDADOR
-    # ==============================
-    # Roda aqui (depois da migração multi-armazém) para já poder
-    # gravar o armazem_id junto — se rodasse antes, em um banco que
-    # já tivesse passado por essa migração, o INSERT quebraria por
-    # não informar armazem_id (coluna NOT NULL).
-
-    if USUARIO_FUNDADOR and SENHA_FUNDADOR:
-
-        cursor.execute("""
-        SELECT usuario
-        FROM usuarios
-        WHERE usuario = %s
-        """, (
-            USUARIO_FUNDADOR,
-        ))
-
-        fundador = cursor.fetchone()
-
-        if not fundador:
+        if not linha_armazem_padrao:
 
             cursor.execute("""
-            INSERT INTO usuarios
-                (
-                usuario,
-                senha,
-                tipo,
-                trocar_senha,
-                armazem_id
+            INSERT INTO armazens (nome)
+            VALUES (%s)
+            RETURNING id
+            """, ("Armazém Principal",))
+
+            linha_armazem_padrao = cursor.fetchone()
+
+        ID_ARMAZEM_PADRAO = linha_armazem_padrao[0]
+
+        # ==============================
+        # RUAS (cadastro dinâmico por armazém)
+        # ==============================
+        # Antes a lista de ruas era fixa (9 ruas "hardcoded" no código).
+        # Agora cada armazém tem seu próprio cadastro de ruas, editável
+        # no Administrativo > Dashboard ("Criar rua" / "Excluir rua").
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ruas (
+            id BIGSERIAL PRIMARY KEY,
+            armazem_id BIGINT REFERENCES armazens(id),
+            nome TEXT NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (armazem_id, nome)
+        )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ruas_armazem ON ruas (armazem_id)")
+
+        # Semeia as 9 ruas padrão em qualquer armazém que ainda não
+        # tenha nenhuma rua cadastrada — preserva o comportamento atual
+        # sem perder nada para quem já usa o app.
+        cursor.execute("SELECT id FROM armazens")
+        ids_todos_armazens = [linha[0] for linha in cursor.fetchall()]
+
+        for id_armazem in ids_todos_armazens:
+
+            cursor.execute(
+                "SELECT COUNT(*) FROM ruas WHERE armazem_id = %s",
+                (id_armazem,)
             )
-            VALUES (%s, %s, %s, %s, %s)
+
+            if cursor.fetchone()[0] == 0:
+
+                for nome_rua in RUAS_PADRAO:
+
+                    cursor.execute(
+                        """
+                        INSERT INTO ruas (armazem_id, nome)
+                        VALUES (%s, %s)
+                        ON CONFLICT (armazem_id, nome) DO NOTHING
+                        """,
+                        (id_armazem, nome_rua)
+                    )
+
+        conn.commit()
+
+        # ==============================
+        # CONTROLE DE EPI's
+        # ==============================
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS epis (
+            id BIGSERIAL PRIMARY KEY,
+            armazem_id BIGINT REFERENCES armazens(id),
+            nome TEXT NOT NULL,
+            epi TEXT NOT NULL,
+            data DATE NOT NULL,
+            assinatura TEXT,
+            assinado_por TEXT,
+            assinado_em TIMESTAMP,
+            criado_por TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_epis_armazem ON epis (armazem_id)")
+
+        # ==============================
+        # NOTIFICAÇÕES (lidas / excluídas)
+        # ==============================
+        # "notificacoes_lidas" é individual: cada usuário marca a sua
+        # como lida, sem afetar os outros. "notificacoes_excluidas" é
+        # global: quando a Gestão/Fundador exclui, some para todo mundo.
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notificacoes_lidas (
+            usuario TEXT NOT NULL,
+            notificacao_id TEXT NOT NULL,
+            armazem_id BIGINT REFERENCES armazens(id),
+            lida_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (usuario, notificacao_id, armazem_id)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notificacoes_excluidas (
+            notificacao_id TEXT NOT NULL,
+            armazem_id BIGINT REFERENCES armazens(id),
+            excluida_por TEXT,
+            excluida_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (notificacao_id, armazem_id)
+        )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_lidas_usuario ON notificacoes_lidas (usuario, armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_excluidas_armazem ON notificacoes_excluidas (armazem_id)")
+
+        conn.commit()
+
+        TABELAS_COM_ARMAZEM = [
+            "notas", "historico_notas",
+            "remanejamento", "historico_remanejamento",
+            "sac_historico",
+            "analise_tecnica",
+            "auditoria_atividades",
+            "rotativo_pessoas", "rotativo_atividades",
+            "checklist_hidraulicos", "checklist_carrinhos",
+            "checklist_empilhadeiras", "checklist_pigmentacao",
+            "responsaveis_hidraulicos", "responsaveis_carrinhos",
+            "carrinhos_fixos",
+            "usuarios",
+        ]
+
+        for tabela in TABELAS_COM_ARMAZEM:
+
+            cursor.execute(
+                f"ALTER TABLE {tabela} ADD COLUMN IF NOT EXISTS "
+                f"armazem_id BIGINT REFERENCES armazens(id)"
+            )
+
+            cursor.execute(
+                f"UPDATE {tabela} SET armazem_id = %s WHERE armazem_id IS NULL",
+                (ID_ARMAZEM_PADRAO,)
+            )
+
+            cursor.execute(
+                f"ALTER TABLE {tabela} ALTER COLUMN armazem_id SET NOT NULL"
+            )
+
+        # notas: cada armazém tem sua própria "Rua 01", "Rua 02"... então
+        # a chave única passa a ser (armazem_id, rua), não só "rua".
+        cursor.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notas_pkey') THEN
+                ALTER TABLE notas DROP CONSTRAINT notas_pkey;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notas_armazem_rua_key') THEN
+                ALTER TABLE notas ADD CONSTRAINT notas_armazem_rua_key UNIQUE (armazem_id, rua);
+            END IF;
+        END $$;
+        """)
+
+        # sac_historico: (armazem_id, mes_ano) em vez de só "mes_ano".
+        cursor.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sac_historico_pkey') THEN
+                ALTER TABLE sac_historico DROP CONSTRAINT sac_historico_pkey;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sac_historico_armazem_mes_key') THEN
+                ALTER TABLE sac_historico ADD CONSTRAINT sac_historico_armazem_mes_key UNIQUE (armazem_id, mes_ano);
+            END IF;
+        END $$;
+        """)
+
+        # rotativo_pessoas / rotativo_atividades: nome único por armazém,
+        # não mais globalmente (dois armazéns podem ter uma pessoa "João").
+        cursor.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_pessoas_nome_key') THEN
+                ALTER TABLE rotativo_pessoas DROP CONSTRAINT rotativo_pessoas_nome_key;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_pessoas_armazem_nome_key') THEN
+                ALTER TABLE rotativo_pessoas ADD CONSTRAINT rotativo_pessoas_armazem_nome_key UNIQUE (armazem_id, nome);
+            END IF;
+        END $$;
+        """)
+
+        cursor.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_atividades_nome_key') THEN
+                ALTER TABLE rotativo_atividades DROP CONSTRAINT rotativo_atividades_nome_key;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rotativo_atividades_armazem_nome_key') THEN
+                ALTER TABLE rotativo_atividades ADD CONSTRAINT rotativo_atividades_armazem_nome_key UNIQUE (armazem_id, nome);
+            END IF;
+        END $$;
+        """)
+
+        # ==============================
+        # CRIA FUNDADOR
+        # ==============================
+        # Roda aqui (depois da migração multi-armazém) para já poder
+        # gravar o armazem_id junto — se rodasse antes, em um banco que
+        # já tivesse passado por essa migração, o INSERT quebraria por
+        # não informar armazem_id (coluna NOT NULL).
+
+        if USUARIO_FUNDADOR and SENHA_FUNDADOR:
+
+            cursor.execute("""
+            SELECT usuario
+            FROM usuarios
+            WHERE usuario = %s
             """, (
                 USUARIO_FUNDADOR,
-                SENHA_FUNDADOR,
-                "fundador",
-                0,
-                ID_ARMAZEM_PADRAO
             ))
 
-    else:
+            fundador = cursor.fetchone()
 
-        print(
-            "⚠️ FUNDADOR_USUARIO / FUNDADOR_SENHA não configurados "
-            "(secrets/variáveis de ambiente) — fundador não foi criado.",
-            flush=True
-        )
+            if not fundador:
 
-    # ==============================
-    # MIGRAÇÃO: ÍNDICES DE PERFORMANCE
-    # ==============================
-    # armazem_id é FK, e o Postgres NÃO cria índice automático em
-    # coluna de FK — só na chave primária. Como quase toda leitura
-    # filtra por armazem_id (e várias ainda ordenam por data), sem
-    # esses índices o banco varre a tabela inteira a cada consulta.
-    # Isso não dói com poucos registros, mas piora conforme a base
-    # cresce. IF NOT EXISTS torna seguro rodar em todo startup.
+                cursor.execute("""
+                INSERT INTO usuarios
+                    (
+                    usuario,
+                    senha,
+                    tipo,
+                    trocar_senha,
+                    armazem_id
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    USUARIO_FUNDADOR,
+                    SENHA_FUNDADOR,
+                    "fundador",
+                    0,
+                    ID_ARMAZEM_PADRAO
+                ))
 
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_historico_notas_rua_armazem ON historico_notas (armazem_id, rua, data_atualizacao DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_historico_reman_armazem ON historico_remanejamento (armazem_id, data_hora DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_analise_tecnica_armazem ON analise_tecnica (armazem_id, data_erro DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_armazem ON auditoria_atividades (armazem_id, data_atividade DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sac_historico_armazem ON sac_historico (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_remanejamento_armazem ON remanejamento (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rotativo_pessoas_armazem ON rotativo_pessoas (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rotativo_atividades_armazem ON rotativo_atividades (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_hidraulicos_armazem ON checklist_hidraulicos (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_carrinhos_armazem ON checklist_carrinhos (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_empilhadeiras_armazem ON checklist_empilhadeiras (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_pigmentacao_armazem ON checklist_pigmentacao (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_responsaveis_hidraulicos_armazem ON responsaveis_hidraulicos (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_responsaveis_carrinhos_armazem ON responsaveis_carrinhos (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_carrinhos_fixos_armazem ON carrinhos_fixos (armazem_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_armazem ON usuarios (armazem_id)")
+        else:
 
-    conn.commit()
-    liberar(conn)
+            print(
+                "⚠️ FUNDADOR_USUARIO / FUNDADOR_SENHA não configurados "
+                "(secrets/variáveis de ambiente) — fundador não foi criado.",
+                flush=True
+            )
+
+        # ==============================
+        # MIGRAÇÃO: ÍNDICES DE PERFORMANCE
+        # ==============================
+        # armazem_id é FK, e o Postgres NÃO cria índice automático em
+        # coluna de FK — só na chave primária. Como quase toda leitura
+        # filtra por armazem_id (e várias ainda ordenam por data), sem
+        # esses índices o banco varre a tabela inteira a cada consulta.
+        # Isso não dói com poucos registros, mas piora conforme a base
+        # cresce. IF NOT EXISTS torna seguro rodar em todo startup.
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historico_notas_rua_armazem ON historico_notas (armazem_id, rua, data_atualizacao DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historico_reman_armazem ON historico_remanejamento (armazem_id, data_hora DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analise_tecnica_armazem ON analise_tecnica (armazem_id, data_erro DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_armazem ON auditoria_atividades (armazem_id, data_atividade DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sac_historico_armazem ON sac_historico (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_remanejamento_armazem ON remanejamento (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_rotativo_pessoas_armazem ON rotativo_pessoas (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_rotativo_atividades_armazem ON rotativo_atividades (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_hidraulicos_armazem ON checklist_hidraulicos (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_carrinhos_armazem ON checklist_carrinhos (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_empilhadeiras_armazem ON checklist_empilhadeiras (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_checklist_pigmentacao_armazem ON checklist_pigmentacao (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_responsaveis_hidraulicos_armazem ON responsaveis_hidraulicos (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_responsaveis_carrinhos_armazem ON responsaveis_carrinhos (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_carrinhos_fixos_armazem ON carrinhos_fixos (armazem_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_armazem ON usuarios (armazem_id)")
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     return True
 
@@ -808,18 +831,21 @@ def inicializar_banco():
 def listar_ruas(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT nome
-    FROM ruas
-    WHERE armazem_id = %s
-    ORDER BY criado_em ASC, id ASC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = [row[0] for row in cursor.fetchall()]
+        cursor.execute("""
+        SELECT nome
+        FROM ruas
+        WHERE armazem_id = %s
+        ORDER BY criado_em ASC, id ASC
+        """, (armazem_id,))
 
-    liberar(conn)
+        dados = [row[0] for row in cursor.fetchall()]
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -827,16 +853,20 @@ def listar_ruas(armazem_id):
 def criar_rua(nome, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO ruas (armazem_id, nome)
-    VALUES (%s, %s)
-    ON CONFLICT (armazem_id, nome) DO NOTHING
-    """, (armazem_id, nome))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO ruas (armazem_id, nome)
+        VALUES (%s, %s)
+        ON CONFLICT (armazem_id, nome) DO NOTHING
+        """, (armazem_id, nome))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_ruas.clear()
 
@@ -844,28 +874,32 @@ def criar_rua(nome, armazem_id):
 def excluir_rua(nome, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    # Remove o cadastro da rua e também os dados que já existiam
-    # dela no Dashboard (nota atual + histórico), já que a rua
-    # deixa de existir para esse armazém.
-    cursor.execute(
-        "DELETE FROM ruas WHERE armazem_id = %s AND nome = %s",
-        (armazem_id, nome)
-    )
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "DELETE FROM notas WHERE armazem_id = %s AND rua = %s",
-        (armazem_id, nome)
-    )
+        # Remove o cadastro da rua e também os dados que já existiam
+        # dela no Dashboard (nota atual + histórico), já que a rua
+        # deixa de existir para esse armazém.
+        cursor.execute(
+            "DELETE FROM ruas WHERE armazem_id = %s AND nome = %s",
+            (armazem_id, nome)
+        )
 
-    cursor.execute(
-        "DELETE FROM historico_notas WHERE armazem_id = %s AND rua = %s",
-        (armazem_id, nome)
-    )
+        cursor.execute(
+            "DELETE FROM notas WHERE armazem_id = %s AND rua = %s",
+            (armazem_id, nome)
+        )
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(
+            "DELETE FROM historico_notas WHERE armazem_id = %s AND rua = %s",
+            (armazem_id, nome)
+        )
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_ruas.clear()
     ler_notas.clear()
@@ -915,27 +949,30 @@ def epi_pertence_ao_usuario(nome_epi, usuario_atual):
 def ler_epis(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT id, nome, epi, data, assinatura, assinado_por,
-        assinado_em, criado_por, criado_em
-    FROM epis
-    WHERE armazem_id = %s
-    ORDER BY data DESC, id DESC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    colunas = [
-        "id", "nome", "epi", "data", "assinatura", "assinado_por",
-        "assinado_em", "criado_por", "criado_em"
-    ]
+        cursor.execute("""
+        SELECT id, nome, epi, data, assinatura, assinado_por,
+            assinado_em, criado_por, criado_em
+        FROM epis
+        WHERE armazem_id = %s
+        ORDER BY data DESC, id DESC
+        """, (armazem_id,))
 
-    dados = [
-        dict(zip(colunas, row))
-        for row in cursor.fetchall()
-    ]
+        colunas = [
+            "id", "nome", "epi", "data", "assinatura", "assinado_por",
+            "assinado_em", "criado_por", "criado_em"
+        ]
 
-    liberar(conn)
+        dados = [
+            dict(zip(colunas, row))
+            for row in cursor.fetchall()
+        ]
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -943,15 +980,19 @@ def ler_epis(armazem_id):
 def criar_epi(nome, epi, data_epi, armazem_id, criado_por):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO epis (armazem_id, nome, epi, data, criado_por)
-    VALUES (%s, %s, %s, %s, %s)
-    """, (armazem_id, nome, epi, data_epi, criado_por))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO epis (armazem_id, nome, epi, data, criado_por)
+        VALUES (%s, %s, %s, %s, %s)
+        """, (armazem_id, nome, epi, data_epi, criado_por))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_epis.clear()
 
@@ -964,19 +1005,23 @@ def assinar_epi(id_epi, usuario, armazem_id):
     )
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE epis
-    SET assinatura = %s,
-        assinado_por = %s,
-        assinado_em = CURRENT_TIMESTAMP
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (texto_assinatura, usuario, id_epi, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE epis
+        SET assinatura = %s,
+            assinado_por = %s,
+            assinado_em = CURRENT_TIMESTAMP
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (texto_assinatura, usuario, id_epi, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_epis.clear()
 
@@ -984,15 +1029,19 @@ def assinar_epi(id_epi, usuario, armazem_id):
 def excluir_epi(id_epi, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(
-        "DELETE FROM epis WHERE id = %s AND armazem_id = %s",
-        (id_epi, armazem_id)
-    )
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(
+            "DELETE FROM epis WHERE id = %s AND armazem_id = %s",
+            (id_epi, armazem_id)
+        )
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_epis.clear()
 
@@ -1120,25 +1169,28 @@ def ler_top3_fechamento_mes(armazem_id):
     data_fechamento = _mes_fechado_mais_recente()
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT DISTINCT ON (rua)
-        rua,
-        nota,
-        dupla
-    FROM historico_notas
-    WHERE armazem_id = %s
-    AND (data_atualizacao AT TIME ZONE 'UTC' AT TIME ZONE 'America/Campo_Grande')::date <= %s
-    ORDER BY rua, data_atualizacao DESC
-    """, (
-        armazem_id,
-        data_fechamento
-    ))
+    try:
+        cursor = conn.cursor()
 
-    dados = cursor.fetchall()
+        cursor.execute("""
+        SELECT DISTINCT ON (rua)
+            rua,
+            nota,
+            dupla
+        FROM historico_notas
+        WHERE armazem_id = %s
+        AND (data_atualizacao AT TIME ZONE 'UTC' AT TIME ZONE 'America/Campo_Grande')::date <= %s
+        ORDER BY rua, data_atualizacao DESC
+        """, (
+            armazem_id,
+            data_fechamento
+        ))
 
-    liberar(conn)
+        dados = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     ranking = [
         {
@@ -1169,21 +1221,24 @@ def ler_top3_fechamento_mes(armazem_id):
 def notificacoes_lidas_usuario(usuario, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT notificacao_id
-    FROM notificacoes_lidas
-    WHERE usuario = %s
-    AND armazem_id = %s
-    """, (
-        usuario,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    ids_lidas = {row[0] for row in cursor.fetchall()}
+        cursor.execute("""
+        SELECT notificacao_id
+        FROM notificacoes_lidas
+        WHERE usuario = %s
+        AND armazem_id = %s
+        """, (
+            usuario,
+            armazem_id
+        ))
 
-    liberar(conn)
+        ids_lidas = {row[0] for row in cursor.fetchall()}
+
+    finally:
+        liberar(conn)
 
     return ids_lidas
 
@@ -1191,21 +1246,25 @@ def notificacoes_lidas_usuario(usuario, armazem_id):
 def marcar_notificacao_lida(usuario, notificacao_id, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO notificacoes_lidas
-        (usuario, notificacao_id, armazem_id)
-    VALUES (%s, %s, %s)
-    ON CONFLICT (usuario, notificacao_id, armazem_id) DO NOTHING
-    """, (
-        usuario,
-        notificacao_id,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO notificacoes_lidas
+            (usuario, notificacao_id, armazem_id)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (usuario, notificacao_id, armazem_id) DO NOTHING
+        """, (
+            usuario,
+            notificacao_id,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     notificacoes_lidas_usuario.clear()
 
@@ -1221,19 +1280,22 @@ def marcar_notificacao_lida(usuario, notificacao_id, armazem_id):
 def notificacoes_excluidas(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT notificacao_id
-    FROM notificacoes_excluidas
-    WHERE armazem_id = %s
-    """, (
-        armazem_id,
-    ))
+    try:
+        cursor = conn.cursor()
 
-    ids_excluidas = {row[0] for row in cursor.fetchall()}
+        cursor.execute("""
+        SELECT notificacao_id
+        FROM notificacoes_excluidas
+        WHERE armazem_id = %s
+        """, (
+            armazem_id,
+        ))
 
-    liberar(conn)
+        ids_excluidas = {row[0] for row in cursor.fetchall()}
+
+    finally:
+        liberar(conn)
 
     return ids_excluidas
 
@@ -1241,21 +1303,25 @@ def notificacoes_excluidas(armazem_id):
 def excluir_notificacao(notificacao_id, armazem_id, usuario):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO notificacoes_excluidas
-        (notificacao_id, armazem_id, excluida_por)
-    VALUES (%s, %s, %s)
-    ON CONFLICT (notificacao_id, armazem_id) DO NOTHING
-    """, (
-        notificacao_id,
-        armazem_id,
-        usuario
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO notificacoes_excluidas
+            (notificacao_id, armazem_id, excluida_por)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (notificacao_id, armazem_id) DO NOTHING
+        """, (
+            notificacao_id,
+            armazem_id,
+            usuario
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     notificacoes_excluidas.clear()
 
@@ -1265,23 +1331,24 @@ def ler_notas(armazem_id):
 
     conn = conectar()
 
-    conn = conectar()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        rua,
-        nota
-    FROM notas
-    WHERE armazem_id = %s
-    """, (armazem_id,))
+        cursor.execute("""
+        SELECT
+            rua,
+            nota
+        FROM notas
+        WHERE armazem_id = %s
+        """, (armazem_id,))
 
-    dados = {
-        row[0]: float(row[1]) if row[1] is not None else 0
-        for row in cursor.fetchall()
-    }
+        dados = {
+            row[0]: float(row[1]) if row[1] is not None else 0
+            for row in cursor.fetchall()
+        }
 
-    liberar(conn)
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1290,22 +1357,25 @@ def ler_notas(armazem_id):
 def ler_duplas(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        rua,
-        dupla
-    FROM notas
-    WHERE armazem_id = %s
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = {
-        row[0]: row[1]
-        for row in cursor.fetchall()
-    }
+        cursor.execute("""
+        SELECT
+            rua,
+            dupla
+        FROM notas
+        WHERE armazem_id = %s
+        """, (armazem_id,))
 
-    liberar(conn)
+        dados = {
+            row[0]: row[1]
+            for row in cursor.fetchall()
+        }
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1314,27 +1384,30 @@ def ler_duplas(armazem_id):
 def ler_tudo(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        rua,
-        nota,
-        dupla
-    FROM notas
-    WHERE armazem_id = %s
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = {}
+        cursor.execute("""
+        SELECT
+            rua,
+            nota,
+            dupla
+        FROM notas
+        WHERE armazem_id = %s
+        """, (armazem_id,))
 
-    for row in cursor.fetchall():
+        dados = {}
 
-        dados[row[0]] = {
-            "nota": float(row[1]) if row[1] is not None else 0,
-            "dupla": row[2]
-        }
+        for row in cursor.fetchall():
 
-    liberar(conn)
+            dados[row[0]] = {
+                "nota": float(row[1]) if row[1] is not None else 0,
+                "dupla": row[2]
+            }
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1348,54 +1421,58 @@ def salvar_dados(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    # Atualiza o painel atual
-    cursor.execute("""
-    INSERT INTO notas
-    (
-        rua,
-        nota,
-        dupla,
-        atualizado_por,
-        armazem_id
-    )
-    VALUES (%s, %s, %s, %s, %s)
+    try:
+        cursor = conn.cursor()
 
-    ON CONFLICT (armazem_id, rua)
-    DO UPDATE SET
-        nota = EXCLUDED.nota,
-        dupla = EXCLUDED.dupla,
-        atualizado_por = EXCLUDED.atualizado_por
-    """, (
-        rua,
-        nota,
-        dupla,
-        usuario,
-        armazem_id
-    ))
+        # Atualiza o painel atual
+        cursor.execute("""
+        INSERT INTO notas
+        (
+            rua,
+            nota,
+            dupla,
+            atualizado_por,
+            armazem_id
+        )
+        VALUES (%s, %s, %s, %s, %s)
 
-    # Salva histórico
-    cursor.execute("""
-    INSERT INTO historico_notas
-    (
-        rua,
-        nota,
-        dupla,
-        usuario,
-        armazem_id
-    )
-    VALUES (%s, %s, %s, %s, %s)
-    """, (
-        rua,
-        nota,
-        dupla,
-        usuario,
-        armazem_id
-    ))
+        ON CONFLICT (armazem_id, rua)
+        DO UPDATE SET
+            nota = EXCLUDED.nota,
+            dupla = EXCLUDED.dupla,
+            atualizado_por = EXCLUDED.atualizado_por
+        """, (
+            rua,
+            nota,
+            dupla,
+            usuario,
+            armazem_id
+        ))
 
-    conn.commit()
-    liberar(conn)
+        # Salva histórico
+        cursor.execute("""
+        INSERT INTO historico_notas
+        (
+            rua,
+            nota,
+            dupla,
+            usuario,
+            armazem_id
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        """, (
+            rua,
+            nota,
+            dupla,
+            usuario,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     # limpa o cache para refletir o dado novo imediatamente
     ler_notas.clear()
@@ -1412,28 +1489,31 @@ def ler_historico_rua(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        nota,
-        dupla,
-        data_atualizacao,
-        usuario
-    FROM historico_notas
-    WHERE rua = %s
-    AND armazem_id = %s
-    ORDER BY data_atualizacao DESC
-    LIMIT %s
-    """, (
-        rua,
-        armazem_id,
-        limite
-    ))
+    try:
+        cursor = conn.cursor()
 
-    dados = cursor.fetchall()
+        cursor.execute("""
+        SELECT
+            nota,
+            dupla,
+            data_atualizacao,
+            usuario
+        FROM historico_notas
+        WHERE rua = %s
+        AND armazem_id = %s
+        ORDER BY data_atualizacao DESC
+        LIMIT %s
+        """, (
+            rua,
+            armazem_id,
+            limite
+        ))
 
-    liberar(conn)
+        dados = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1445,37 +1525,40 @@ def ler_historico_rua(
 def ler_remanejamentos(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        id,
-        item,
-        prioridade,
-        criado_por
-    FROM remanejamento
-    WHERE armazem_id = %s
-    ORDER BY
-        CASE prioridade
-            WHEN 'Alta' THEN 1
-            WHEN 'Média' THEN 2
-            ELSE 3
-        END,
-        id DESC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = []
+        cursor.execute("""
+        SELECT
+            id,
+            item,
+            prioridade,
+            criado_por
+        FROM remanejamento
+        WHERE armazem_id = %s
+        ORDER BY
+            CASE prioridade
+                WHEN 'Alta' THEN 1
+                WHEN 'Média' THEN 2
+                ELSE 3
+            END,
+            id DESC
+        """, (armazem_id,))
 
-    for row in cursor.fetchall():
+        dados = []
 
-        dados.append({
-            "id": row[0],
-            "nome": row[1],
-            "prioridade": row[2],
-            "criado_por": row[3]
-        })
+        for row in cursor.fetchall():
 
-    liberar(conn)
+            dados.append({
+                "id": row[0],
+                "nome": row[1],
+                "prioridade": row[2],
+                "criado_por": row[3]
+            })
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1488,42 +1571,46 @@ def adicionar_remanejamento(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO remanejamento
-    (
-        item,
-        prioridade,
-        criado_por,
-        armazem_id
-    )
-    VALUES (%s, %s, %s, %s)
-    """, (
-        item,
-        prioridade,
-        usuario,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO historico_remanejamento
-    (
-        item,
-        prioridade,
-        usuario,
-        armazem_id
-    )
-    VALUES (%s, %s, %s, %s)
-    """, (
-        item,
-        prioridade,
-        usuario,
-        armazem_id
-    ))
+        cursor.execute("""
+        INSERT INTO remanejamento
+        (
+            item,
+            prioridade,
+            criado_por,
+            armazem_id
+        )
+        VALUES (%s, %s, %s, %s)
+        """, (
+            item,
+            prioridade,
+            usuario,
+            armazem_id
+        ))
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO historico_remanejamento
+        (
+            item,
+            prioridade,
+            usuario,
+            armazem_id
+        )
+        VALUES (%s, %s, %s, %s)
+        """, (
+            item,
+            prioridade,
+            usuario,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_remanejamentos.clear()
     ler_historico_remanejamento.clear()
@@ -1536,19 +1623,23 @@ def excluir_remanejamento(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM remanejamento
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        id_item,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM remanejamento
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            id_item,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_remanejamentos.clear()
     total_remanejamentos.clear()
@@ -1563,19 +1654,23 @@ def excluir_remanejamento_lote(
         return
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM remanejamento
-    WHERE id = ANY(%s)
-    AND armazem_id = %s
-    """, (
-        ids_itens,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM remanejamento
+        WHERE id = ANY(%s)
+        AND armazem_id = %s
+        """, (
+            ids_itens,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_remanejamentos.clear()
     total_remanejamentos.clear()
@@ -1585,17 +1680,20 @@ def excluir_remanejamento_lote(
 def total_remanejamentos(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT COUNT(*)
-    FROM remanejamento
-    WHERE armazem_id = %s
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    total = cursor.fetchone()[0]
+        cursor.execute("""
+        SELECT COUNT(*)
+        FROM remanejamento
+        WHERE armazem_id = %s
+        """, (armazem_id,))
 
-    liberar(conn)
+        total = cursor.fetchone()[0]
+
+    finally:
+        liberar(conn)
 
     return total
 
@@ -1606,23 +1704,26 @@ def ler_historico_remanejamento(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        item,
-        prioridade,
-        data_hora,
-        usuario
-    FROM historico_remanejamento
-    WHERE armazem_id = %s
-    ORDER BY data_hora DESC
-    LIMIT %s
-    """, (armazem_id, limite))
+    try:
+        cursor = conn.cursor()
 
-    dados = cursor.fetchall()
+        cursor.execute("""
+        SELECT
+            item,
+            prioridade,
+            data_hora,
+            usuario
+        FROM historico_remanejamento
+        WHERE armazem_id = %s
+        ORDER BY data_hora DESC
+        LIMIT %s
+        """, (armazem_id, limite))
 
-    liberar(conn)
+        dados = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1635,37 +1736,40 @@ def ler_historico_remanejamento(
 def ler_remanejamentos_agendados(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        id,
-        item,
-        prioridade,
-        hora_inicio,
-        hora_fim,
-        dias_semana,
-        criado_por
-    FROM remanejamento_agendado
-    WHERE armazem_id = %s
-    ORDER BY hora_inicio, item
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = []
+        cursor.execute("""
+        SELECT
+            id,
+            item,
+            prioridade,
+            hora_inicio,
+            hora_fim,
+            dias_semana,
+            criado_por
+        FROM remanejamento_agendado
+        WHERE armazem_id = %s
+        ORDER BY hora_inicio, item
+        """, (armazem_id,))
 
-    for row in cursor.fetchall():
+        dados = []
 
-        dados.append({
-            "id": row[0],
-            "nome": row[1],
-            "prioridade": row[2],
-            "hora_inicio": row[3],
-            "hora_fim": row[4],
-            "dias_semana": row[5] or [],
-            "criado_por": row[6]
-        })
+        for row in cursor.fetchall():
 
-    liberar(conn)
+            dados.append({
+                "id": row[0],
+                "nome": row[1],
+                "prioridade": row[2],
+                "hora_inicio": row[3],
+                "hora_fim": row[4],
+                "dias_semana": row[5] or [],
+                "criado_por": row[6]
+            })
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1681,32 +1785,36 @@ def criar_remanejamento_agendado(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO remanejamento_agendado
-    (
-        item,
-        prioridade,
-        hora_inicio,
-        hora_fim,
-        dias_semana,
-        criado_por,
-        armazem_id
-    )
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """, (
-        item,
-        prioridade,
-        hora_inicio,
-        hora_fim,
-        dias_semana,
-        usuario,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO remanejamento_agendado
+        (
+            item,
+            prioridade,
+            hora_inicio,
+            hora_fim,
+            dias_semana,
+            criado_por,
+            armazem_id
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            item,
+            prioridade,
+            hora_inicio,
+            hora_fim,
+            dias_semana,
+            usuario,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_remanejamentos_agendados.clear()
 
@@ -1717,19 +1825,23 @@ def excluir_remanejamento_agendado(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM remanejamento_agendado
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        id_item,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM remanejamento_agendado
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            id_item,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_remanejamentos_agendados.clear()
 
@@ -1750,36 +1862,40 @@ def atualizar_sac_mensal(
     )
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO sac_historico
-    (
-        mes_ano,
-        reclamacoes,
-        meta,
-        atualizado_por,
-        atualizado_em,
-        armazem_id
-    )
-    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
+    try:
+        cursor = conn.cursor()
 
-    ON CONFLICT (armazem_id, mes_ano)
-    DO UPDATE SET
-        reclamacoes = EXCLUDED.reclamacoes,
-        meta = EXCLUDED.meta,
-        atualizado_por = EXCLUDED.atualizado_por,
-        atualizado_em = CURRENT_TIMESTAMP
-    """, (
-        mes_ano,
-        reclamacoes,
-        meta,
-        usuario,
-        armazem_id
-    ))
+        cursor.execute("""
+        INSERT INTO sac_historico
+        (
+            mes_ano,
+            reclamacoes,
+            meta,
+            atualizado_por,
+            atualizado_em,
+            armazem_id
+        )
+        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
 
-    conn.commit()
-    liberar(conn)
+        ON CONFLICT (armazem_id, mes_ano)
+        DO UPDATE SET
+            reclamacoes = EXCLUDED.reclamacoes,
+            meta = EXCLUDED.meta,
+            atualizado_por = EXCLUDED.atualizado_por,
+            atualizado_em = CURRENT_TIMESTAMP
+        """, (
+            mes_ano,
+            reclamacoes,
+            meta,
+            usuario,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_historico_sac.clear()
     total_reclamacoes.clear()
@@ -1789,23 +1905,26 @@ def atualizar_sac_mensal(
 def ler_historico_sac(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        mes_ano,
-        reclamacoes,
-        meta,
-        atualizado_por,
-        atualizado_em
-    FROM sac_historico
-    WHERE armazem_id = %s
-    ORDER BY mes_ano ASC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = cursor.fetchall()
+        cursor.execute("""
+        SELECT
+            mes_ano,
+            reclamacoes,
+            meta,
+            atualizado_por,
+            atualizado_em
+        FROM sac_historico
+        WHERE armazem_id = %s
+        ORDER BY mes_ano ASC
+        """, (armazem_id,))
 
-    liberar(conn)
+        dados = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1814,21 +1933,24 @@ def ler_historico_sac(armazem_id):
 def total_reclamacoes(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        COALESCE(
-            SUM(reclamacoes),
-            0
-        )
-    FROM sac_historico
-    WHERE armazem_id = %s
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    total = cursor.fetchone()[0]
+        cursor.execute("""
+        SELECT
+            COALESCE(
+                SUM(reclamacoes),
+                0
+            )
+        FROM sac_historico
+        WHERE armazem_id = %s
+        """, (armazem_id,))
 
-    liberar(conn)
+        total = cursor.fetchone()[0]
+
+    finally:
+        liberar(conn)
 
     return total
 
@@ -1844,34 +1966,38 @@ def adicionar_analise_tecnica(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO analise_tecnica
-    (
-        nome, tipo_erro, data_erro, data_fechamento, descricao,
-        chamado, cliente, nota_fiscal, cod_produto, produto,
-        tratativa, hora, separador, volume, carga, regiao,
-        motorista, balanca, conferente, vinculos_notificados,
-        registrado_por, armazem_id
-    )
-    VALUES (
-        %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s,
-        %s, %s
-    )
-    """, (
-        None, dados["tipo_erro"], dados["data_erro"], dados.get("data_fechamento"), dados["descricao"],
-        dados["chamado"], dados["cliente"], dados["nota_fiscal"], dados["cod_produto"], dados["produto"],
-        dados["tratativa"], dados["hora"], dados["separador"], dados["volume"], dados["carga"], dados["regiao"],
-        dados["motorista"], dados["balanca"], dados["conferente"], Json(vinculos),
-        usuario, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO analise_tecnica
+        (
+            nome, tipo_erro, data_erro, data_fechamento, descricao,
+            chamado, cliente, nota_fiscal, cod_produto, produto,
+            tratativa, hora, separador, volume, carga, regiao,
+            motorista, balanca, conferente, vinculos_notificados,
+            registrado_por, armazem_id
+        )
+        VALUES (
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s,
+            %s, %s
+        )
+        """, (
+            None, dados["tipo_erro"], dados["data_erro"], dados.get("data_fechamento"), dados["descricao"],
+            dados["chamado"], dados["cliente"], dados["nota_fiscal"], dados["cod_produto"], dados["produto"],
+            dados["tratativa"], dados["hora"], dados["separador"], dados["volume"], dados["carga"], dados["regiao"],
+            dados["motorista"], dados["balanca"], dados["conferente"], Json(vinculos),
+            usuario, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_analise_tecnica.clear()
 
@@ -1880,37 +2006,40 @@ def adicionar_analise_tecnica(
 def ler_analise_tecnica(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        id, nome, tipo_erro, data_erro, data_fechamento, descricao,
-        chamado, cliente, nota_fiscal, cod_produto, produto,
-        tratativa, hora, separador, volume, carga, regiao,
-        motorista, balanca, conferente, vinculos_notificados,
-        registrado_por
-    FROM analise_tecnica
-    WHERE armazem_id = %s
-    ORDER BY data_erro DESC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    colunas = [
-        "id", "nome", "tipo_erro", "data_erro", "data_fechamento", "descricao",
-        "chamado", "cliente", "nota_fiscal", "cod_produto", "produto",
-        "tratativa", "hora", "separador", "volume", "carga", "regiao",
-        "motorista", "balanca", "conferente", "vinculos_notificados",
-        "registrado_por"
-    ]
+        cursor.execute("""
+        SELECT
+            id, nome, tipo_erro, data_erro, data_fechamento, descricao,
+            chamado, cliente, nota_fiscal, cod_produto, produto,
+            tratativa, hora, separador, volume, carga, regiao,
+            motorista, balanca, conferente, vinculos_notificados,
+            registrado_por
+        FROM analise_tecnica
+        WHERE armazem_id = %s
+        ORDER BY data_erro DESC
+        """, (armazem_id,))
 
-    dados = []
+        colunas = [
+            "id", "nome", "tipo_erro", "data_erro", "data_fechamento", "descricao",
+            "chamado", "cliente", "nota_fiscal", "cod_produto", "produto",
+            "tratativa", "hora", "separador", "volume", "carga", "regiao",
+            "motorista", "balanca", "conferente", "vinculos_notificados",
+            "registrado_por"
+        ]
 
-    for row in cursor.fetchall():
+        dados = []
 
-        dados.append(
-            dict(zip(colunas, row))
-        )
+        for row in cursor.fetchall():
 
-    liberar(conn)
+            dados.append(
+                dict(zip(colunas, row))
+            )
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -1922,21 +2051,25 @@ def finalizar_analise_tecnica(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE analise_tecnica
-    SET data_fechamento = %s
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        data_fechamento,
-        id_registro,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE analise_tecnica
+        SET data_fechamento = %s
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            data_fechamento,
+            id_registro,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_analise_tecnica.clear()
 
@@ -1947,19 +2080,23 @@ def excluir_analise_tecnica(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM analise_tecnica
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        id_registro,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM analise_tecnica
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            id_registro,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_analise_tecnica.clear()
 
@@ -1973,19 +2110,23 @@ def excluir_analise_tecnica_lote(
         return
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM analise_tecnica
-    WHERE id = ANY(%s)
-    AND armazem_id = %s
-    """, (
-        ids_registros,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM analise_tecnica
+        WHERE id = ANY(%s)
+        AND armazem_id = %s
+        """, (
+            ids_registros,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_analise_tecnica.clear()
 
@@ -2006,22 +2147,26 @@ def adicionar_auditoria(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO auditoria_atividades
-    (
-        nome, funcao, qtd_acertos, qtd_erros,
-        data_atividade, descricao, registrado_por, armazem_id
-    )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        nome, funcao, qtd_acertos, qtd_erros,
-        data_atividade, descricao, usuario, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO auditoria_atividades
+        (
+            nome, funcao, qtd_acertos, qtd_erros,
+            data_atividade, descricao, registrado_por, armazem_id
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            nome, funcao, qtd_acertos, qtd_erros,
+            data_atividade, descricao, usuario, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_auditoria.clear()
 
@@ -2030,31 +2175,34 @@ def adicionar_auditoria(
 def ler_auditoria(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        id, nome, funcao, qtd_acertos, qtd_erros,
-        data_atividade, descricao, registrado_por
-    FROM auditoria_atividades
-    WHERE armazem_id = %s
-    ORDER BY data_atividade DESC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    colunas = [
-        "id", "nome", "funcao", "qtd_acertos", "qtd_erros",
-        "data_atividade", "descricao", "registrado_por"
-    ]
+        cursor.execute("""
+        SELECT
+            id, nome, funcao, qtd_acertos, qtd_erros,
+            data_atividade, descricao, registrado_por
+        FROM auditoria_atividades
+        WHERE armazem_id = %s
+        ORDER BY data_atividade DESC
+        """, (armazem_id,))
 
-    dados = []
+        colunas = [
+            "id", "nome", "funcao", "qtd_acertos", "qtd_erros",
+            "data_atividade", "descricao", "registrado_por"
+        ]
 
-    for row in cursor.fetchall():
+        dados = []
 
-        dados.append(
-            dict(zip(colunas, row))
-        )
+        for row in cursor.fetchall():
 
-    liberar(conn)
+            dados.append(
+                dict(zip(colunas, row))
+            )
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -2065,19 +2213,23 @@ def excluir_auditoria(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM auditoria_atividades
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        id_registro,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM auditoria_atividades
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            id_registro,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_auditoria.clear()
 
@@ -2091,19 +2243,23 @@ def excluir_auditoria_lote(
         return
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM auditoria_atividades
-    WHERE id = ANY(%s)
-    AND armazem_id = %s
-    """, (
-        ids_registros,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM auditoria_atividades
+        WHERE id = ANY(%s)
+        AND armazem_id = %s
+        """, (
+            ids_registros,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_auditoria.clear()
 
@@ -2115,19 +2271,23 @@ def excluir_auditoria_lote(
 def adicionar_pessoa_rotativo(nome, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO rotativo_pessoas (nome, armazem_id)
-    VALUES (%s, %s)
-    ON CONFLICT (armazem_id, nome) DO NOTHING
-    """, (
-        nome,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO rotativo_pessoas (nome, armazem_id)
+        VALUES (%s, %s)
+        ON CONFLICT (armazem_id, nome) DO NOTHING
+        """, (
+            nome,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_pessoas_rotativo.clear()
 
@@ -2136,18 +2296,21 @@ def adicionar_pessoa_rotativo(nome, armazem_id):
 def listar_pessoas_rotativo(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT id, nome
-    FROM rotativo_pessoas
-    WHERE armazem_id = %s
-    ORDER BY id
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = cursor.fetchall()
+        cursor.execute("""
+        SELECT id, nome
+        FROM rotativo_pessoas
+        WHERE armazem_id = %s
+        ORDER BY id
+        """, (armazem_id,))
 
-    liberar(conn)
+        dados = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -2155,19 +2318,23 @@ def listar_pessoas_rotativo(armazem_id):
 def excluir_pessoa_rotativo(id_pessoa, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM rotativo_pessoas
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        id_pessoa,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM rotativo_pessoas
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            id_pessoa,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_pessoas_rotativo.clear()
 
@@ -2180,18 +2347,22 @@ def adicionar_atividade_rotativo(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO rotativo_atividades (nome, tipo, pessoa_fixa, armazem_id)
-    VALUES (%s, %s, %s, %s)
-    ON CONFLICT (armazem_id, nome) DO NOTHING
-    """, (
-        nome, tipo, pessoa_fixa, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO rotativo_atividades (nome, tipo, pessoa_fixa, armazem_id)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (armazem_id, nome) DO NOTHING
+        """, (
+            nome, tipo, pessoa_fixa, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_atividades_rotativo.clear()
 
@@ -2200,18 +2371,21 @@ def adicionar_atividade_rotativo(
 def listar_atividades_rotativo(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT id, nome, tipo, pessoa_fixa
-    FROM rotativo_atividades
-    WHERE armazem_id = %s
-    ORDER BY id
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    dados = cursor.fetchall()
+        cursor.execute("""
+        SELECT id, nome, tipo, pessoa_fixa
+        FROM rotativo_atividades
+        WHERE armazem_id = %s
+        ORDER BY id
+        """, (armazem_id,))
 
-    liberar(conn)
+        dados = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -2219,19 +2393,23 @@ def listar_atividades_rotativo(armazem_id):
 def excluir_atividade_rotativo(id_atividade, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM rotativo_atividades
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        id_atividade,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM rotativo_atividades
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            id_atividade,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_atividades_rotativo.clear()
 
@@ -2243,46 +2421,53 @@ def excluir_atividade_rotativo(id_atividade, armazem_id):
 def _adicionar_checklist(tabela, nome, numero, data_checklist, status, descricao, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    INSERT INTO {tabela}
-    (nome, numero, data_checklist, status, descricao, armazem_id)
-    VALUES (%s, %s, %s, %s, %s, %s)
-    """, (
-        nome, numero, data_checklist, status, descricao, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        INSERT INTO {tabela}
+        (nome, numero, data_checklist, status, descricao, armazem_id)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            nome, numero, data_checklist, status, descricao, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def _ler_checklist(tabela, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    SELECT id, nome, numero, data_checklist, status, descricao,
-        em_manutencao, manutencao_motivo, manutencao_enviado_por,
-        manutencao_enviado_em, manutencao_retornado_por, manutencao_retornado_em
-    FROM {tabela}
-    WHERE armazem_id = %s
-    ORDER BY data_checklist DESC, id DESC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    colunas = [
-        "id", "nome", "numero", "data_checklist", "status", "descricao",
-        "em_manutencao", "manutencao_motivo", "manutencao_enviado_por",
-        "manutencao_enviado_em", "manutencao_retornado_por", "manutencao_retornado_em"
-    ]
+        cursor.execute(f"""
+        SELECT id, nome, numero, data_checklist, status, descricao,
+            em_manutencao, manutencao_motivo, manutencao_enviado_por,
+            manutencao_enviado_em, manutencao_retornado_por, manutencao_retornado_em
+        FROM {tabela}
+        WHERE armazem_id = %s
+        ORDER BY data_checklist DESC, id DESC
+        """, (armazem_id,))
 
-    dados = [
-        dict(zip(colunas, row))
-        for row in cursor.fetchall()
-    ]
+        colunas = [
+            "id", "nome", "numero", "data_checklist", "status", "descricao",
+            "em_manutencao", "manutencao_motivo", "manutencao_enviado_por",
+            "manutencao_enviado_em", "manutencao_retornado_por", "manutencao_retornado_em"
+        ]
 
-    liberar(conn)
+        dados = [
+            dict(zip(colunas, row))
+            for row in cursor.fetchall()
+        ]
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -2290,83 +2475,99 @@ def _ler_checklist(tabela, armazem_id):
 def _editar_checklist(tabela, id_registro, nome, numero, data_checklist, status, descricao, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    UPDATE {tabela}
-    SET nome = %s,
-        numero = %s,
-        data_checklist = %s,
-        status = %s,
-        descricao = %s
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        nome, numero, data_checklist, status, descricao, id_registro, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        UPDATE {tabela}
+        SET nome = %s,
+            numero = %s,
+            data_checklist = %s,
+            status = %s,
+            descricao = %s
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            nome, numero, data_checklist, status, descricao, id_registro, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def _enviar_manutencao_checklist(tabela, id_registro, motivo, usuario, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    UPDATE {tabela}
-    SET em_manutencao = TRUE,
-        manutencao_motivo = %s,
-        manutencao_enviado_por = %s,
-        manutencao_enviado_em = CURRENT_TIMESTAMP,
-        manutencao_retornado_por = NULL,
-        manutencao_retornado_em = NULL
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        motivo, usuario, id_registro, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        UPDATE {tabela}
+        SET em_manutencao = TRUE,
+            manutencao_motivo = %s,
+            manutencao_enviado_por = %s,
+            manutencao_enviado_em = CURRENT_TIMESTAMP,
+            manutencao_retornado_por = NULL,
+            manutencao_retornado_em = NULL
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            motivo, usuario, id_registro, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def _retornar_manutencao_checklist(tabela, id_registro, usuario, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    UPDATE {tabela}
-    SET em_manutencao = FALSE,
-        manutencao_retornado_por = %s,
-        manutencao_retornado_em = CURRENT_TIMESTAMP
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        usuario, id_registro, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        UPDATE {tabela}
+        SET em_manutencao = FALSE,
+            manutencao_retornado_por = %s,
+            manutencao_retornado_em = CURRENT_TIMESTAMP
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            usuario, id_registro, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def _excluir_checklist(tabela, id_registro, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    DELETE FROM {tabela}
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        id_registro, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        DELETE FROM {tabela}
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            id_registro, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def adicionar_checklist_hidraulico(nome, numero, data_checklist, status, descricao, armazem_id):
@@ -2531,18 +2732,22 @@ def excluir_checklist_empilhadeira(id_registro, armazem_id):
 def adicionar_checklist_pigmentacao(nome, data_checklist, status, descricao, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO checklist_pigmentacao
-    (nome, data_checklist, status, descricao, armazem_id)
-    VALUES (%s, %s, %s, %s, %s)
-    """, (
-        nome, data_checklist, status, descricao, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO checklist_pigmentacao
+        (nome, data_checklist, status, descricao, armazem_id)
+        VALUES (%s, %s, %s, %s, %s)
+        """, (
+            nome, data_checklist, status, descricao, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_checklist_pigmentacao.clear()
 
@@ -2551,23 +2756,26 @@ def adicionar_checklist_pigmentacao(nome, data_checklist, status, descricao, arm
 def ler_checklist_pigmentacao(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT id, nome, data_checklist, status, descricao
-    FROM checklist_pigmentacao
-    WHERE armazem_id = %s
-    ORDER BY data_checklist DESC, id DESC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    colunas = ["id", "nome", "data_checklist", "status", "descricao"]
+        cursor.execute("""
+        SELECT id, nome, data_checklist, status, descricao
+        FROM checklist_pigmentacao
+        WHERE armazem_id = %s
+        ORDER BY data_checklist DESC, id DESC
+        """, (armazem_id,))
 
-    dados = [
-        dict(zip(colunas, row))
-        for row in cursor.fetchall()
-    ]
+        colunas = ["id", "nome", "data_checklist", "status", "descricao"]
 
-    liberar(conn)
+        dados = [
+            dict(zip(colunas, row))
+            for row in cursor.fetchall()
+        ]
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -2575,22 +2783,26 @@ def ler_checklist_pigmentacao(armazem_id):
 def editar_checklist_pigmentacao(id_registro, nome, data_checklist, status, descricao, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE checklist_pigmentacao
-    SET nome = %s,
-        data_checklist = %s,
-        status = %s,
-        descricao = %s
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        nome, data_checklist, status, descricao, id_registro, armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE checklist_pigmentacao
+        SET nome = %s,
+            data_checklist = %s,
+            status = %s,
+            descricao = %s
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            nome, data_checklist, status, descricao, id_registro, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_checklist_pigmentacao.clear()
 
@@ -2610,23 +2822,26 @@ def excluir_checklist_pigmentacao(id_registro, armazem_id):
 def _ler_responsaveis(tabela, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    SELECT id, nome, numero
-    FROM {tabela}
-    WHERE armazem_id = %s
-    ORDER BY nome ASC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    colunas = ["id", "nome", "numero"]
+        cursor.execute(f"""
+        SELECT id, nome, numero
+        FROM {tabela}
+        WHERE armazem_id = %s
+        ORDER BY nome ASC
+        """, (armazem_id,))
 
-    dados = [
-        dict(zip(colunas, row))
-        for row in cursor.fetchall()
-    ]
+        colunas = ["id", "nome", "numero"]
 
-    liberar(conn)
+        dados = [
+            dict(zip(colunas, row))
+            for row in cursor.fetchall()
+        ]
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -2634,47 +2849,59 @@ def _ler_responsaveis(tabela, armazem_id):
 def _adicionar_responsavel(tabela, nome, numero, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    INSERT INTO {tabela} (nome, numero, armazem_id)
-    VALUES (%s, %s, %s)
-    """, (nome, numero, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        INSERT INTO {tabela} (nome, numero, armazem_id)
+        VALUES (%s, %s, %s)
+        """, (nome, numero, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def _editar_responsavel(tabela, id_registro, nome, numero, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    UPDATE {tabela}
-    SET nome = %s,
-        numero = %s
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (nome, numero, id_registro, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        UPDATE {tabela}
+        SET nome = %s,
+            numero = %s
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (nome, numero, id_registro, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def _excluir_responsavel(tabela, id_registro, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute(f"""
-    DELETE FROM {tabela}
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (id_registro, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute(f"""
+        DELETE FROM {tabela}
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (id_registro, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 @st.cache_data(ttl=30)
@@ -2729,23 +2956,26 @@ def excluir_responsavel_carrinho(id_registro, armazem_id):
 def ler_carrinhos_fixos(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT id, local, numero
-    FROM carrinhos_fixos
-    WHERE armazem_id = %s
-    ORDER BY local ASC, numero ASC
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    colunas = ["id", "local", "numero"]
+        cursor.execute("""
+        SELECT id, local, numero
+        FROM carrinhos_fixos
+        WHERE armazem_id = %s
+        ORDER BY local ASC, numero ASC
+        """, (armazem_id,))
 
-    dados = [
-        dict(zip(colunas, row))
-        for row in cursor.fetchall()
-    ]
+        colunas = ["id", "local", "numero"]
 
-    liberar(conn)
+        dados = [
+            dict(zip(colunas, row))
+            for row in cursor.fetchall()
+        ]
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -2753,15 +2983,19 @@ def ler_carrinhos_fixos(armazem_id):
 def adicionar_carrinho_fixo(local, numero, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO carrinhos_fixos (local, numero, armazem_id)
-    VALUES (%s, %s, %s)
-    """, (local, numero, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO carrinhos_fixos (local, numero, armazem_id)
+        VALUES (%s, %s, %s)
+        """, (local, numero, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_carrinhos_fixos.clear()
 
@@ -2769,18 +3003,22 @@ def adicionar_carrinho_fixo(local, numero, armazem_id):
 def editar_carrinho_fixo(id_registro, local, numero, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE carrinhos_fixos
-    SET local = %s,
-        numero = %s
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (local, numero, id_registro, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE carrinhos_fixos
+        SET local = %s,
+            numero = %s
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (local, numero, id_registro, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_carrinhos_fixos.clear()
 
@@ -2788,16 +3026,20 @@ def editar_carrinho_fixo(id_registro, local, numero, armazem_id):
 def excluir_carrinho_fixo(id_registro, armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM carrinhos_fixos
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (id_registro, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM carrinhos_fixos
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (id_registro, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     ler_carrinhos_fixos.clear()
 
@@ -2811,27 +3053,30 @@ def autenticar(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        u.id,
-        u.tipo,
-        u.trocar_senha,
-        u.armazem_id,
-        a.nome
-    FROM usuarios u
-    JOIN armazens a ON a.id = u.armazem_id
-    WHERE u.usuario = %s
-    AND u.senha = %s
-    """, (
-        usuario,
-        senha
-    ))
+    try:
+        cursor = conn.cursor()
 
-    resultado = cursor.fetchone()
+        cursor.execute("""
+        SELECT
+            u.id,
+            u.tipo,
+            u.trocar_senha,
+            u.armazem_id,
+            a.nome
+        FROM usuarios u
+        JOIN armazens a ON a.id = u.armazem_id
+        WHERE u.usuario = %s
+        AND u.senha = %s
+        """, (
+            usuario,
+            senha
+        ))
 
-    liberar(conn)
+        resultado = cursor.fetchone()
+
+    finally:
+        liberar(conn)
 
     return resultado
 
@@ -2852,19 +3097,23 @@ def criar_sessao(usuario, dias_validade=30):
     expira_em = datetime.utcnow() + timedelta(days=dias_validade)
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO sessoes_ativas (token, usuario, expira_em)
-    VALUES (%s, %s, %s)
-    """, (
-        token,
-        usuario,
-        expira_em
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO sessoes_ativas (token, usuario, expira_em)
+        VALUES (%s, %s, %s)
+        """, (
+            token,
+            usuario,
+            expira_em
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     return token
 
@@ -2875,25 +3124,28 @@ def validar_sessao(token):
         return None
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        u.usuario,
-        u.tipo,
-        u.trocar_senha,
-        u.armazem_id,
-        a.nome
-    FROM sessoes_ativas s
-    JOIN usuarios u ON u.usuario = s.usuario
-    JOIN armazens a ON a.id = u.armazem_id
-    WHERE s.token = %s
-    AND (s.expira_em IS NULL OR s.expira_em > CURRENT_TIMESTAMP)
-    """, (token,))
+    try:
+        cursor = conn.cursor()
 
-    resultado = cursor.fetchone()
+        cursor.execute("""
+        SELECT
+            u.usuario,
+            u.tipo,
+            u.trocar_senha,
+            u.armazem_id,
+            a.nome
+        FROM sessoes_ativas s
+        JOIN usuarios u ON u.usuario = s.usuario
+        JOIN armazens a ON a.id = u.armazem_id
+        WHERE s.token = %s
+        AND (s.expira_em IS NULL OR s.expira_em > CURRENT_TIMESTAMP)
+        """, (token,))
 
-    liberar(conn)
+        resultado = cursor.fetchone()
+
+    finally:
+        liberar(conn)
 
     return resultado
 
@@ -2904,19 +3156,23 @@ def renovar_sessao(token, dias_validade=30):
         return
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE sessoes_ativas
-    SET expira_em = %s
-    WHERE token = %s
-    """, (
-        datetime.utcnow() + timedelta(days=dias_validade),
-        token
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE sessoes_ativas
+        SET expira_em = %s
+        WHERE token = %s
+        """, (
+            datetime.utcnow() + timedelta(days=dias_validade),
+            token
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def encerrar_sessao(token):
@@ -2925,15 +3181,19 @@ def encerrar_sessao(token):
         return
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM sessoes_ativas
-    WHERE token = %s
-    """, (token,))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM sessoes_ativas
+        WHERE token = %s
+        """, (token,))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def criar_usuario(
@@ -2944,28 +3204,32 @@ def criar_usuario(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO usuarios
-    (
-        usuario,
-        senha,
-        tipo,
-        trocar_senha,
-        armazem_id
-    )
-    VALUES (%s, %s, %s, %s, %s)
-    """, (
-        usuario,
-        senha,
-        tipo,
-        1,
-        armazem_id
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        INSERT INTO usuarios
+        (
+            usuario,
+            senha,
+            tipo,
+            trocar_senha,
+            armazem_id
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        """, (
+            usuario,
+            senha,
+            tipo,
+            1,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_usuarios.clear()
 
@@ -2974,22 +3238,25 @@ def criar_usuario(
 def listar_usuarios(armazem_id):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT
-        id,
-        usuario,
-        tipo,
-        ultimo_acesso
-    FROM usuarios
-    WHERE armazem_id = %s
-    ORDER BY usuario
-    """, (armazem_id,))
+    try:
+        cursor = conn.cursor()
 
-    usuarios = cursor.fetchall()
+        cursor.execute("""
+        SELECT
+            id,
+            usuario,
+            tipo,
+            ultimo_acesso
+        FROM usuarios
+        WHERE armazem_id = %s
+        ORDER BY usuario
+        """, (armazem_id,))
 
-    liberar(conn)
+        usuarios = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     return usuarios
 
@@ -3040,17 +3307,21 @@ def excluir_usuario(usuario):
         return False
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    DELETE FROM usuarios
-    WHERE usuario = %s
-    """, (
-        usuario,
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        DELETE FROM usuarios
+        WHERE usuario = %s
+        """, (
+            usuario,
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_usuarios.clear()
 
@@ -3058,20 +3329,24 @@ def excluir_usuario(usuario):
 def excluir_usuario_por_id(uid):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    # Nunca permitir apagar o fundador, mesmo por id
-    cursor.execute("""
-    DELETE FROM usuarios
-    WHERE id = %s
-    AND usuario IS DISTINCT FROM %s
-    """, (
-        uid,
-        USUARIO_FUNDADOR,
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        # Nunca permitir apagar o fundador, mesmo por id
+        cursor.execute("""
+        DELETE FROM usuarios
+        WHERE id = %s
+        AND usuario IS DISTINCT FROM %s
+        """, (
+            uid,
+            USUARIO_FUNDADOR,
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_usuarios.clear()
 
@@ -3084,21 +3359,25 @@ def alterar_senha(
 ):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE usuarios
-    SET
-        senha = %s,
-        trocar_senha = 0
-    WHERE usuario = %s
-    """, (
-        nova_senha,
-        usuario
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE usuarios
+        SET
+            senha = %s,
+            trocar_senha = 0
+        WHERE usuario = %s
+        """, (
+            nova_senha,
+            usuario
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
 
 def resetar_senha(
@@ -3111,21 +3390,25 @@ def resetar_senha(
         return False
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE usuarios
-    SET
-        senha = %s,
-        trocar_senha = 1
-    WHERE usuario = %s
-    """, (
-        senha_temporaria,
-        usuario
-    ))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE usuarios
+        SET
+            senha = %s,
+            trocar_senha = 1
+        WHERE usuario = %s
+        """, (
+            senha_temporaria,
+            usuario
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     return True
 
@@ -3138,17 +3421,20 @@ def resetar_senha(
 def listar_armazens():
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT id, nome
-    FROM armazens
-    ORDER BY nome ASC
-    """)
+    try:
+        cursor = conn.cursor()
 
-    dados = cursor.fetchall()
+        cursor.execute("""
+        SELECT id, nome
+        FROM armazens
+        ORDER BY nome ASC
+        """)
 
-    liberar(conn)
+        dados = cursor.fetchall()
+
+    finally:
+        liberar(conn)
 
     return dados
 
@@ -3156,29 +3442,33 @@ def listar_armazens():
 def criar_armazem(nome):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO armazens (nome)
-    VALUES (%s)
-    RETURNING id
-    """, (nome,))
+    try:
+        cursor = conn.cursor()
 
-    novo_id = cursor.fetchone()[0]
+        cursor.execute("""
+        INSERT INTO armazens (nome)
+        VALUES (%s)
+        RETURNING id
+        """, (nome,))
 
-    for nome_rua in RUAS_PADRAO:
+        novo_id = cursor.fetchone()[0]
 
-        cursor.execute(
-            """
-            INSERT INTO ruas (armazem_id, nome)
-            VALUES (%s, %s)
-            ON CONFLICT (armazem_id, nome) DO NOTHING
-            """,
-            (novo_id, nome_rua)
-        )
+        for nome_rua in RUAS_PADRAO:
 
-    conn.commit()
-    liberar(conn)
+            cursor.execute(
+                """
+                INSERT INTO ruas (armazem_id, nome)
+                VALUES (%s, %s)
+                ON CONFLICT (armazem_id, nome) DO NOTHING
+                """,
+                (novo_id, nome_rua)
+            )
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_armazens.clear()
     listar_ruas.clear()
@@ -3189,15 +3479,19 @@ def criar_armazem(nome):
 def renomear_armazem(armazem_id, novo_nome):
 
     conn = conectar()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE armazens
-    SET nome = %s
-    WHERE id = %s
-    """, (novo_nome, armazem_id))
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    liberar(conn)
+        cursor.execute("""
+        UPDATE armazens
+        SET nome = %s
+        WHERE id = %s
+        """, (novo_nome, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
 
     listar_armazens.clear()
