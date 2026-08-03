@@ -80,7 +80,7 @@ def render():
                 f"""
                 <style>
                 .st-key-{chave_card} {{
-                    background:rgba(59,130,246,0.12) !important;
+                    background:{estilos.cor_fundo_cartao("rgba(59,130,246,0.12)")} !important;
                     border:2px solid #3b82f6 !important;
                     border-radius:0.7rem;
                 }}
@@ -125,7 +125,7 @@ def render():
                 f"""
                 <style>
                 .st-key-{chave_card} {{
-                    background:rgba(34,197,94,0.12) !important;
+                    background:{estilos.cor_fundo_cartao("rgba(34,197,94,0.12)")} !important;
                     border:2px solid #22c55e !important;
                     border-radius:0.7rem;
                 }}
@@ -176,6 +176,7 @@ def render():
             numeros = por_local[local]
 
             cor_fundo, cor_borda = CORES_LOCAL.get(local, COR_LOCAL_PADRAO)
+            cor_fundo = estilos.cor_fundo_cartao(cor_fundo)
 
             chave_card = f"card-local-{gerar_chave_css(local)}"
 

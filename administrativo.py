@@ -1,10 +1,11 @@
 import streamlit as st
 import banco
 import estilos
+import remanejamento
 import pandas as pd
 import io
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time as time_type
 from zoneinfo import ZoneInfo
 
 
@@ -114,6 +115,27 @@ def confirmar_exclusao_multipla_remanejamento(ids_selecionados, armazem_id):
         with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} prioridade(s)..."):
             banco.excluir_remanejamento_lote(ids_selecionados, armazem_id)
         estilos.notificar_sucesso(f"{len(ids_selecionados)} prioridade(s) excluída(s).")
+        st.rerun(scope="fragment")
+
+
+def confirmar_exclusao_remanejamento_agendado(id_item, nome_item, armazem_id):
+
+    st.write(
+        f"Tem certeza que deseja excluir o agendamento **{nome_item}**?"
+    )
+
+    st.caption(
+        "Essa ação não pode ser desfeita."
+    )
+
+    if st.button(
+        "✅ Confirmar exclusão",
+        use_container_width=True,
+        key=f"confirma_del_remanejamento_agendado_{id_item}"
+    ):
+        with estilos.mostrar_processando(f"excluindo agendamento '{nome_item}'..."):
+            banco.excluir_remanejamento_agendado(id_item, armazem_id)
+        estilos.notificar_sucesso(f"Agendamento '{nome_item}' excluído.")
         st.rerun(scope="fragment")
 
 
@@ -707,6 +729,185 @@ def render():
                     )
 
         _fragmento_remanejamento()
+
+        st.divider()
+
+        @st.fragment
+        def _fragmento_remanejamento_agendado():
+
+            estilos.exibir_notificacao_pendente()
+
+            st.subheader(
+                "⏰ Agendamento por Horário"
+            )
+
+            st.caption(
+                "Cadastre docas/prioridades que devem entrar e sair do "
+                "painel sozinhas, de acordo com o horário e os dias da "
+                "semana. Elas aparecem juntas com as prioridades manuais "
+                "enquanto estiverem dentro da janela configurada."
+            )
+
+            col1, col2 = st.columns([3, 2])
+
+            with col1:
+                novo_item_agendado = st.text_input(
+                    "Nome (ex.: Doca 11)",
+                    key="reman_agendado_nome"
+                )
+
+            with col2:
+                prioridade_agendada = st.selectbox(
+                    "Prioridade",
+                    [
+                        "Normal",
+                        "Média",
+                        "Alta"
+                    ],
+                    key="reman_agendado_prioridade"
+                )
+
+            col3, col4 = st.columns(2)
+
+            with col3:
+                hora_inicio_agendada = st.time_input(
+                    "Horário de entrada",
+                    value=time_type(8, 0),
+                    key="reman_agendado_hora_inicio"
+                )
+
+            with col4:
+                hora_fim_agendada = st.time_input(
+                    "Horário de saída",
+                    value=time_type(13, 0),
+                    key="reman_agendado_hora_fim"
+                )
+
+            dias_disponiveis = [
+                "Segunda", "Terça", "Quarta", "Quinta",
+                "Sexta", "Sábado", "Domingo"
+            ]
+
+            dias_selecionados = st.multiselect(
+                "Dias da semana",
+                dias_disponiveis,
+                default=["Segunda", "Terça", "Quarta", "Quinta", "Sexta"],
+                key="reman_agendado_dias"
+            )
+
+            if st.button(
+                "➕ Adicionar Agendamento",
+                key="reman_agendado_botao_add"
+            ):
+
+                if not novo_item_agendado.strip():
+
+                    st.warning(
+                        "Informe o nome do item (ex.: Doca 11)."
+                    )
+
+                elif not dias_selecionados:
+
+                    st.warning(
+                        "Selecione ao menos um dia da semana."
+                    )
+
+                elif hora_inicio_agendada == hora_fim_agendada:
+
+                    st.warning(
+                        "O horário de entrada e saída não podem ser iguais."
+                    )
+
+                else:
+
+                    dias_semana_indices = [
+                        dias_disponiveis.index(dia)
+                        for dia in dias_selecionados
+                    ]
+
+                    with estilos.mostrar_processando(
+                        f"agendando '{novo_item_agendado.strip()}'..."
+                    ):
+                        banco.criar_remanejamento_agendado(
+                            novo_item_agendado.strip(),
+                            prioridade_agendada,
+                            hora_inicio_agendada,
+                            hora_fim_agendada,
+                            dias_semana_indices,
+                            armazem_id_atual,
+                            usuario=usuario_logado
+                        )
+
+                    estilos.notificar_sucesso(
+                        f"'{novo_item_agendado.strip()}' agendado."
+                    )
+                    st.rerun(scope="fragment")
+
+            st.divider()
+
+            agendados = banco.ler_remanejamentos_agendados(armazem_id_atual)
+
+            if not agendados:
+
+                st.info(
+                    "Nenhum agendamento por horário cadastrado."
+                )
+
+            else:
+
+                agora = estilos.agora_local()
+
+                for agendamento in agendados:
+
+                    ativo_agora = remanejamento.agendamento_esta_ativo(
+                        agendamento,
+                        agora
+                    )
+
+                    c1, c2 = st.columns([7.4, 1])
+
+                    with c1:
+
+                        with st.container(border=True):
+
+                            st.markdown(
+                                f"**{agendamento['nome']}** • "
+                                f"{agendamento['prioridade']}"
+                            )
+
+                            st.caption(
+                                remanejamento.descricao_janela(agendamento)
+                            )
+
+                            if ativo_agora:
+
+                                st.success(
+                                    "🟢 Ativo agora — visível no painel."
+                                )
+
+                            else:
+
+                                st.caption(
+                                    "⚪ Fora do horário no momento."
+                                )
+
+                            if agendamento.get("criado_por"):
+
+                                st.caption(
+                                    f"👤 Criado por {agendamento['criado_por']}"
+                                )
+
+                    with c2:
+
+                        with st.popover("❌", key=f"pop_del_reman_ag_{agendamento['id']}"):
+
+                            confirmar_exclusao_remanejamento_agendado(
+                                agendamento["id"],
+                                agendamento["nome"],
+                                armazem_id_atual
+                            )
+
+        _fragmento_remanejamento_agendado()
 
     # =====================================================
     # SAC
@@ -1450,80 +1651,85 @@ def render():
 
             else:
 
-                st.caption(
-                    "Marque as caixinhas para excluir vários de uma vez, "
-                    "ou clique em ❌ para excluir um lançamento só:"
-                )
+                with st.expander(
+                    f"📋 Ver registros de auditoria ({len(registros_auditoria)})",
+                    expanded=False
+                ):
 
-                ids_selecionados_auditoria = []
+                    st.caption(
+                        "Marque as caixinhas para excluir vários de uma vez, "
+                        "ou clique em ❌ para excluir um lançamento só:"
+                    )
 
-                for registro in registros_auditoria:
+                    ids_selecionados_auditoria = []
 
-                    c0, c1, c2 = st.columns([0.6, 7.4, 1])
+                    for registro in registros_auditoria:
 
-                    with c0:
+                        c0, c1, c2 = st.columns([0.6, 7.4, 1])
 
-                        marcado_auditoria = st.checkbox(
-                            "selecionar",
-                            key=f"select_auditoria_{registro['id']}",
-                            label_visibility="collapsed"
-                        )
+                        with c0:
 
-                        if marcado_auditoria:
-                            ids_selecionados_auditoria.append(registro["id"])
+                            marcado_auditoria = st.checkbox(
+                                "selecionar",
+                                key=f"select_auditoria_{registro['id']}",
+                                label_visibility="collapsed"
+                            )
 
-                    with c1:
+                            if marcado_auditoria:
+                                ids_selecionados_auditoria.append(registro["id"])
 
-                        st.caption(
-                            f"👤 {registro['nome']} • {registro['funcao']} • "
-                            f"✅ {registro['qtd_acertos']} / ❌ {registro['qtd_erros']} • "
-                            f"{registro['data_atividade'].strftime('%d/%m/%Y')}"
-                        )
+                        with c1:
 
-                    with c2:
+                            st.caption(
+                                f"👤 {registro['nome']} • {registro['funcao']} • "
+                                f"✅ {registro['qtd_acertos']} / ❌ {registro['qtd_erros']} • "
+                                f"{registro['data_atividade'].strftime('%d/%m/%Y')}"
+                            )
 
-                        with st.popover("❌", key=f"pop_del_auditoria_{registro['id']}"):
+                        with c2:
 
-                            confirmar_exclusao_auditoria(
-                                registro["id"],
-                                registro["nome"],
+                            with st.popover("❌", key=f"pop_del_auditoria_{registro['id']}"):
+
+                                confirmar_exclusao_auditoria(
+                                    registro["id"],
+                                    registro["nome"],
+                                    armazem_id_atual
+                                )
+
+                    if ids_selecionados_auditoria:
+
+                        st.write("")
+
+                        with st.popover(
+                            f"🗑️ Excluir {len(ids_selecionados_auditoria)} selecionado(s)",
+                            key="pop_excluir_lote_auditoria"
+                        ):
+
+                            confirmar_exclusao_multipla_auditoria(
+                                ids_selecionados_auditoria,
                                 armazem_id_atual
                             )
 
-                if ids_selecionados_auditoria:
+                    st.divider()
 
-                    st.write("")
+                    df_exportar_auditoria = pd.DataFrame(registros_auditoria)
 
-                    with st.popover(
-                        f"🗑️ Excluir {len(ids_selecionados_auditoria)} selecionado(s)",
-                        key="pop_excluir_lote_auditoria"
-                    ):
+                    buffer_excel_auditoria = io.BytesIO()
 
-                        confirmar_exclusao_multipla_auditoria(
-                            ids_selecionados_auditoria,
-                            armazem_id_atual
+                    with pd.ExcelWriter(buffer_excel_auditoria, engine="openpyxl") as writer:
+                        df_exportar_auditoria.to_excel(
+                            writer,
+                            index=False,
+                            sheet_name="Auditoria"
                         )
 
-                st.divider()
-
-                df_exportar_auditoria = pd.DataFrame(registros_auditoria)
-
-                buffer_excel_auditoria = io.BytesIO()
-
-                with pd.ExcelWriter(buffer_excel_auditoria, engine="openpyxl") as writer:
-                    df_exportar_auditoria.to_excel(
-                        writer,
-                        index=False,
-                        sheet_name="Auditoria"
+                    st.download_button(
+                        "📥 Exportar para Excel",
+                        data=buffer_excel_auditoria.getvalue(),
+                        file_name="auditoria_atividades_luxiz.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="btn_exportar_auditoria"
                     )
-
-                st.download_button(
-                    "📥 Exportar para Excel",
-                    data=buffer_excel_auditoria.getvalue(),
-                    file_name="auditoria_atividades_luxiz.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="btn_exportar_auditoria"
-                )
 
         _fragmento_auditoria()
 
@@ -1602,22 +1808,27 @@ def render():
 
                 else:
 
-                    for id_pessoa, nome_pessoa in pessoas_rotativo:
+                    with st.expander(
+                        f"👥 Ver pessoas cadastradas ({len(pessoas_rotativo)})",
+                        expanded=False
+                    ):
 
-                        c1, c2 = st.columns([8, 1])
+                        for id_pessoa, nome_pessoa in pessoas_rotativo:
 
-                        with c1:
-                            st.write(nome_pessoa)
+                            c1, c2 = st.columns([8, 1])
 
-                        with c2:
+                            with c1:
+                                st.write(nome_pessoa)
 
-                            with st.popover("❌", key=f"pop_del_pessoa_rot_{id_pessoa}"):
+                            with c2:
 
-                                confirmar_exclusao_pessoa_rotativo(
-                                    id_pessoa,
-                                    nome_pessoa,
-                                    armazem_id_atual
-                                )
+                                with st.popover("❌", key=f"pop_del_pessoa_rot_{id_pessoa}"):
+
+                                    confirmar_exclusao_pessoa_rotativo(
+                                        id_pessoa,
+                                        nome_pessoa,
+                                        armazem_id_atual
+                                    )
 
             # -----------------------------------------------
             # ATIVIDADES
@@ -1698,34 +1909,39 @@ def render():
 
                 else:
 
-                    for id_atividade, nome_atividade, tipo_atividade, pessoa_fixa_cadastrada in atividades_rotativo:
+                    with st.expander(
+                        f"🧹 Ver atividades cadastradas ({len(atividades_rotativo)})",
+                        expanded=False
+                    ):
 
-                        c1, c2 = st.columns([8, 1])
+                        for id_atividade, nome_atividade, tipo_atividade, pessoa_fixa_cadastrada in atividades_rotativo:
 
-                        with c1:
+                            c1, c2 = st.columns([8, 1])
 
-                            if tipo_atividade == "fixo":
+                            with c1:
 
-                                st.write(
-                                    f"📌 {nome_atividade} — fixo com "
-                                    f"{pessoa_fixa_cadastrada or '?'}"
-                                )
+                                if tipo_atividade == "fixo":
 
-                            else:
+                                    st.write(
+                                        f"📌 {nome_atividade} — fixo com "
+                                        f"{pessoa_fixa_cadastrada or '?'}"
+                                    )
 
-                                st.write(
-                                    f"🔄 {nome_atividade} — rotativo"
-                                )
+                                else:
 
-                        with c2:
+                                    st.write(
+                                        f"🔄 {nome_atividade} — rotativo"
+                                    )
 
-                            with st.popover("❌", key=f"pop_del_ativ_rot_{id_atividade}"):
+                            with c2:
 
-                                confirmar_exclusao_atividade_rotativo(
-                                    id_atividade,
-                                    nome_atividade,
-                                    armazem_id_atual
-                                )
+                                with st.popover("❌", key=f"pop_del_ativ_rot_{id_atividade}"):
+
+                                    confirmar_exclusao_atividade_rotativo(
+                                        id_atividade,
+                                        nome_atividade,
+                                        armazem_id_atual
+                                    )
 
         _fragmento_rotativo()
 
@@ -1797,58 +2013,63 @@ def render():
 
             if responsaveis_hidraulicos:
 
-                for item in responsaveis_hidraulicos:
+                with st.expander(
+                    f"🔧 Ver responsáveis por Hidráulicos ({len(responsaveis_hidraulicos)})",
+                    expanded=False
+                ):
 
-                    c1, c2, c3 = st.columns([7, 1, 1])
+                    for item in responsaveis_hidraulicos:
 
-                    with c1:
-                        st.write(
-                            f"**{item['nome']}** — Hidráulico {item['numero']}"
-                        )
+                        c1, c2, c3 = st.columns([7, 1, 1])
 
-                    with c2:
-
-                        with st.popover("✏️", key=f"pop_edit_resp_hid_{item['id']}"):
-
-                            st.markdown("**Editar responsável**")
-
-                            novo_nome = st.text_input(
-                                "Nome",
-                                value=item["nome"],
-                                key=f"edit_nome_resp_hid_{item['id']}"
+                        with c1:
+                            st.write(
+                                f"**{item['nome']}** — Hidráulico {item['numero']}"
                             )
 
-                            novo_numero = st.text_input(
-                                "Número do Hidráulico",
-                                value=item["numero"],
-                                key=f"edit_numero_resp_hid_{item['id']}"
-                            )
+                        with c2:
 
-                            if st.button(
-                                "💾 Salvar",
-                                use_container_width=True,
-                                key=f"salvar_edit_resp_hid_{item['id']}"
-                            ):
-                                with estilos.mostrar_processando("salvando alterações..."):
-                                    banco.editar_responsavel_hidraulico(
-                                        item["id"],
-                                        novo_nome,
-                                        novo_numero,
-                                        armazem_id_atual
-                                    )
-                                estilos.notificar_sucesso("responsável atualizado.")
-                                st.rerun(scope="fragment")
+                            with st.popover("✏️", key=f"pop_edit_resp_hid_{item['id']}"):
 
-                    with c3:
+                                st.markdown("**Editar responsável**")
 
-                        with st.popover("❌", key=f"pop_del_resp_hid_{item['id']}"):
+                                novo_nome = st.text_input(
+                                    "Nome",
+                                    value=item["nome"],
+                                    key=f"edit_nome_resp_hid_{item['id']}"
+                                )
 
-                            confirmar_exclusao_responsavel_hidraulico(
-                                item["id"],
-                                item["nome"],
-                                item["numero"],
-                                armazem_id_atual
-                            )
+                                novo_numero = st.text_input(
+                                    "Número do Hidráulico",
+                                    value=item["numero"],
+                                    key=f"edit_numero_resp_hid_{item['id']}"
+                                )
+
+                                if st.button(
+                                    "💾 Salvar",
+                                    use_container_width=True,
+                                    key=f"salvar_edit_resp_hid_{item['id']}"
+                                ):
+                                    with estilos.mostrar_processando("salvando alterações..."):
+                                        banco.editar_responsavel_hidraulico(
+                                            item["id"],
+                                            novo_nome,
+                                            novo_numero,
+                                            armazem_id_atual
+                                        )
+                                    estilos.notificar_sucesso("responsável atualizado.")
+                                    st.rerun(scope="fragment")
+
+                        with c3:
+
+                            with st.popover("❌", key=f"pop_del_resp_hid_{item['id']}"):
+
+                                confirmar_exclusao_responsavel_hidraulico(
+                                    item["id"],
+                                    item["nome"],
+                                    item["numero"],
+                                    armazem_id_atual
+                                )
 
             else:
 
@@ -1902,58 +2123,63 @@ def render():
 
             if responsaveis_carrinhos:
 
-                for item in responsaveis_carrinhos:
+                with st.expander(
+                    f"🛒 Ver responsáveis por Carrinhos ({len(responsaveis_carrinhos)})",
+                    expanded=False
+                ):
 
-                    c1, c2, c3 = st.columns([7, 1, 1])
+                    for item in responsaveis_carrinhos:
 
-                    with c1:
-                        st.write(
-                            f"**{item['nome']}** — Carrinho {item['numero']}"
-                        )
+                        c1, c2, c3 = st.columns([7, 1, 1])
 
-                    with c2:
-
-                        with st.popover("✏️", key=f"pop_edit_resp_car_{item['id']}"):
-
-                            st.markdown("**Editar responsável**")
-
-                            novo_nome = st.text_input(
-                                "Nome",
-                                value=item["nome"],
-                                key=f"edit_nome_resp_car_{item['id']}"
+                        with c1:
+                            st.write(
+                                f"**{item['nome']}** — Carrinho {item['numero']}"
                             )
 
-                            novo_numero = st.text_input(
-                                "Número do Carrinho",
-                                value=item["numero"],
-                                key=f"edit_numero_resp_car_{item['id']}"
-                            )
+                        with c2:
 
-                            if st.button(
-                                "💾 Salvar",
-                                use_container_width=True,
-                                key=f"salvar_edit_resp_car_{item['id']}"
-                            ):
-                                with estilos.mostrar_processando("salvando alterações..."):
-                                    banco.editar_responsavel_carrinho(
-                                        item["id"],
-                                        novo_nome,
-                                        novo_numero,
-                                        armazem_id_atual
-                                    )
-                                estilos.notificar_sucesso("responsável atualizado.")
-                                st.rerun(scope="fragment")
+                            with st.popover("✏️", key=f"pop_edit_resp_car_{item['id']}"):
 
-                    with c3:
+                                st.markdown("**Editar responsável**")
 
-                        with st.popover("❌", key=f"pop_del_resp_car_{item['id']}"):
+                                novo_nome = st.text_input(
+                                    "Nome",
+                                    value=item["nome"],
+                                    key=f"edit_nome_resp_car_{item['id']}"
+                                )
 
-                            confirmar_exclusao_responsavel_carrinho(
-                                item["id"],
-                                item["nome"],
-                                item["numero"],
-                                armazem_id_atual
-                            )
+                                novo_numero = st.text_input(
+                                    "Número do Carrinho",
+                                    value=item["numero"],
+                                    key=f"edit_numero_resp_car_{item['id']}"
+                                )
+
+                                if st.button(
+                                    "💾 Salvar",
+                                    use_container_width=True,
+                                    key=f"salvar_edit_resp_car_{item['id']}"
+                                ):
+                                    with estilos.mostrar_processando("salvando alterações..."):
+                                        banco.editar_responsavel_carrinho(
+                                            item["id"],
+                                            novo_nome,
+                                            novo_numero,
+                                            armazem_id_atual
+                                        )
+                                    estilos.notificar_sucesso("responsável atualizado.")
+                                    st.rerun(scope="fragment")
+
+                        with c3:
+
+                            with st.popover("❌", key=f"pop_del_resp_car_{item['id']}"):
+
+                                confirmar_exclusao_responsavel_carrinho(
+                                    item["id"],
+                                    item["nome"],
+                                    item["numero"],
+                                    armazem_id_atual
+                                )
 
             else:
 
@@ -2024,65 +2250,70 @@ def render():
 
             if carrinhos_fixos:
 
-                por_local = {}
+                with st.expander(
+                    f"📍 Ver carrinhos fixos por local ({len(carrinhos_fixos)})",
+                    expanded=False
+                ):
 
-                for item in carrinhos_fixos:
-                    por_local.setdefault(item["local"], []).append(item)
+                    por_local = {}
 
-                for local in sorted(por_local.keys()):
+                    for item in carrinhos_fixos:
+                        por_local.setdefault(item["local"], []).append(item)
 
-                    st.write(f"**📍 {local}**")
+                    for local in sorted(por_local.keys()):
 
-                    for item in por_local[local]:
+                        st.write(f"**📍 {local}**")
 
-                        c1, c2, c3 = st.columns([7, 1, 1])
+                        for item in por_local[local]:
 
-                        with c1:
-                            st.caption(f"Carrinho {item['numero']}")
+                            c1, c2, c3 = st.columns([7, 1, 1])
 
-                        with c2:
+                            with c1:
+                                st.caption(f"Carrinho {item['numero']}")
 
-                            with st.popover("✏️", key=f"pop_edit_carfixo_{item['id']}"):
+                            with c2:
 
-                                st.markdown("**Editar carrinho fixo**")
+                                with st.popover("✏️", key=f"pop_edit_carfixo_{item['id']}"):
 
-                                novo_local = st.text_input(
-                                    "Local",
-                                    value=item["local"],
-                                    key=f"edit_local_carfixo_{item['id']}"
-                                )
+                                    st.markdown("**Editar carrinho fixo**")
 
-                                novo_numero = st.text_input(
-                                    "Número do Carrinho",
-                                    value=item["numero"],
-                                    key=f"edit_numero_carfixo_{item['id']}"
-                                )
+                                    novo_local = st.text_input(
+                                        "Local",
+                                        value=item["local"],
+                                        key=f"edit_local_carfixo_{item['id']}"
+                                    )
 
-                                if st.button(
-                                    "💾 Salvar",
-                                    use_container_width=True,
-                                    key=f"salvar_edit_carfixo_{item['id']}"
-                                ):
-                                    with estilos.mostrar_processando("salvando alterações..."):
-                                        banco.editar_carrinho_fixo(
-                                            item["id"],
-                                            novo_local,
-                                            novo_numero,
-                                            armazem_id_atual
-                                        )
-                                    estilos.notificar_sucesso("carrinho fixo atualizado.")
-                                    st.rerun(scope="fragment")
+                                    novo_numero = st.text_input(
+                                        "Número do Carrinho",
+                                        value=item["numero"],
+                                        key=f"edit_numero_carfixo_{item['id']}"
+                                    )
 
-                        with c3:
+                                    if st.button(
+                                        "💾 Salvar",
+                                        use_container_width=True,
+                                        key=f"salvar_edit_carfixo_{item['id']}"
+                                    ):
+                                        with estilos.mostrar_processando("salvando alterações..."):
+                                            banco.editar_carrinho_fixo(
+                                                item["id"],
+                                                novo_local,
+                                                novo_numero,
+                                                armazem_id_atual
+                                            )
+                                        estilos.notificar_sucesso("carrinho fixo atualizado.")
+                                        st.rerun(scope="fragment")
 
-                            with st.popover("❌", key=f"pop_del_carfixo_{item['id']}"):
+                            with c3:
 
-                                confirmar_exclusao_carrinho_fixo(
-                                    item["id"],
-                                    item["local"],
-                                    item["numero"],
-                                    armazem_id_atual
-                                )
+                                with st.popover("❌", key=f"pop_del_carfixo_{item['id']}"):
+
+                                    confirmar_exclusao_carrinho_fixo(
+                                        item["id"],
+                                        item["local"],
+                                        item["numero"],
+                                        armazem_id_atual
+                                    )
 
             else:
 

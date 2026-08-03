@@ -1,11 +1,20 @@
 import os
 import secrets
+import time
 import streamlit as st
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
+
+
+# ==================================================
+# CONTROLE DE VERIFICAÇÃO DE CONEXÕES (ver conectar())
+# ==================================================
+
+_CONEXOES_VERIFICADAS = {}
+_VALIDADE_VERIFICACAO = 30
 
 
 # ==================================================
@@ -81,28 +90,45 @@ def _obter_pool():
 
 def conectar():
 
-    pool_obj = _obter_pool()
-    conn = pool_obj.getconn()
-
     # O Supabase (assim como bancos gerenciados em geral) derruba
     # conexões que ficam muito tempo ociosas no pool, mas o psycopg2
     # só percebe isso na hora de usar a conexão — daí o erro
-    # "server closed the connection unexpectedly". Testando com um
-    # SELECT 1 aqui, a gente descarta conexões mortas e pega outra
-    # do pool antes de repassar pro resto do código.
+    # "server closed the connection unexpectedly". Antes, o teste
+    # (SELECT 1) rodava em TODA chamada a conectar() — ou seja, toda
+    # ação do app pagava duas idas ao banco (uma pra testar, outra
+    # pra fazer o que interessa). Agora cada conexão só é retestada
+    # se já faz mais de _VALIDADE_VERIFICACAO segundos desde a
+    # última vez que ELA MESMA foi verificada (é por isso que a
+    # chave é id(conn): o pool reaproveita os mesmos objetos de
+    # conexão, então dá pra "lembrar" quais já foram checados
+    # recentemente sem precisar checar de novo a cada clique).
 
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
+    pool_obj = _obter_pool()
+    conn = pool_obj.getconn()
 
-    except Exception:
+    agora = time.monotonic()
+    chave_conexao = id(conn)
+    verificada_em = _CONEXOES_VERIFICADAS.get(chave_conexao, 0)
+
+    if agora - verificada_em > _VALIDADE_VERIFICACAO:
 
         try:
-            pool_obj.putconn(conn, close=True)
-        except Exception:
-            pass
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
 
-        conn = pool_obj.getconn()
+            _CONEXOES_VERIFICADAS[chave_conexao] = agora
+
+        except Exception:
+
+            _CONEXOES_VERIFICADAS.pop(chave_conexao, None)
+
+            try:
+                pool_obj.putconn(conn, close=True)
+            except Exception:
+                pass
+
+            conn = pool_obj.getconn()
+            _CONEXOES_VERIFICADAS[id(conn)] = agora
 
     return conn
 
@@ -171,6 +197,30 @@ def _garantir_schema():
         data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
+    # ==============================
+    # REMANEJAMENTO AGENDADO (por horário/dia da semana)
+    # ==============================
+    # Itens que entram e saem do painel sozinhos, de acordo com o
+    # horário e os dias da semana configurados — sem precisar ser
+    # criados/apagados na mão. dias_semana usa a convenção do Python
+    # (date.weekday()): 0=Segunda ... 6=Domingo.
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS remanejamento_agendado (
+        id BIGSERIAL PRIMARY KEY,
+        armazem_id BIGINT NOT NULL REFERENCES armazens(id),
+        item TEXT NOT NULL,
+        prioridade TEXT DEFAULT 'Normal',
+        hora_inicio TIME NOT NULL,
+        hora_fim TIME NOT NULL,
+        dias_semana INTEGER[] NOT NULL,
+        criado_por TEXT,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reman_agendado_armazem ON remanejamento_agendado (armazem_id)")
 
     # ==============================
     # SAC
@@ -1576,6 +1626,114 @@ def ler_historico_remanejamento(
 
     return dados
 
+
+# ==================================================
+# REMANEJAMENTO AGENDADO (por horário/dia da semana)
+# ==================================================
+
+@st.cache_data(ttl=30)
+def ler_remanejamentos_agendados(armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT
+        id,
+        item,
+        prioridade,
+        hora_inicio,
+        hora_fim,
+        dias_semana,
+        criado_por
+    FROM remanejamento_agendado
+    WHERE armazem_id = %s
+    ORDER BY hora_inicio, item
+    """, (armazem_id,))
+
+    dados = []
+
+    for row in cursor.fetchall():
+
+        dados.append({
+            "id": row[0],
+            "nome": row[1],
+            "prioridade": row[2],
+            "hora_inicio": row[3],
+            "hora_fim": row[4],
+            "dias_semana": row[5] or [],
+            "criado_por": row[6]
+        })
+
+    liberar(conn)
+
+    return dados
+
+
+def criar_remanejamento_agendado(
+    item,
+    prioridade,
+    hora_inicio,
+    hora_fim,
+    dias_semana,
+    armazem_id,
+    usuario=None
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO remanejamento_agendado
+    (
+        item,
+        prioridade,
+        hora_inicio,
+        hora_fim,
+        dias_semana,
+        criado_por,
+        armazem_id
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (
+        item,
+        prioridade,
+        hora_inicio,
+        hora_fim,
+        dias_semana,
+        usuario,
+        armazem_id
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_remanejamentos_agendados.clear()
+
+
+def excluir_remanejamento_agendado(
+    id_item,
+    armazem_id
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    DELETE FROM remanejamento_agendado
+    WHERE id = %s
+    AND armazem_id = %s
+    """, (
+        id_item,
+        armazem_id
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+    ler_remanejamentos_agendados.clear()
+
+
 # ==================================================
 # SAC
 # ==================================================
@@ -2194,6 +2352,23 @@ def _retornar_manutencao_checklist(tabela, id_registro, usuario, armazem_id):
     liberar(conn)
 
 
+def _excluir_checklist(tabela, id_registro, armazem_id):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+    DELETE FROM {tabela}
+    WHERE id = %s
+    AND armazem_id = %s
+    """, (
+        id_registro, armazem_id
+    ))
+
+    conn.commit()
+    liberar(conn)
+
+
 def adicionar_checklist_hidraulico(nome, numero, data_checklist, status, descricao, armazem_id):
 
     _adicionar_checklist(
@@ -2233,6 +2408,15 @@ def retornar_manutencao_hidraulico(id_registro, usuario, armazem_id):
 
     _retornar_manutencao_checklist(
         "checklist_hidraulicos", id_registro, usuario, armazem_id
+    )
+
+    ler_checklist_hidraulicos.clear()
+
+
+def excluir_checklist_hidraulico(id_registro, armazem_id):
+
+    _excluir_checklist(
+        "checklist_hidraulicos", id_registro, armazem_id
     )
 
     ler_checklist_hidraulicos.clear()
@@ -2282,6 +2466,15 @@ def retornar_manutencao_carrinho(id_registro, usuario, armazem_id):
     ler_checklist_carrinhos.clear()
 
 
+def excluir_checklist_carrinho(id_registro, armazem_id):
+
+    _excluir_checklist(
+        "checklist_carrinhos", id_registro, armazem_id
+    )
+
+    ler_checklist_carrinhos.clear()
+
+
 def adicionar_checklist_empilhadeira(nome, numero, data_checklist, status, descricao, armazem_id):
 
     _adicionar_checklist(
@@ -2321,6 +2514,15 @@ def retornar_manutencao_empilhadeira(id_registro, usuario, armazem_id):
 
     _retornar_manutencao_checklist(
         "checklist_empilhadeiras", id_registro, usuario, armazem_id
+    )
+
+    ler_checklist_empilhadeiras.clear()
+
+
+def excluir_checklist_empilhadeira(id_registro, armazem_id):
+
+    _excluir_checklist(
+        "checklist_empilhadeiras", id_registro, armazem_id
     )
 
     ler_checklist_empilhadeiras.clear()
@@ -2389,6 +2591,15 @@ def editar_checklist_pigmentacao(id_registro, nome, data_checklist, status, desc
 
     conn.commit()
     liberar(conn)
+
+    ler_checklist_pigmentacao.clear()
+
+
+def excluir_checklist_pigmentacao(id_registro, armazem_id):
+
+    _excluir_checklist(
+        "checklist_pigmentacao", id_registro, armazem_id
+    )
 
     ler_checklist_pigmentacao.clear()
 

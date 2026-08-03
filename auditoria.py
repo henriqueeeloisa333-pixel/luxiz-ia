@@ -37,7 +37,7 @@ def definir_visual(aproveitamento, total_pessoa):
     if not total_pessoa:
 
         return (
-            "rgba(148,163,184,0.12)",
+            estilos.cor_fundo_cartao("rgba(148,163,184,0.12)"),
             "#64748b",
             "⏳ Sem dados"
         )
@@ -45,7 +45,7 @@ def definir_visual(aproveitamento, total_pessoa):
     if aproveitamento >= 90:
 
         return (
-            "rgba(59,130,246,0.16)",
+            estilos.cor_fundo_cartao("rgba(59,130,246,0.16)"),
             "#3b82f6",
             "🏆 Excelência"
         )
@@ -53,7 +53,7 @@ def definir_visual(aproveitamento, total_pessoa):
     if aproveitamento >= 75:
 
         return (
-            "rgba(34,197,94,0.16)",
+            estilos.cor_fundo_cartao("rgba(34,197,94,0.16)"),
             "#22c55e",
             "✅ Bom desempenho"
         )
@@ -61,13 +61,13 @@ def definir_visual(aproveitamento, total_pessoa):
     if aproveitamento >= 50:
 
         return (
-            "rgba(245,158,11,0.16)",
+            estilos.cor_fundo_cartao("rgba(245,158,11,0.16)"),
             "#f59e0b",
             "⚠️ Atenção"
         )
 
     return (
-        "rgba(220,38,38,0.16)",
+        estilos.cor_fundo_cartao("rgba(220,38,38,0.16)"),
         "#dc2626",
         "🚨 Crítico"
     )

@@ -16,6 +16,7 @@ def renderizar_checklist(
     nome_arquivo_excel,
     armazem_id,
     funcao_editar=None,
+    funcao_excluir=None,
     funcao_enviar_manutencao=None,
     funcao_retornar_manutencao=None
 ):
@@ -122,31 +123,47 @@ def renderizar_checklist(
 
     st.write("")
 
-    df = pd.DataFrame(registros)
+    # =====================================================
+    # REGISTROS PREENCHIDOS
+    # Tudo que já foi lançado (tabela, manutenção e exportação)
+    # fica guardado dentro deste campo, para a aba não crescer
+    # demais conforme os registros vão se acumulando.
+    # =====================================================
 
-    ids_registros = df["id"].tolist()
+    with st.expander(
+        f"📋 Ver registros preenchidos ({len(registros)})",
+        expanded=False
+    ):
 
-    df_exibir = df.rename(columns={
-        "nome": "Nome",
-        "numero": rotulo_numero,
-        "data_checklist": "Data",
-        "status": "Situação",
-        "descricao": "Descrição"
-    })[["Nome", rotulo_numero, "Data", "Situação", "Descrição"]]
+        df = pd.DataFrame(registros)
 
-    if funcao_editar:
+        ids_registros = df["id"].tolist()
 
-        st.caption(
-            "✏️ Clique em uma célula para editar. Depois de ajustar, "
-            "clique em **Salvar alterações**."
-        )
+        df_exibir = df.rename(columns={
+            "nome": "Nome",
+            "numero": rotulo_numero,
+            "data_checklist": "Data",
+            "status": "Situação",
+            "descricao": "Descrição"
+        })[["Nome", rotulo_numero, "Data", "Situação", "Descrição"]]
 
-        df_editado = st.data_editor(
-            df_exibir,
-            use_container_width=True,
-            hide_index=True,
-            key=f"editor_{prefixo_key}",
-            column_config={
+        if funcao_excluir:
+            df_exibir.insert(0, "🗑️ Excluir", False)
+
+        if funcao_editar:
+
+            legenda_edicao = (
+                "✏️ Clique em uma célula para editar."
+            )
+
+            if funcao_excluir:
+                legenda_edicao += " Marque **🗑️ Excluir** para remover um registro."
+
+            legenda_edicao += " Depois de ajustar, clique em **Salvar alterações**."
+
+            st.caption(legenda_edicao)
+
+            column_config = {
                 "Situação": st.column_config.SelectboxColumn(
                     options=["Conforme", "Não Conforme"],
                     required=True
@@ -155,231 +172,268 @@ def renderizar_checklist(
                     format="DD/MM/YYYY"
                 )
             }
-        )
 
-        if st.button(
-            "💾 Salvar alterações",
-            key=f"salvar_{prefixo_key}"
-        ):
+            if funcao_excluir:
+                column_config["🗑️ Excluir"] = st.column_config.CheckboxColumn(
+                    help="Marque para excluir este registro ao salvar"
+                )
 
-            houve_alteracao = False
+            df_editado = st.data_editor(
+                df_exibir,
+                use_container_width=True,
+                hide_index=True,
+                key=f"editor_{prefixo_key}",
+                column_config=column_config
+            )
 
-            for posicao, id_registro in enumerate(ids_registros):
+            if st.button(
+                "💾 Salvar alterações",
+                key=f"salvar_{prefixo_key}"
+            ):
 
-                linha_original = df_exibir.iloc[posicao]
-                linha_editada = df_editado.iloc[posicao]
+                colunas_comparar = [
+                    coluna for coluna in df_exibir.columns
+                    if coluna != "🗑️ Excluir"
+                ]
 
-                if not linha_original.equals(linha_editada):
+                ids_para_excluir = []
+                houve_alteracao = False
 
-                    with estilos.mostrar_processando("salvando alterações..."):
-                        funcao_editar(
-                            id_registro,
-                            linha_editada["Nome"],
-                            linha_editada[rotulo_numero],
-                            linha_editada["Data"],
-                            linha_editada["Situação"],
-                            linha_editada["Descrição"],
-                            armazem_id
-                        )
+                for posicao, id_registro in enumerate(ids_registros):
 
-                    houve_alteracao = True
+                    linha_editada = df_editado.iloc[posicao]
 
-            if houve_alteracao:
+                    if funcao_excluir and bool(linha_editada["🗑️ Excluir"]):
 
-                estilos.notificar_sucesso("alterações salvas com sucesso.")
-                st.rerun(scope="fragment")
+                        ids_para_excluir.append(id_registro)
+                        continue
 
-            else:
+                    linha_original = df_exibir.iloc[posicao]
 
-                st.info("Nenhuma alteração encontrada para salvar.")
+                    if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
 
-    else:
-
-        st.dataframe(
-            df_exibir,
-            use_container_width=True,
-            hide_index=True
-        )
-
-    # =====================================================
-    # MANUTENÇÃO
-    # =====================================================
-    # A visibilidade de "quais itens estão em manutenção" é liberada
-    # para todos que têm acesso ao checklist. Só os comandos que
-    # alteram o estado (enviar para manutenção / retornar) continuam
-    # restritos ao Fundador e à Gestão.
-
-    usuario_atual = st.session_state.get("usuario", "")
-
-    admin_master = (
-        usuario_atual.startswith("Fundador.")
-        or usuario_atual.startswith("Gestao.")
-    )
-
-    if funcao_enviar_manutencao and funcao_retornar_manutencao:
-
-        itens_em_manutencao = [
-            r for r in registros
-            if r.get("em_manutencao")
-        ]
-
-        if itens_em_manutencao:
-
-            st.write("")
-
-            st.markdown("##### 🚧 Em Manutenção")
-
-            for item in itens_em_manutencao:
-
-                with st.container(border=True):
-
-                    if admin_master:
-                        col_texto, col_botao = st.columns([5, 1])
-                    else:
-                        col_texto = st.container()
-
-                    with col_texto:
-
-                        st.markdown(
-                            f"**{item['nome']}** — {rotulo_numero}: {item['numero']}"
-                        )
-
-                        if item.get("manutencao_motivo"):
-
-                            st.caption(f"Motivo: {item['manutencao_motivo']}")
-
-                        if item.get("manutencao_enviado_em"):
-
-                            enviado_em_local = estilos.horario_local(
-                                item["manutencao_enviado_em"]
+                        with estilos.mostrar_processando("salvando alterações..."):
+                            funcao_editar(
+                                id_registro,
+                                linha_editada["Nome"],
+                                linha_editada[rotulo_numero],
+                                linha_editada["Data"],
+                                linha_editada["Situação"],
+                                linha_editada["Descrição"],
+                                armazem_id
                             )
+
+                        houve_alteracao = True
+
+                if ids_para_excluir:
+
+                    with estilos.mostrar_processando("excluindo registro(s)..."):
+                        for id_excluir in ids_para_excluir:
+                            funcao_excluir(id_excluir, armazem_id)
+
+                    estilos.notificar_sucesso(
+                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
+                    )
+                    st.rerun(scope="fragment")
+
+                elif houve_alteracao:
+
+                    estilos.notificar_sucesso("alterações salvas com sucesso.")
+                    st.rerun(scope="fragment")
+
+                else:
+
+                    st.info("Nenhuma alteração encontrada para salvar.")
+
+        else:
+
+            st.dataframe(
+                df_exibir,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        # =====================================================
+        # MANUTENÇÃO
+        # =====================================================
+        # A visibilidade de "quais itens estão em manutenção" é liberada
+        # para todos que têm acesso ao checklist. Só os comandos que
+        # alteram o estado (enviar para manutenção / retornar) continuam
+        # restritos ao Fundador e à Gestão.
+
+        usuario_atual = st.session_state.get("usuario", "")
+
+        admin_master = (
+            usuario_atual.startswith("Fundador.")
+            or usuario_atual.startswith("Gestao.")
+        )
+
+        if funcao_enviar_manutencao and funcao_retornar_manutencao:
+
+            itens_em_manutencao = [
+                r for r in registros
+                if r.get("em_manutencao")
+            ]
+
+            if itens_em_manutencao:
+
+                st.write("")
+
+                st.markdown("##### 🚧 Em Manutenção")
+
+                for item in itens_em_manutencao:
+
+                    with st.container(border=True):
+
+                        if admin_master:
+                            col_texto, col_botao = st.columns([5, 1])
+                        else:
+                            col_texto = st.container()
+
+                        with col_texto:
+
+                            st.markdown(
+                                f"**{item['nome']}** — {rotulo_numero}: {item['numero']}"
+                            )
+
+                            if item.get("manutencao_motivo"):
+
+                                st.caption(f"Motivo: {item['manutencao_motivo']}")
+
+                            if item.get("manutencao_enviado_em"):
+
+                                enviado_em_local = estilos.horario_local(
+                                    item["manutencao_enviado_em"]
+                                )
+
+                                st.caption(
+                                    f"Enviado por {item.get('manutencao_enviado_por') or '—'} "
+                                    f"em {enviado_em_local.strftime('%d/%m/%Y %H:%M')}"
+                                )
+
+                        if admin_master:
+
+                            with col_botao:
+
+                                if st.button(
+                                    "↩️",
+                                    key=f"retornar_manut_{prefixo_key}_{item['id']}",
+                                    help=(
+                                        f"Marcar {item['nome']} ({rotulo_numero} "
+                                        f"{item['numero']}) como retornado da manutenção"
+                                    )
+                                ):
+
+                                    with estilos.mostrar_processando("registrando retorno..."):
+                                        funcao_retornar_manutencao(
+                                            item["id"],
+                                            usuario_atual,
+                                            armazem_id
+                                        )
+
+                                    estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
+                                    st.rerun(scope="fragment")
+
+            if admin_master:
+
+                itens_nao_conformes = [
+                    r for r in registros
+                    if r["status"] == "Não Conforme" and not r.get("em_manutencao")
+                ]
+
+                if itens_nao_conformes:
+
+                    st.write("")
+
+                    st.markdown("##### 🔧 Enviar para manutenção")
+
+                    for item in itens_nao_conformes:
+
+                        col_texto, col_botao = st.columns([5, 1])
+
+                        with col_texto:
 
                             st.caption(
-                                f"Enviado por {item.get('manutencao_enviado_por') or '—'} "
-                                f"em {enviado_em_local.strftime('%d/%m/%Y %H:%M')}"
+                                f"**{item['nome']}** — {rotulo_numero}: {item['numero']} "
+                                f"({item['data_checklist'].strftime('%d/%m/%Y')})"
                             )
-
-                    if admin_master:
 
                         with col_botao:
 
                             if st.button(
-                                "↩️",
-                                key=f"retornar_manut_{prefixo_key}_{item['id']}",
+                                "🔧",
+                                key=f"enviar_manut_{prefixo_key}_{item['id']}",
                                 help=(
-                                    f"Marcar {item['nome']} ({rotulo_numero} "
-                                    f"{item['numero']}) como retornado da manutenção"
+                                    f"Enviar {item['nome']} ({rotulo_numero} "
+                                    f"{item['numero']}) para manutenção"
                                 )
                             ):
 
-                                with estilos.mostrar_processando("registrando retorno..."):
-                                    funcao_retornar_manutencao(
+                                with estilos.mostrar_processando("enviando para manutenção..."):
+                                    funcao_enviar_manutencao(
                                         item["id"],
+                                        item.get("descricao"),
                                         usuario_atual,
                                         armazem_id
                                     )
 
-                                estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
+                                estilos.notificar_sucesso(f"🔧 {item['nome']} enviado para manutenção.")
                                 st.rerun(scope="fragment")
 
-        if admin_master:
+        st.write("")
 
-            itens_nao_conformes = [
-                r for r in registros
-                if r["status"] == "Não Conforme" and not r.get("em_manutencao")
-            ]
+        def _formatar_evento_manutencao(pessoa, momento):
 
-            if itens_nao_conformes:
+            if not momento:
+                return ""
 
-                st.write("")
+            momento_local = estilos.horario_local(momento)
 
-                st.markdown("##### 🔧 Enviar para manutenção")
+            texto = momento_local.strftime("%d/%m/%Y %H:%M")
 
-                for item in itens_nao_conformes:
+            if pessoa:
+                texto += f" ({pessoa})"
 
-                    col_texto, col_botao = st.columns([5, 1])
+            return texto
 
-                    with col_texto:
-
-                        st.caption(
-                            f"**{item['nome']}** — {rotulo_numero}: {item['numero']} "
-                            f"({item['data_checklist'].strftime('%d/%m/%Y')})"
-                        )
-
-                    with col_botao:
-
-                        if st.button(
-                            "🔧",
-                            key=f"enviar_manut_{prefixo_key}_{item['id']}",
-                            help=(
-                                f"Enviar {item['nome']} ({rotulo_numero} "
-                                f"{item['numero']}) para manutenção"
-                            )
-                        ):
-
-                            with estilos.mostrar_processando("enviando para manutenção..."):
-                                funcao_enviar_manutencao(
-                                    item["id"],
-                                    item.get("descricao"),
-                                    usuario_atual,
-                                    armazem_id
-                                )
-
-                            estilos.notificar_sucesso(f"🔧 {item['nome']} enviado para manutenção.")
-                            st.rerun(scope="fragment")
-
-    st.write("")
-
-    def _formatar_evento_manutencao(pessoa, momento):
-
-        if not momento:
-            return ""
-
-        momento_local = estilos.horario_local(momento)
-
-        texto = momento_local.strftime("%d/%m/%Y %H:%M")
-
-        if pessoa:
-            texto += f" ({pessoa})"
-
-        return texto
-
-    df_exportar = df_exibir.copy()
-
-    if funcao_enviar_manutencao:
-
-        df_exportar["Enviado p/ Manutenção"] = [
-            _formatar_evento_manutencao(
-                registro.get("manutencao_enviado_por"),
-                registro.get("manutencao_enviado_em")
-            )
-            for registro in registros
-        ]
-
-        df_exportar["Retornado da Manutenção"] = [
-            _formatar_evento_manutencao(
-                registro.get("manutencao_retornado_por"),
-                registro.get("manutencao_retornado_em")
-            )
-            for registro in registros
-        ]
-
-    buffer_excel = io.BytesIO()
-
-    with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
-        df_exportar.to_excel(
-            writer,
-            index=False,
-            sheet_name=titulo[:31]
+        df_exportar = df_exibir.drop(
+            columns=["🗑️ Excluir"], errors="ignore"
         )
 
-    st.download_button(
-        "📥 Exportar para Excel",
-        data=buffer_excel.getvalue(),
-        file_name=nome_arquivo_excel,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=f"exportar_{prefixo_key}"
-    )
+        if funcao_enviar_manutencao:
+
+            df_exportar["Enviado p/ Manutenção"] = [
+                _formatar_evento_manutencao(
+                    registro.get("manutencao_enviado_por"),
+                    registro.get("manutencao_enviado_em")
+                )
+                for registro in registros
+            ]
+
+            df_exportar["Retornado da Manutenção"] = [
+                _formatar_evento_manutencao(
+                    registro.get("manutencao_retornado_por"),
+                    registro.get("manutencao_retornado_em")
+                )
+                for registro in registros
+            ]
+
+        buffer_excel = io.BytesIO()
+
+        with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
+            df_exportar.to_excel(
+                writer,
+                index=False,
+                sheet_name=titulo[:31]
+            )
+
+        st.download_button(
+            "📥 Exportar para Excel",
+            data=buffer_excel.getvalue(),
+            file_name=nome_arquivo_excel,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"exportar_{prefixo_key}"
+        )
 
 
 def renderizar_checklist_pigmentacao(
@@ -388,7 +442,8 @@ def renderizar_checklist_pigmentacao(
     prefixo_key,
     nome_arquivo_excel,
     armazem_id,
-    funcao_editar=None
+    funcao_editar=None,
+    funcao_excluir=None
 ):
 
     titulo = "Checklist de Pigmentação"
@@ -485,30 +540,45 @@ def renderizar_checklist_pigmentacao(
 
     st.write("")
 
-    df = pd.DataFrame(registros)
+    # =====================================================
+    # REGISTROS PREENCHIDOS
+    # Guardados dentro deste campo para a aba não crescer
+    # demais conforme os registros vão se acumulando.
+    # =====================================================
 
-    ids_registros = df["id"].tolist()
+    with st.expander(
+        f"📋 Ver registros preenchidos ({len(registros)})",
+        expanded=False
+    ):
 
-    df_exibir = df.rename(columns={
-        "nome": "Nome",
-        "data_checklist": "Data",
-        "status": "Situação",
-        "descricao": "Descrição"
-    })[["Nome", "Data", "Situação", "Descrição"]]
+        df = pd.DataFrame(registros)
 
-    if funcao_editar:
+        ids_registros = df["id"].tolist()
 
-        st.caption(
-            "✏️ Clique em uma célula para editar. Depois de ajustar, "
-            "clique em **Salvar alterações**."
-        )
+        df_exibir = df.rename(columns={
+            "nome": "Nome",
+            "data_checklist": "Data",
+            "status": "Situação",
+            "descricao": "Descrição"
+        })[["Nome", "Data", "Situação", "Descrição"]]
 
-        df_editado = st.data_editor(
-            df_exibir,
-            use_container_width=True,
-            hide_index=True,
-            key=f"editor_{prefixo_key}",
-            column_config={
+        if funcao_excluir:
+            df_exibir.insert(0, "🗑️ Excluir", False)
+
+        if funcao_editar:
+
+            legenda_edicao = (
+                "✏️ Clique em uma célula para editar."
+            )
+
+            if funcao_excluir:
+                legenda_edicao += " Marque **🗑️ Excluir** para remover um registro."
+
+            legenda_edicao += " Depois de ajustar, clique em **Salvar alterações**."
+
+            st.caption(legenda_edicao)
+
+            column_config = {
                 "Situação": st.column_config.SelectboxColumn(
                     options=["Conforme", "Não Conforme"],
                     required=True
@@ -517,69 +587,108 @@ def renderizar_checklist_pigmentacao(
                     format="DD/MM/YYYY"
                 )
             }
+
+            if funcao_excluir:
+                column_config["🗑️ Excluir"] = st.column_config.CheckboxColumn(
+                    help="Marque para excluir este registro ao salvar"
+                )
+
+            df_editado = st.data_editor(
+                df_exibir,
+                use_container_width=True,
+                hide_index=True,
+                key=f"editor_{prefixo_key}",
+                column_config=column_config
+            )
+
+            if st.button(
+                "💾 Salvar alterações",
+                key=f"salvar_{prefixo_key}"
+            ):
+
+                colunas_comparar = [
+                    coluna for coluna in df_exibir.columns
+                    if coluna != "🗑️ Excluir"
+                ]
+
+                ids_para_excluir = []
+                houve_alteracao = False
+
+                for posicao, id_registro in enumerate(ids_registros):
+
+                    linha_editada = df_editado.iloc[posicao]
+
+                    if funcao_excluir and bool(linha_editada["🗑️ Excluir"]):
+
+                        ids_para_excluir.append(id_registro)
+                        continue
+
+                    linha_original = df_exibir.iloc[posicao]
+
+                    if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
+
+                        with estilos.mostrar_processando("salvando alterações..."):
+                            funcao_editar(
+                                id_registro,
+                                linha_editada["Nome"],
+                                linha_editada["Data"],
+                                linha_editada["Situação"],
+                                linha_editada["Descrição"],
+                                armazem_id
+                            )
+
+                        houve_alteracao = True
+
+                if ids_para_excluir:
+
+                    with estilos.mostrar_processando("excluindo registro(s)..."):
+                        for id_excluir in ids_para_excluir:
+                            funcao_excluir(id_excluir, armazem_id)
+
+                    estilos.notificar_sucesso(
+                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
+                    )
+                    st.rerun(scope="fragment")
+
+                elif houve_alteracao:
+
+                    estilos.notificar_sucesso("alterações salvas com sucesso.")
+                    st.rerun(scope="fragment")
+
+                else:
+
+                    st.info("Nenhuma alteração encontrada para salvar.")
+
+        else:
+
+            st.dataframe(
+                df_exibir,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        st.write("")
+
+        df_exportar = df_exibir.drop(
+            columns=["🗑️ Excluir"], errors="ignore"
         )
 
-        if st.button(
-            "💾 Salvar alterações",
-            key=f"salvar_{prefixo_key}"
-        ):
+        buffer_excel = io.BytesIO()
 
-            houve_alteracao = False
+        with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
+            df_exportar.to_excel(
+                writer,
+                index=False,
+                sheet_name=titulo[:31]
+            )
 
-            for posicao, id_registro in enumerate(ids_registros):
-
-                linha_original = df_exibir.iloc[posicao]
-                linha_editada = df_editado.iloc[posicao]
-
-                if not linha_original.equals(linha_editada):
-
-                    with estilos.mostrar_processando("salvando alterações..."):
-                        funcao_editar(
-                            id_registro,
-                            linha_editada["Nome"],
-                            linha_editada["Data"],
-                            linha_editada["Situação"],
-                            linha_editada["Descrição"],
-                            armazem_id
-                        )
-
-                    houve_alteracao = True
-
-            if houve_alteracao:
-
-                estilos.notificar_sucesso("alterações salvas com sucesso.")
-                st.rerun(scope="fragment")
-
-            else:
-
-                st.info("Nenhuma alteração encontrada para salvar.")
-
-    else:
-
-        st.dataframe(
-            df_exibir,
-            use_container_width=True,
-            hide_index=True
+        st.download_button(
+            "📥 Exportar para Excel",
+            data=buffer_excel.getvalue(),
+            file_name=nome_arquivo_excel,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"exportar_{prefixo_key}"
         )
-
-    st.write("")
-
-    buffer_excel = io.BytesIO()
-
-    with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
-        df_exibir.to_excel(
-            writer,
-            index=False,
-            sheet_name=titulo[:31]
-        )
-
-    st.download_button(
-        "📥 Exportar para Excel",
-        data=buffer_excel.getvalue(),
-        file_name=nome_arquivo_excel,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=f"exportar_{prefixo_key}"
-    )
 
 
 def render():
@@ -619,6 +728,7 @@ def render():
             nome_arquivo_excel="checklist_hidraulicos_luxiz.xlsx",
             armazem_id=armazem_id_atual,
             funcao_editar=banco.editar_checklist_hidraulico,
+            funcao_excluir=banco.excluir_checklist_hidraulico,
             funcao_enviar_manutencao=banco.enviar_manutencao_hidraulico,
             funcao_retornar_manutencao=banco.retornar_manutencao_hidraulico
         )
@@ -635,6 +745,7 @@ def render():
             nome_arquivo_excel="checklist_carrinhos_luxiz.xlsx",
             armazem_id=armazem_id_atual,
             funcao_editar=banco.editar_checklist_carrinho,
+            funcao_excluir=banco.excluir_checklist_carrinho,
             funcao_enviar_manutencao=banco.enviar_manutencao_carrinho,
             funcao_retornar_manutencao=banco.retornar_manutencao_carrinho
         )
@@ -651,6 +762,7 @@ def render():
             nome_arquivo_excel="checklist_empilhadeiras_luxiz.xlsx",
             armazem_id=armazem_id_atual,
             funcao_editar=banco.editar_checklist_empilhadeira,
+            funcao_excluir=banco.excluir_checklist_empilhadeira,
             funcao_enviar_manutencao=banco.enviar_manutencao_empilhadeira,
             funcao_retornar_manutencao=banco.retornar_manutencao_empilhadeira
         )
@@ -663,7 +775,8 @@ def render():
             prefixo_key="pigmentacao",
             nome_arquivo_excel="checklist_pigmentacao_luxiz.xlsx",
             armazem_id=armazem_id_atual,
-            funcao_editar=banco.editar_checklist_pigmentacao
+            funcao_editar=banco.editar_checklist_pigmentacao,
+            funcao_excluir=banco.excluir_checklist_pigmentacao
         )
 
     st.divider()

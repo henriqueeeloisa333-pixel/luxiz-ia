@@ -43,6 +43,40 @@ def agora_local():
 
 
 # =====================================================
+# INTENSIDADE DE COR DOS CARTÕES (por tema)
+# =====================================================
+# As cores dos cartões (rgba de fundo + borda em hex) foram
+# pensadas pro tema escuro — nesse fundo bem escuro, uma opacidade
+# baixa (tipo 0.14/0.16) já contrasta bem. No tema claro, a mesma
+# opacidade em cima de fundo branco quase some. Esta função pega
+# o rgba "original" (pensado pro escuro) e, só quando o tema atual
+# for "claro", aumenta a opacidade — no escuro devolve sem mexer.
+# Uso: cor_fundo = estilos.cor_fundo_cartao("rgba(59,130,246,0.16)")
+
+import re as _re
+
+
+def cor_fundo_cartao(cor_fundo_original, multiplicador=1.8, teto=0.42):
+
+    if st.session_state.get("tema") != "claro":
+        return cor_fundo_original
+
+    correspondencia = _re.match(
+        r"rgba\((\d+),(\d+),(\d+),([\d.]+)\)",
+        cor_fundo_original
+    )
+
+    if not correspondencia:
+        return cor_fundo_original
+
+    r, g, b, alfa = correspondencia.groups()
+
+    nova_alfa = min(float(alfa) * multiplicador, teto)
+
+    return f"rgba({r},{g},{b},{nova_alfa:.2f})"
+
+
+# =====================================================
 # CSS COMPARTILHADO
 # (botões, inputs, sidebar, KPIs, tabelas, abas, rodapé,
 # logo — igual em qualquer tela, muda só por tema)
@@ -144,6 +178,59 @@ def _css_base(tema):
         .stTabs [aria-selected="true"]{
             color:#0284c7 !important;
         }
+
+        /* =====================================================
+           WIDGETS NATIVOS (select, multiselect, checkbox, toggle,
+           calendário do date_input, popover) — o config.toml fixa
+           theme.base="dark" pro Streamlit (é global, vale pra
+           todo mundo, não dá pra trocar por sessão), então esses
+           componentes NÃO seguem sozinhos o toggle claro/escuro
+           do Luxiz IA. Sem este bloco, eles ficam sempre com a
+           cara do tema escuro do Streamlit, mesmo com o app no
+           tema claro — é esse o bug do "campo preto".
+           ===================================================== */
+
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div{
+            background:rgba(0,0,0,0.03) !important;
+            border-color:rgba(0,0,0,0.12) !important;
+            color:#111827 !important;
+        }
+
+        div[data-baseweb="select"] span,
+        div[data-baseweb="select"] div{
+            color:#111827 !important;
+        }
+
+        div[data-baseweb="select"] svg{
+            fill:#111827 !important;
+        }
+
+        ul[data-baseweb="menu"],
+        div[data-baseweb="popover"]{
+            background:#ffffff !important;
+        }
+
+        li[data-baseweb="menu-item"]{
+            background:#ffffff !important;
+            color:#111827 !important;
+        }
+
+        li[data-baseweb="menu-item"]:hover{
+            background:rgba(2,132,199,.12) !important;
+        }
+
+        label[data-baseweb="checkbox"] span,
+        label[data-baseweb="radio"] span{
+            color:#111827 !important;
+        }
+
+        div[data-baseweb="calendar"],
+        div[data-baseweb="calendar"] *{
+            background:#ffffff !important;
+            color:#111827 !important;
+        }
+
 
         .luxiz-footer{
             text-align:center;
@@ -351,6 +438,52 @@ def _css_base(tema):
     .stTabs [aria-selected="true"]{
         color:#00c8ff !important;
     }
+
+    /* Mesma explicação do bloco claro, espelhada — garante o
+       inverso também (se um dia o config.toml mudar pra base
+       claro, esses widgets continuam obedecendo o toggle). */
+
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"] > div{
+        background:rgba(255,255,255,0.05) !important;
+        border-color:rgba(255,255,255,0.08) !important;
+        color:white !important;
+    }
+
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] div{
+        color:white !important;
+    }
+
+    div[data-baseweb="select"] svg{
+        fill:white !important;
+    }
+
+    ul[data-baseweb="menu"],
+    div[data-baseweb="popover"]{
+        background:#0b1220 !important;
+    }
+
+    li[data-baseweb="menu-item"]{
+        background:#0b1220 !important;
+        color:white !important;
+    }
+
+    li[data-baseweb="menu-item"]:hover{
+        background:rgba(0,200,255,.12) !important;
+    }
+
+    label[data-baseweb="checkbox"] span,
+    label[data-baseweb="radio"] span{
+        color:white !important;
+    }
+
+    div[data-baseweb="calendar"],
+    div[data-baseweb="calendar"] *{
+        background:#0b1220 !important;
+        color:white !important;
+    }
+
 
     .luxiz-footer{
         text-align:center;
@@ -728,8 +861,57 @@ def _css_fundo(tema, tela):
         </style>
         """
 
-    # Fundo sólido para o restante do app (Início, Dashboard,
-    # Remanejamento, SAC, Administrativo) — sem gradiente chamativo.
+    # Fundo suave para a tela Início — um efeito bem mais discreto que
+    # o do login (blobs de baixa opacidade, deslocamento lento), só
+    # pra dar vida à tela inicial sem chamar tanta atenção quanto o
+    # gradiente do login nem ficar chapado como o fundo sólido do app.
+
+    if tela == "inicio":
+
+        if tema == "claro":
+
+            return """
+            <style>
+            @keyframes luxizBgSuave{
+                0%,100%{ background-position:0% 0%,100% 0%,100% 100%,0% 0%; }
+                50%{ background-position:8% 6%,92% 4%,90% 94%,0% 0%; }
+            }
+
+            .stApp{
+                background:
+                    radial-gradient(circle at 12% 18%, rgba(99,102,241,.07) 0%, transparent 42%),
+                    radial-gradient(circle at 88% 12%, rgba(14,165,233,.07) 0%, transparent 42%),
+                    radial-gradient(circle at 78% 92%, rgba(168,85,247,.06) 0%, transparent 38%),
+                    #f8fafc;
+                background-size:170% 170%,170% 170%,170% 170%,100% 100%;
+                animation:luxizBgSuave 30s ease-in-out infinite;
+                color:#111827;
+            }
+            </style>
+            """
+
+        return """
+        <style>
+        @keyframes luxizBgSuave{
+            0%,100%{ background-position:0% 0%,100% 0%,100% 100%,0% 0%; }
+            50%{ background-position:8% 6%,92% 4%,90% 94%,0% 0%; }
+        }
+
+        .stApp{
+            background:
+                radial-gradient(circle at 12% 18%, rgba(59,130,246,.12) 0%, transparent 42%),
+                radial-gradient(circle at 88% 12%, rgba(139,92,246,.12) 0%, transparent 42%),
+                radial-gradient(circle at 78% 92%, rgba(14,165,233,.09) 0%, transparent 38%),
+                #0b1120;
+            background-size:170% 170%,170% 170%,170% 170%,100% 100%;
+            animation:luxizBgSuave 30s ease-in-out infinite;
+            color:white;
+        }
+        </style>
+        """
+
+    # Fundo sólido para o restante do app (Dashboard, Remanejamento,
+    # SAC, Administrativo etc.) — sem gradiente chamativo.
 
     if tema == "claro":
 
@@ -759,9 +941,10 @@ def _css_fundo(tema, tela):
 def aplicar_fundo(tema="escuro", tela="app"):
     """
     tema: "claro" ou "escuro"
-    tela: "login" (fundo com gradiente chamativo) ou
-          "app" (fundo sólido, sem gradiente) — usado em
-          todas as telas depois do login.
+    tela: "login" (fundo com gradiente chamativo), "inicio" (fundo
+          com efeito suave de blobs, usado só na tela Início) ou
+          "app" (fundo sólido, sem gradiente) — usado nas demais
+          telas depois do login.
     """
 
     st.markdown(

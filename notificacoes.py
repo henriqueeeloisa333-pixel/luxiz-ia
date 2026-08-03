@@ -443,6 +443,22 @@ def _notificacoes_ativas(usuario_atual, armazem_id):
     ]
 
 
+def contar_pendentes(usuario_atual, armazem_id):
+    """
+    Quantidade de notificações ainda não lidas por este usuário.
+    Usada no painel da tela Início (KPIs), sem precisar desenhar
+    o sino inteiro de novo.
+    """
+
+    notificacoes = _notificacoes_ativas(usuario_atual, armazem_id)
+    lidas = banco.notificacoes_lidas_usuario(usuario_atual, armazem_id)
+
+    return len([
+        notificacao for notificacao in notificacoes
+        if notificacao["id"] not in lidas
+    ])
+
+
 def renderizar(usuario_atual, armazem_id):
     """
     Chamada na tela Início. Decide, nesta ordem, no máximo UM

@@ -169,7 +169,7 @@ def render():
 
         eh_fixo = tipo == "fixo"
 
-        cor_fundo = COR_FUNDO_FIXO if eh_fixo else COR_FUNDO_ROTATIVO
+        cor_fundo = estilos.cor_fundo_cartao(COR_FUNDO_FIXO if eh_fixo else COR_FUNDO_ROTATIVO)
         cor_borda = COR_BORDA_FIXO if eh_fixo else COR_BORDA_ROTATIVO
         emblema = "📌" if eh_fixo else "🔄"
 

@@ -16,6 +16,65 @@ def gerar_chave_css(texto):
     ).strip('-').lower()
 
 
+DIAS_SEMANA_ABREV = [
+    "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"
+]
+
+
+def agendamento_esta_ativo(agendamento, agora):
+
+    """
+    Decide se uma doca/prioridade agendada deve estar no painel
+    NESTE exato momento, olhando o dia da semana (0=Segunda ...
+    6=Domingo, igual ao weekday() do Python) e a janela de horário
+    cadastrada. Cobre também janelas que passam da meia-noite
+    (ex.: 22:00 às 02:00).
+    """
+
+    if agora.weekday() not in (agendamento["dias_semana"] or []):
+        return False
+
+    hora_atual = agora.time()
+    inicio = agendamento["hora_inicio"]
+    fim = agendamento["hora_fim"]
+
+    if inicio <= fim:
+        return inicio <= hora_atual < fim
+
+    return hora_atual >= inicio or hora_atual < fim
+
+
+def descricao_janela(agendamento):
+
+    dias = sorted(agendamento["dias_semana"] or [])
+
+    if dias == [0, 1, 2, 3, 4]:
+        texto_dias = "Seg a Sex"
+
+    elif dias == list(range(7)):
+        texto_dias = "Todos os dias"
+
+    else:
+        texto_dias = ", ".join(DIAS_SEMANA_ABREV[d] for d in dias)
+
+    return (
+        f"⏰ {agendamento['hora_inicio'].strftime('%H:%M')} às "
+        f"{agendamento['hora_fim'].strftime('%H:%M')} • {texto_dias}"
+    )
+
+
+def janela_horario(agendamento):
+
+    # Versão enxuta (só o horário, sem os dias da semana) usada no
+    # card do painel — os dias ficam só na tela de administração,
+    # onde faz sentido conferir o que foi configurado.
+
+    return (
+        f"⏰ {agendamento['hora_inicio'].strftime('%H:%M')} às "
+        f"{agendamento['hora_fim'].strftime('%H:%M')}"
+    )
+
+
 def render():
 
     armazem_id_atual = st.session_state.get(
@@ -32,7 +91,83 @@ def render():
 
     st.divider()
 
-    itens = banco.ler_remanejamentos(armazem_id_atual)
+    _fragmento_painel(armazem_id_atual)
+
+    st.divider()
+
+    # =====================================================
+    # HISTÓRICO
+    # =====================================================
+
+    with st.popover("🕒 Histórico de Remanejamentos"):
+
+        historico = banco.ler_historico_remanejamento(armazem_id_atual)
+
+        if historico:
+
+            for item, prioridade, data_hora, usuario_item in historico:
+
+                data_utc = data_hora.replace(
+                    tzinfo=timezone.utc
+                )
+
+                horario_local = data_utc.astimezone(
+                    ZoneInfo("America/Campo_Grande")
+                )
+
+                if prioridade == "Alta":
+                    emoji = "🔴"
+
+                elif prioridade == "Média":
+                    emoji = "🟡"
+
+                else:
+                    emoji = "🟢"
+
+                responsavel = usuario_item or "desconhecido"
+
+                st.caption(
+                    f"{emoji} {item} | {prioridade} | "
+                    f"{horario_local.strftime('%d/%m/%Y %H:%M:%S')} | "
+                    f"por {responsavel}"
+                )
+
+        else:
+
+            st.info(
+                "Nenhum histórico encontrado."
+            )
+
+
+# =====================================================
+# PAINEL (fragmento com auto-atualização, para as docas
+# agendadas entrarem/saírem sozinhas sem precisar recarregar
+# a página inteira)
+# =====================================================
+
+@st.fragment(run_every=60)
+def _fragmento_painel(armazem_id_atual):
+
+    itens_manuais = banco.ler_remanejamentos(armazem_id_atual)
+
+    agendados = banco.ler_remanejamentos_agendados(armazem_id_atual)
+
+    agora = estilos.agora_local()
+
+    itens_agendados_ativos = [
+        {
+            "id": f"ag{agendamento['id']}",
+            "nome": agendamento["nome"],
+            "prioridade": agendamento["prioridade"],
+            "criado_por": agendamento["criado_por"],
+            "agendado": True,
+            "janela": janela_horario(agendamento)
+        }
+        for agendamento in agendados
+        if agendamento_esta_ativo(agendamento, agora)
+    ]
+
+    itens = itens_manuais + itens_agendados_ativos
 
     alta = 0
     media = 0
@@ -115,7 +250,7 @@ def render():
 
                 if prioridade == "Alta":
 
-                    cor_fundo = "rgba(220,38,38,0.16)"
+                    cor_fundo = estilos.cor_fundo_cartao("rgba(220,38,38,0.16)")
                     cor_borda = "#dc2626"
                     rotulo_status = "🚨 PRIORIDADE ALTA"
                     tipo_alerta = "error"
@@ -125,7 +260,7 @@ def render():
 
                 elif prioridade == "Média":
 
-                    cor_fundo = "rgba(245,158,11,0.16)"
+                    cor_fundo = estilos.cor_fundo_cartao("rgba(245,158,11,0.16)")
                     cor_borda = "#f59e0b"
                     rotulo_status = "⚠️ PRIORIDADE MÉDIA"
                     tipo_alerta = "warning"
@@ -135,7 +270,7 @@ def render():
 
                 else:
 
-                    cor_fundo = "rgba(34,197,94,0.16)"
+                    cor_fundo = estilos.cor_fundo_cartao("rgba(34,197,94,0.16)")
                     cor_borda = "#22c55e"
                     rotulo_status = "✅ PRIORIDADE NORMAL"
                     tipo_alerta = "success"
@@ -183,6 +318,27 @@ def render():
                         st.caption(
                             descricao
                         )
+
+                        if item.get("agendado"):
+
+                            st.markdown(
+                                """
+                                <span style="
+                                    background:#8b5cf6;
+                                    color:white;
+                                    padding:.15rem .6rem;
+                                    border-radius:999px;
+                                    font-size:.72rem;
+                                    font-weight:700;
+                                    letter-spacing:.3px;
+                                ">⏰ AGENDADO</span>
+                                """,
+                                unsafe_allow_html=True
+                            )
+
+                            st.caption(
+                                item["janela"]
+                            )
 
                         if item.get("criado_por"):
 
@@ -272,48 +428,3 @@ def render():
         st.success(
             "Nenhuma prioridade pendente."
         )
-
-    st.divider()
-
-    # =====================================================
-    # HISTÓRICO
-    # =====================================================
-
-    with st.popover("🕒 Histórico de Remanejamentos"):
-
-        historico = banco.ler_historico_remanejamento(armazem_id_atual)
-
-        if historico:
-
-            for item, prioridade, data_hora, usuario_item in historico:
-
-                data_utc = data_hora.replace(
-                    tzinfo=timezone.utc
-                )
-
-                horario_local = data_utc.astimezone(
-                    ZoneInfo("America/Campo_Grande")
-                )
-
-                if prioridade == "Alta":
-                    emoji = "🔴"
-
-                elif prioridade == "Média":
-                    emoji = "🟡"
-
-                else:
-                    emoji = "🟢"
-
-                responsavel = usuario_item or "desconhecido"
-
-                st.caption(
-                    f"{emoji} {item} | {prioridade} | "
-                    f"{horario_local.strftime('%d/%m/%Y %H:%M:%S')} | "
-                    f"por {responsavel}"
-                )
-
-        else:
-
-            st.info(
-                "Nenhum histórico encontrado."
-            )

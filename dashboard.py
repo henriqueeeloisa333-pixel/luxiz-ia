@@ -134,28 +134,28 @@ def render():
 
                 if nota >= 4.8:
 
-                    cor_fundo = "rgba(59,130,246,0.16)"
+                    cor_fundo = estilos.cor_fundo_cartao("rgba(59,130,246,0.16)")
                     cor_borda = "#3b82f6"
                     rotulo_status = "🏆 Excelência"
                     tipo_alerta = "info"
 
                 elif nota >= 4:
 
-                    cor_fundo = "rgba(34,197,94,0.16)"
+                    cor_fundo = estilos.cor_fundo_cartao("rgba(34,197,94,0.16)")
                     cor_borda = "#22c55e"
                     rotulo_status = "✅ Bom desempenho"
                     tipo_alerta = "success"
 
                 elif nota >= 3:
 
-                    cor_fundo = "rgba(245,158,11,0.16)"
+                    cor_fundo = estilos.cor_fundo_cartao("rgba(245,158,11,0.16)")
                     cor_borda = "#f59e0b"
                     rotulo_status = "⚠️ Atenção"
                     tipo_alerta = "warning"
 
                 else:
 
-                    cor_fundo = "rgba(220,38,38,0.16)"
+                    cor_fundo = estilos.cor_fundo_cartao("rgba(220,38,38,0.16)")
                     cor_borda = "#dc2626"
                     rotulo_status = "🚨 Crítico"
                     tipo_alerta = "error"

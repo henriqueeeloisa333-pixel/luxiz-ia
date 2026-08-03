@@ -165,7 +165,12 @@ st.session_state.tema = "claro" if tema_claro else "escuro"
 
 estilos.aplicar_fundo(
     tema=st.session_state.tema,
-    tela="login" if not st.session_state.logado else "app"
+    tela=(
+        "login" if not st.session_state.logado
+        or st.session_state.get("trocar_senha")
+        else "inicio" if st.session_state.get("aba_atual", "nav_inicio") == "nav_inicio"
+        else "app"
+    )
 )
 
 # =====================================================
@@ -356,6 +361,119 @@ if not st.session_state.logado:
     st.stop()
 
 # =====================================================
+# TROCA DE SENHA OBRIGATÓRIA
+# (primeiro acesso com senha temporária, ou senha resetada
+# por um Fundador/Gestão)
+# =====================================================
+
+if st.session_state.logado and st.session_state.get("trocar_senha"):
+
+    estilos.marca_desenvolvedor_login()
+
+    _, col_centro_senha, _ = st.columns([1, 1.1, 1])
+
+    with col_centro_senha:
+
+        st.markdown(
+            "<div style='height:3rem'></div>",
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            """
+            <div style="display:flex;justify-content:center;">
+            """,
+            unsafe_allow_html=True
+        )
+
+        estilos.logo_header()
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+        with st.container(border=True, key="login-card"):
+
+            st.markdown("#### 🔑 Defina sua nova senha")
+
+            st.caption(
+                "Este é o seu primeiro acesso (ou sua senha foi "
+                "redefinida). Por segurança, crie uma senha nova "
+                "antes de continuar."
+            )
+
+            nova_senha_primeiro_acesso = st.text_input(
+                "Nova senha",
+                type="password",
+                key="nova_senha_primeiro_acesso"
+            )
+
+            confirmar_nova_senha = st.text_input(
+                "Confirmar nova senha",
+                type="password",
+                key="confirmar_nova_senha_primeiro_acesso"
+            )
+
+            if st.button(
+                "💾 Salvar nova senha",
+                use_container_width=True
+            ):
+
+                if not nova_senha_primeiro_acesso or not confirmar_nova_senha:
+
+                    st.error(
+                        "Preencha os dois campos para continuar."
+                    )
+
+                elif nova_senha_primeiro_acesso != confirmar_nova_senha:
+
+                    st.error(
+                        "As senhas não coincidem."
+                    )
+
+                elif len(nova_senha_primeiro_acesso) < 4:
+
+                    st.error(
+                        "A nova senha precisa ter pelo menos 4 caracteres."
+                    )
+
+                else:
+
+                    with estilos.mostrar_processando("salvando nova senha..."):
+                        banco.alterar_senha(
+                            st.session_state.usuario,
+                            nova_senha_primeiro_acesso
+                        )
+
+                    st.session_state.trocar_senha = False
+
+                    estilos.notificar_sucesso("senha alterada com sucesso.")
+                    st.rerun()
+
+        st.write("")
+
+        _, col_sair_senha = st.columns([3, 1])
+
+        with col_sair_senha:
+
+            if st.button(
+                "🚪 Sair",
+                use_container_width=True,
+                key="sair_troca_senha"
+            ):
+
+                banco.encerrar_sessao(
+                    st.session_state.get("token_sessao")
+                )
+
+                st.query_params.clear()
+                st.session_state.clear()
+                st.rerun()
+
+    st.stop()
+
+# =====================================================
 # PERFIL
 # =====================================================
 
@@ -432,11 +550,225 @@ def botao_sair_rodape(identificador):
 
 def render_cabecalho_inicio():
 
+    agora = estilos.agora_local()
+
+    if agora.hour < 5:
+        saudacao = "Boa madrugada"
+    elif agora.hour < 12:
+        saudacao = "Bom dia"
+    elif agora.hour < 18:
+        saudacao = "Boa tarde"
+    else:
+        saudacao = "Boa noite"
+
+    nome_armazem_atual = (
+        st.session_state.get("armazem_visualizado_nome")
+        or st.session_state.get("armazem_nome")
+        or ""
+    )
+
+    DIAS_EXTENSO = [
+        "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+        "sexta-feira", "sábado", "domingo"
+    ]
+
+    data_extenso = (
+        f"{DIAS_EXTENSO[agora.weekday()]}, {agora.day:02d}/{agora.month:02d}"
+    )
+
+    if st.session_state.tema == "claro":
+        HERO_GRADIENTE = "linear-gradient(120deg, #0ea5e9, #6366f1 45%, #a855f7 85%)"
+        HERO_SOMBRA = "0 18px 40px rgba(99,102,241,.28)"
+        HERO_TEXTO_SUB = "rgba(255,255,255,.88)"
+    else:
+        HERO_GRADIENTE = "linear-gradient(120deg, #0b1224, #1e3a8a 40%, #6d28d9 75%, #0b1224)"
+        HERO_SOMBRA = "0 18px 40px rgba(0,0,0,.45)"
+        HERO_TEXTO_SUB = "rgba(226,232,240,.82)"
+
+    st.markdown(
+        f"""
+        <style>
+        @keyframes luxizHeroGradiente {{
+            0%   {{ background-position:0% 50%; }}
+            50%  {{ background-position:100% 50%; }}
+            100% {{ background-position:0% 50%; }}
+        }}
+        @keyframes luxizHeroSubir {{
+            from {{ opacity:0; transform:translateY(14px); }}
+            to   {{ opacity:1; transform:translateY(0); }}
+        }}
+        @keyframes luxizHeroBrilho {{
+            0%, 100% {{ opacity:.5; transform:scale(1); }}
+            50%      {{ opacity:.85; transform:scale(1.08); }}
+        }}
+        .luxiz-hero {{
+            position:relative;
+            overflow:hidden;
+            border-radius:1.4rem;
+            padding:1.8rem 2rem;
+            background:{HERO_GRADIENTE};
+            background-size:220% 220%;
+            animation:luxizHeroGradiente 14s ease infinite;
+            box-shadow:{HERO_SOMBRA};
+            margin-bottom:1.4rem;
+        }}
+        .luxiz-hero::before, .luxiz-hero::after {{
+            content:"";
+            position:absolute;
+            border-radius:50%;
+            background:rgba(255,255,255,.14);
+            filter:blur(6px);
+            animation:luxizHeroBrilho 5s ease-in-out infinite;
+            pointer-events:none;
+        }}
+        .luxiz-hero::before {{
+            width:220px;height:220px;
+            top:-90px; right:-60px;
+        }}
+        .luxiz-hero::after {{
+            width:140px;height:140px;
+            bottom:-70px; right:18%;
+            animation-delay:1.6s;
+        }}
+        .luxiz-hero-linha {{
+            position:relative;
+            z-index:1;
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:1.2rem;
+            flex-wrap:wrap;
+            animation:luxizHeroSubir .5s ease;
+        }}
+        .luxiz-hero-saudacao {{
+            font-size:.95rem;
+            font-weight:700;
+            letter-spacing:.3px;
+            color:{HERO_TEXTO_SUB};
+            margin:0 0 .15rem 0;
+        }}
+        .luxiz-hero-nome {{
+            font-size:1.9rem;
+            font-weight:800;
+            color:#ffffff;
+            margin:0;
+            line-height:1.2;
+        }}
+        .luxiz-hero-sub {{
+            margin-top:.5rem;
+            display:flex;
+            align-items:center;
+            gap:.5rem;
+            flex-wrap:wrap;
+        }}
+        .luxiz-hero-chip {{
+            background:rgba(255,255,255,.16);
+            color:#fff;
+            padding:.22rem .7rem;
+            border-radius:999px;
+            font-size:.78rem;
+            font-weight:700;
+            backdrop-filter:blur(2px);
+            border:1px solid rgba(255,255,255,.22);
+        }}
+        .luxiz-hero-direita {{
+            text-align:right;
+            color:{HERO_TEXTO_SUB};
+            font-size:.8rem;
+        }}
+        </style>
+        <div class="luxiz-hero">
+            <div class="luxiz-hero-linha">
+                <div>
+                    <p class="luxiz-hero-saudacao">✨ {saudacao}</p>
+                    <p class="luxiz-hero-nome">{nome_exibicao}</p>
+                    <div class="luxiz-hero-sub">
+                        <span class="luxiz-hero-chip">{badge}</span>
+                        {f'<span class="luxiz-hero-chip">🏢 {nome_armazem_atual}</span>' if nome_armazem_atual else ''}
+                        <span class="luxiz-hero-chip">📅 {data_extenso}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     col1, col2 = st.columns([7, 2])
 
     with col1:
 
-        estilos.logo_header()
+        modulos_visiveis_hero = {chave for chave, _, _ in NAV_ITENS}
+
+        kpis = []
+
+        kpis.append((
+            "🧩", "Módulos disponíveis",
+            str(len(NAV_ITENS) - 1), "#a855f7"
+        ))
+
+        kpis.append((
+            "🔔", "Notificações pendentes",
+            str(notificacoes.contar_pendentes(usuario_atual, armazem_id_atual)),
+            "#ef4444"
+        ))
+
+        if "nav_dashboard" in modulos_visiveis_hero:
+
+            ruas_hero = banco.listar_ruas(armazem_id_atual)
+            notas_hero = banco.ler_notas(armazem_id_atual)
+
+            media_hero = (
+                round(sum(notas_hero.values()) / len(notas_hero), 1)
+                if notas_hero else 0
+            )
+
+            kpis.append((
+                "📍", "Ruas monitoradas", str(len(ruas_hero)), "#3b82f6"
+            ))
+
+            kpis.append((
+                "⭐", "Média geral", str(media_hero), "#22c55e"
+            ))
+
+        else:
+
+            kpis.append((
+                "🏢", "Armazém atual",
+                nome_armazem_atual or "—", "#0ea5e9"
+            ))
+
+            kpis.append((
+                "🕒", "Horário atual",
+                agora.strftime("%H:%M"), "#f59e0b"
+            ))
+
+        cols_kpi = st.columns(len(kpis))
+
+        for (icone_kpi, rotulo_kpi, valor_kpi, cor_kpi), col_kpi in zip(kpis, cols_kpi):
+
+            with col_kpi:
+
+                st.markdown(
+                    f"""
+                    <div style="
+                        background:{cor_kpi}14;
+                        border:1px solid {cor_kpi}40;
+                        border-radius:.9rem;
+                        padding:.7rem .9rem;
+                        text-align:center;
+                    ">
+                        <div style="font-size:1.3rem;">{icone_kpi}</div>
+                        <div style="font-size:1.15rem;font-weight:800;color:{cor_kpi};margin-top:.1rem;">
+                            {valor_kpi}
+                        </div>
+                        <div style="font-size:.72rem;opacity:.75;margin-top:.1rem;">
+                            {rotulo_kpi}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     with col2:
 
@@ -447,12 +779,8 @@ def render_cabecalho_inicio():
         st.caption(
             f"☁️ Sincronizado com o servidor\n\n"
             f"Última atualização: "
-            f"{estilos.agora_local().strftime('%H:%M:%S')}"
+            f"{agora.strftime('%H:%M:%S')}"
         )
-
-    st.success(
-        f"Bem-vindo, {nome_exibicao} • {badge}"
-    )
 
     if tipo == "fundador" or eh_fundador_prefixo:
 
@@ -563,6 +891,19 @@ def render_sidebar():
 
     if "sidebar_aberta" not in st.session_state:
         st.session_state.sidebar_aberta = True
+
+    # O clique no toggle é resolvido AQUI, antes de qualquer CSS ou
+    # rótulo que dependa de sidebar_aberta. Assim, quando o estado
+    # muda, todo o resto da função (largura do painel, CSS, rótulo
+    # do botão, nomes dos itens de navegação) já enxerga o valor
+    # novo — tudo numa única passada consistente, sem precisar de
+    # st.rerun() (que já dispara sozinho, uma vez, por ser um botão
+    # dentro de um fragment).
+    if st.button(
+        "✨  Luxiz IA" if st.session_state.sidebar_aberta else "✨",
+        key="toggle_sidebar_luxiz"
+    ):
+        st.session_state.sidebar_aberta = not st.session_state.sidebar_aberta
 
     LARGURA_PAINEL_PX = 208 if st.session_state.sidebar_aberta else 64
     TOPO_INICIAL_PX = 104
@@ -766,12 +1107,6 @@ def render_sidebar():
         unsafe_allow_html=True
     )
 
-    rotulo_toggle = "✨  Luxiz IA" if st.session_state.sidebar_aberta else "✨"
-
-    if st.button(rotulo_toggle, key="toggle_sidebar_luxiz"):
-        st.session_state.sidebar_aberta = not st.session_state.sidebar_aberta
-        st.rerun(scope="fragment")
-
     if st.session_state.sidebar_aberta:
 
         st.markdown(
@@ -862,8 +1197,31 @@ aba_admin = st.session_state.aba_atual == "nav_administrativo"
 
 def render_conteudo_inicio():
 
-    st.info(
-        "Utilize a barra lateral esquerda para navegar pelo sistema."
+    st.markdown(
+        """
+        <style>
+        div[class*="st-key-home-mod-"]{
+            transition:transform .18s ease, box-shadow .18s ease;
+        }
+        div[class*="st-key-home-mod-"]:hover{
+            transform:translateY(-3px);
+        }
+        div[class*="st-key-home-ir-"] button{
+            width:100% !important;
+            border-radius:999px !important;
+            font-weight:700 !important;
+            font-size:.8rem !important;
+            padding:.25rem 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.subheader("🚀 Acesso Rápido")
+
+    st.caption(
+        "Clique em qualquer módulo abaixo para abrir direto, ou use a barra lateral."
     )
 
     DESCRICOES_MODULOS = {
@@ -915,7 +1273,26 @@ def render_conteudo_inicio():
 
             with linha[offset]:
 
-                with st.container(border=True):
+                chave_card_home = f"home-mod-{chave}"
+
+                st.markdown(
+                    f"""
+                    <style>
+                    .st-key-{chave_card_home}{{
+                        border:1px solid {cor}40 !important;
+                        background:{cor}0c !important;
+                        border-radius:1rem !important;
+                    }}
+                    .st-key-{chave_card_home}:hover{{
+                        border-color:{cor} !important;
+                        box-shadow:0 10px 24px {cor}33;
+                    }}
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                with st.container(border=True, key=chave_card_home):
 
                     st.markdown(
                         f"""
@@ -937,19 +1314,15 @@ def render_conteudo_inicio():
                         DESCRICOES_MODULOS.get(chave, "")
                     )
 
-                    st.markdown(
-                        f"""
-                        <span style="
-                            background:{cor}22;
-                            color:{cor};
-                            padding:.15rem .55rem;
-                            border-radius:999px;
-                            font-size:.72rem;
-                            font-weight:700;
-                        ">🟢 Online</span>
-                        """,
-                        unsafe_allow_html=True
-                    )
+                    st.write("")
+
+                    if st.button(
+                        "Abrir →",
+                        key=f"home-ir-{chave}",
+                        use_container_width=True
+                    ):
+                        st.session_state.aba_atual = chave
+                        st.rerun()
 
     st.divider()
 
@@ -1025,6 +1398,77 @@ def render_conteudo_inicio():
 - Checklist
 - Administrativo operacional
         """)
+
+    if (tipo == "fundador" or eh_fundador_prefixo) or (tipo == "gestao" or eh_gestao_prefixo):
+
+        st.write("")
+
+        st.subheader(
+            "👥 Como Cadastrar Usuários"
+        )
+
+        st.caption(
+            "Guia rápido para tirar as dúvidas mais comuns na hora de criar um novo acesso."
+        )
+
+        with st.expander("❓ Passo a passo para criar um usuário", expanded=False):
+
+            st.markdown(
+                "**1.** Vá em **⚙️ Administrativo → 👥 Usuários → ➕ Criar novo usuário**."
+            )
+
+            st.markdown(
+                "**2.** No campo **Usuário**, digite sempre no formato "
+                "`Função.Nome` — o prefixo antes do ponto define o que a "
+                "pessoa pode ver e fazer no sistema, e também gera o "
+                "emblema colorido dela na lista de usuários. Funções "
+                "disponíveis:"
+            )
+
+            col_funcoes_a, col_funcoes_b = st.columns(2)
+
+            with col_funcoes_a:
+                st.markdown(
+                    """
+                    - `Gestao.` 🛡️ — acesso de gestão
+                    - `Separador.` 📦
+                    - `Conferente.` 🔎
+                    """
+                )
+
+            with col_funcoes_b:
+                st.markdown(
+                    """
+                    - `Recebimento.` 📥
+                    - `Empilhador.` 🏗️
+                    - `Assistente.` 🧑‍💼 (Assistente Logístico)
+                    """
+                )
+
+            st.markdown(
+                "**Exemplos válidos:** `Separador.Joao`, `Conferente.Maria`, "
+                "`Empilhador.PedroSilva`."
+            )
+
+            st.markdown(
+                "**3.** Defina uma **Senha Inicial** — pode ser qualquer "
+                "senha temporária, a pessoa poderá trocá-la depois no "
+                "primeiro acesso."
+            )
+
+            st.markdown(
+                "**4.** Clique em **➕ Criar Usuário**. O login já aparece "
+                "na lista \"Usuários cadastrados\" logo abaixo, com o "
+                "emblema da função."
+            )
+
+            st.warning(
+                "⚠️ O nome depois do ponto precisa ser igual ao nome usado "
+                "nos cadastros de Auditoria, EPI etc. (ex.: se o usuário é "
+                "`Separador.Joao`, os registros devem usar \"Joao\"). É "
+                "assim que o sistema reconhece que os registros pertencem "
+                "àquela pessoa e libera a visão certa para ela."
+            )
 
     st.divider()
 
