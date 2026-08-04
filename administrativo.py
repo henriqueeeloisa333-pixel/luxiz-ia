@@ -37,7 +37,7 @@ def perguntar_notificacao(pendente, campo):
     with c1:
         if st.button(
             "✅ Sim",
-            use_container_width=True,
+            width='stretch',
             key=f"notificar_sim_{campo}"
         ):
             st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = True
@@ -46,7 +46,7 @@ def perguntar_notificacao(pendente, campo):
     with c2:
         if st.button(
             "❌ Não",
-            use_container_width=True,
+            width='stretch',
             key=f"notificar_nao_{campo}"
         ):
             st.session_state["pendente_analise_tecnica"][f"notificar_{campo}"] = False
@@ -66,7 +66,7 @@ def confirmar_exclusao_rua(nome_rua, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_rua_{nome_rua}"
     ):
         with estilos.mostrar_processando(f"excluindo '{nome_rua}'..."):
@@ -87,7 +87,7 @@ def confirmar_exclusao_remanejamento(id_item, nome_item, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_remanejamento_{id_item}"
     ):
         with estilos.mostrar_processando(f"excluindo '{nome_item}'..."):
@@ -109,7 +109,7 @@ def confirmar_exclusao_multipla_remanejamento(ids_selecionados, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key="confirma_del_lote_remanejamento"
     ):
         with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} prioridade(s)..."):
@@ -130,7 +130,7 @@ def confirmar_exclusao_remanejamento_agendado(id_item, nome_item, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_remanejamento_agendado_{id_item}"
     ):
         with estilos.mostrar_processando(f"excluindo agendamento '{nome_item}'..."):
@@ -151,7 +151,7 @@ def confirmar_exclusao_usuario(uid, nome_usuario):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_usuario_{uid}"
     ):
         with estilos.mostrar_processando(f"excluindo usuário '{nome_usuario}'..."):
@@ -172,7 +172,7 @@ def confirmar_exclusao_analise_tecnica(id_registro, nome_registro, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_analise_{id_registro}"
     ):
         with estilos.mostrar_processando(f"excluindo registro de {nome_registro}..."):
@@ -194,7 +194,7 @@ def confirmar_exclusao_multipla_analise_tecnica(ids_selecionados, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key="confirma_del_lote_analise"
     ):
         with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} registro(s)..."):
@@ -215,7 +215,7 @@ def confirmar_exclusao_auditoria(id_registro, nome_registro, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_auditoria_{id_registro}"
     ):
         with estilos.mostrar_processando(f"excluindo registro de {nome_registro}..."):
@@ -237,7 +237,7 @@ def confirmar_exclusao_multipla_auditoria(ids_selecionados, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key="confirma_del_lote_auditoria"
     ):
         with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} registro(s)..."):
@@ -258,7 +258,7 @@ def confirmar_exclusao_pessoa_rotativo(id_pessoa, nome_pessoa, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_pessoa_rot_{id_pessoa}"
     ):
         with estilos.mostrar_processando(f"removendo '{nome_pessoa}'..."):
@@ -279,7 +279,7 @@ def confirmar_exclusao_atividade_rotativo(id_atividade, nome_atividade, armazem_
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_ativ_rot_{id_atividade}"
     ):
         with estilos.mostrar_processando(f"removendo '{nome_atividade}'..."):
@@ -301,7 +301,7 @@ def confirmar_exclusao_responsavel_hidraulico(id_registro, nome, numero, armazem
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_resp_hid_{id_registro}"
     ):
         with estilos.mostrar_processando(f"removendo '{nome}'..."):
@@ -323,7 +323,7 @@ def confirmar_exclusao_responsavel_carrinho(id_registro, nome, numero, armazem_i
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_resp_car_{id_registro}"
     ):
         with estilos.mostrar_processando(f"removendo '{nome}'..."):
@@ -345,7 +345,7 @@ def confirmar_exclusao_carrinho_fixo(id_registro, local, numero, armazem_id):
 
     if st.button(
         "✅ Confirmar exclusão",
-        use_container_width=True,
+        width='stretch',
         key=f"confirma_del_carrinho_fixo_{id_registro}"
     ):
         with estilos.mostrar_processando(f"removendo carrinho {numero}..."):
@@ -2047,7 +2047,7 @@ def render():
 
                                 if st.button(
                                     "💾 Salvar",
-                                    use_container_width=True,
+                                    width='stretch',
                                     key=f"salvar_edit_resp_hid_{item['id']}"
                                 ):
                                     with estilos.mostrar_processando("salvando alterações..."):
@@ -2157,7 +2157,7 @@ def render():
 
                                 if st.button(
                                     "💾 Salvar",
-                                    use_container_width=True,
+                                    width='stretch',
                                     key=f"salvar_edit_resp_car_{item['id']}"
                                 ):
                                     with estilos.mostrar_processando("salvando alterações..."):
@@ -2291,7 +2291,7 @@ def render():
 
                                     if st.button(
                                         "💾 Salvar",
-                                        use_container_width=True,
+                                        width='stretch',
                                         key=f"salvar_edit_carfixo_{item['id']}"
                                     ):
                                         with estilos.mostrar_processando("salvando alterações..."):
