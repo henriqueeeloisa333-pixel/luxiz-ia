@@ -186,6 +186,37 @@ def renderizar_checklist(
                 column_config=column_config
             )
 
+            ids_para_excluir = []
+
+            if funcao_excluir:
+
+                for posicao, id_registro in enumerate(ids_registros):
+
+                    if bool(df_editado.iloc[posicao]["🗑️ Excluir"]):
+                        ids_para_excluir.append(id_registro)
+
+            if ids_para_excluir:
+
+                st.warning(
+                    f"🗑️ {len(ids_para_excluir)} registro(s) marcado(s) para exclusão."
+                )
+
+                if st.button(
+                    f"🗑️ Excluir {len(ids_para_excluir)} selecionado(s)",
+                    key=f"excluir_sel_{prefixo_key}"
+                ):
+
+                    with estilos.mostrar_processando("excluindo registro(s)..."):
+                        for id_excluir in ids_para_excluir:
+                            funcao_excluir(id_excluir, armazem_id)
+
+                    estilos.notificar_sucesso(
+                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
+                    )
+                    st.rerun(scope="fragment")
+
+                st.write("")
+
             if st.button(
                 "💾 Salvar alterações",
                 key=f"salvar_{prefixo_key}"
@@ -196,18 +227,14 @@ def renderizar_checklist(
                     if coluna != "🗑️ Excluir"
                 ]
 
-                ids_para_excluir = []
                 houve_alteracao = False
 
                 for posicao, id_registro in enumerate(ids_registros):
 
-                    linha_editada = df_editado.iloc[posicao]
-
-                    if funcao_excluir and bool(linha_editada["🗑️ Excluir"]):
-
-                        ids_para_excluir.append(id_registro)
+                    if id_registro in ids_para_excluir:
                         continue
 
+                    linha_editada = df_editado.iloc[posicao]
                     linha_original = df_exibir.iloc[posicao]
 
                     if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
@@ -225,18 +252,7 @@ def renderizar_checklist(
 
                         houve_alteracao = True
 
-                if ids_para_excluir:
-
-                    with estilos.mostrar_processando("excluindo registro(s)..."):
-                        for id_excluir in ids_para_excluir:
-                            funcao_excluir(id_excluir, armazem_id)
-
-                    estilos.notificar_sucesso(
-                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
-                    )
-                    st.rerun(scope="fragment")
-
-                elif houve_alteracao:
+                if houve_alteracao:
 
                     estilos.notificar_sucesso("alterações salvas com sucesso.")
                     st.rerun(scope="fragment")
@@ -601,6 +617,37 @@ def renderizar_checklist_pigmentacao(
                 column_config=column_config
             )
 
+            ids_para_excluir = []
+
+            if funcao_excluir:
+
+                for posicao, id_registro in enumerate(ids_registros):
+
+                    if bool(df_editado.iloc[posicao]["🗑️ Excluir"]):
+                        ids_para_excluir.append(id_registro)
+
+            if ids_para_excluir:
+
+                st.warning(
+                    f"🗑️ {len(ids_para_excluir)} registro(s) marcado(s) para exclusão."
+                )
+
+                if st.button(
+                    f"🗑️ Excluir {len(ids_para_excluir)} selecionado(s)",
+                    key=f"excluir_sel_{prefixo_key}"
+                ):
+
+                    with estilos.mostrar_processando("excluindo registro(s)..."):
+                        for id_excluir in ids_para_excluir:
+                            funcao_excluir(id_excluir, armazem_id)
+
+                    estilos.notificar_sucesso(
+                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
+                    )
+                    st.rerun(scope="fragment")
+
+                st.write("")
+
             if st.button(
                 "💾 Salvar alterações",
                 key=f"salvar_{prefixo_key}"
@@ -611,18 +658,14 @@ def renderizar_checklist_pigmentacao(
                     if coluna != "🗑️ Excluir"
                 ]
 
-                ids_para_excluir = []
                 houve_alteracao = False
 
                 for posicao, id_registro in enumerate(ids_registros):
 
-                    linha_editada = df_editado.iloc[posicao]
-
-                    if funcao_excluir and bool(linha_editada["🗑️ Excluir"]):
-
-                        ids_para_excluir.append(id_registro)
+                    if id_registro in ids_para_excluir:
                         continue
 
+                    linha_editada = df_editado.iloc[posicao]
                     linha_original = df_exibir.iloc[posicao]
 
                     if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
@@ -639,18 +682,7 @@ def renderizar_checklist_pigmentacao(
 
                         houve_alteracao = True
 
-                if ids_para_excluir:
-
-                    with estilos.mostrar_processando("excluindo registro(s)..."):
-                        for id_excluir in ids_para_excluir:
-                            funcao_excluir(id_excluir, armazem_id)
-
-                    estilos.notificar_sucesso(
-                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
-                    )
-                    st.rerun(scope="fragment")
-
-                elif houve_alteracao:
+                if houve_alteracao:
 
                     estilos.notificar_sucesso("alterações salvas com sucesso.")
                     st.rerun(scope="fragment")
