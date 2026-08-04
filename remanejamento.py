@@ -148,7 +148,10 @@ def render():
 @st.fragment(run_every=60)
 def _fragmento_painel(armazem_id_atual):
 
-    itens_manuais = banco.ler_remanejamentos(armazem_id_atual)
+    itens_manuais = [
+        {**item, "id": f"man{item['id']}"}
+        for item in banco.ler_remanejamentos(armazem_id_atual)
+    ]
 
     agendados = banco.ler_remanejamentos_agendados(armazem_id_atual)
 
