@@ -212,7 +212,7 @@ def render():
 
     st.plotly_chart(
         fig,
-        use_container_width=True
+        width='stretch'
     )
 
     # ==================================
@@ -255,7 +255,7 @@ def render():
 
         st.plotly_chart(
             fig_bar,
-            use_container_width=True
+            width='stretch'
         )
 
     with col2:
@@ -297,7 +297,7 @@ def render():
 
         st.plotly_chart(
             fig_gauge,
-            use_container_width=True
+            width='stretch'
         )
 
     st.divider()
@@ -312,7 +312,7 @@ def render():
 
     st.dataframe(
         df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True
     )
 
