@@ -5,7 +5,7 @@ import streamlit as st
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 
@@ -2533,14 +2533,59 @@ def _retornar_manutencao_checklist(tabela, id_registro, usuario, armazem_id):
         cursor = conn.cursor()
 
         cursor.execute(f"""
-        UPDATE {tabela}
-        SET em_manutencao = FALSE,
-            manutencao_retornado_por = %s,
-            manutencao_retornado_em = CURRENT_TIMESTAMP
+        SELECT descricao, manutencao_enviado_em
+        FROM {tabela}
         WHERE id = %s
         AND armazem_id = %s
         """, (
-            usuario, id_registro, armazem_id
+            id_registro, armazem_id
+        ))
+
+        linha = cursor.fetchone()
+
+        descricao_atual = linha[0] if linha else None
+        enviado_em = linha[1] if linha else None
+
+        agora_utc = datetime.now(timezone.utc)
+
+        texto_evento = "🔧 Foi para manutenção"
+
+        if enviado_em:
+
+            enviado_local = enviado_em.replace(
+                tzinfo=timezone.utc
+            ).astimezone(
+                ZoneInfo("America/Campo_Grande")
+            )
+
+            texto_evento += f" em {enviado_local.strftime('%d/%m/%Y')}"
+
+        retornado_local = agora_utc.astimezone(
+            ZoneInfo("America/Campo_Grande")
+        )
+
+        texto_evento += f" e retornou em {retornado_local.strftime('%d/%m/%Y')}."
+
+        nova_descricao = (
+            f"{descricao_atual.strip()}\n{texto_evento}"
+            if descricao_atual and descricao_atual.strip()
+            else texto_evento
+        )
+
+        cursor.execute(f"""
+        UPDATE {tabela}
+        SET em_manutencao = FALSE,
+            manutencao_retornado_por = %s,
+            manutencao_retornado_em = %s,
+            descricao = %s
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            usuario,
+            agora_utc.replace(tzinfo=None),
+            nova_descricao,
+            id_registro,
+            armazem_id
         ))
 
         conn.commit()
