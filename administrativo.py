@@ -2328,6 +2328,7 @@ def render():
     BADGES_USUARIO = {
         "Fundador.": ("👑", "Fundador", "#f59e0b"),
         "Gestao.": ("🛡️", "Gestão", "#3b82f6"),
+        "Painel.": ("📟", "Painel Logístico", "#6366f1"),
         "Separador.": ("📦", "Separador", "#22c55e"),
         "Conferente.": ("🔎", "Conferente", "#06b6d4"),
         "Recebimento.": ("📥", "Recebimento", "#a855f7"),
