@@ -308,7 +308,7 @@ if not st.session_state.logado:
 
             if st.button(
                 "Entrar",
-                use_container_width=True
+                width='stretch'
             ):
 
                 resultado = banco.autenticar(
@@ -353,7 +353,7 @@ if not st.session_state.logado:
 
         if st.button(
             "❓ Para que serve o Luxiz IA?",
-            use_container_width=True
+            width='stretch'
         ):
 
             mostrar_sobre_luxiz()
@@ -417,7 +417,7 @@ if st.session_state.logado and st.session_state.get("trocar_senha"):
 
             if st.button(
                 "💾 Salvar nova senha",
-                use_container_width=True
+                width='stretch'
             ):
 
                 if not nova_senha_primeiro_acesso or not confirmar_nova_senha:
@@ -459,7 +459,7 @@ if st.session_state.logado and st.session_state.get("trocar_senha"):
 
             if st.button(
                 "🚪 Sair",
-                use_container_width=True,
+                width='stretch',
                 key="sair_troca_senha"
             ):
 
@@ -535,7 +535,7 @@ def botao_sair_rodape(identificador):
 
         if st.button(
             "🚪 Sair",
-            use_container_width=True,
+            width='stretch',
             key=f"sair_{identificador}"
         ):
 
@@ -1319,7 +1319,7 @@ def render_conteudo_inicio():
                     if st.button(
                         "Abrir →",
                         key=f"home-ir-{chave}",
-                        use_container_width=True
+                        width='stretch'
                     ):
                         st.session_state.aba_atual = chave
                         st.rerun()
@@ -1608,7 +1608,7 @@ if aba_dashboard:
 # REMANEJAMENTO
 # =====================================================
 
-@st.fragment(run_every=120)
+@st.fragment
 def render_aba_remanejamento():
 
     with estilos.mostrar_processando("Remanejamento..."):
