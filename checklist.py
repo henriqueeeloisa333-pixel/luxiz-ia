@@ -180,7 +180,7 @@ def renderizar_checklist(
 
             df_editado = st.data_editor(
                 df_exibir,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 key=f"editor_{prefixo_key}",
                 column_config=column_config
@@ -249,7 +249,7 @@ def renderizar_checklist(
 
             st.dataframe(
                 df_exibir,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True
             )
 
@@ -595,7 +595,7 @@ def renderizar_checklist_pigmentacao(
 
             df_editado = st.data_editor(
                 df_exibir,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 key=f"editor_{prefixo_key}",
                 column_config=column_config
@@ -663,7 +663,7 @@ def renderizar_checklist_pigmentacao(
 
             st.dataframe(
                 df_exibir,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True
             )
 
