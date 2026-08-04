@@ -311,7 +311,7 @@ def _botao_excluir(notificacao, armazem_id, usuario_atual, sufixo):
     if st.button(
         "🗑️ Excluir para todos",
         key=f"notif_excluir_{sufixo}_{notificacao['id']}",
-        use_container_width=True
+        width='stretch'
     ):
         banco.excluir_notificacao(
             notificacao["id"],
@@ -357,7 +357,7 @@ def _painel_notificacoes(usuario_atual, armazem_id, notificacao, posicao, total,
         if st.button(
             rotulo_botao,
             key=f"notif_lida_{notificacao['id']}",
-            use_container_width=True
+            width='stretch'
         ):
             banco.marcar_notificacao_lida(
                 usuario_atual,
@@ -387,7 +387,7 @@ def _painel_revisao(usuario_atual, armazem_id, notificacoes, lidas, pode_excluir
             "Nenhuma notificação no momento. ✅"
         )
 
-        if st.button("Fechar", use_container_width=True, key="notif_central_fechar_vazia"):
+        if st.button("Fechar", width='stretch', key="notif_central_fechar_vazia"):
             st.session_state["_luxiz_abrir_central_notif"] = False
             st.rerun()
 
@@ -408,7 +408,7 @@ def _painel_revisao(usuario_atual, armazem_id, notificacoes, lidas, pode_excluir
         elif st.button(
             "✅ Marcar como lida",
             key=f"notif_lida_rev_{notificacao['id']}",
-            use_container_width=True
+            width='stretch'
         ):
             banco.marcar_notificacao_lida(
                 usuario_atual,
@@ -423,7 +423,7 @@ def _painel_revisao(usuario_atual, armazem_id, notificacoes, lidas, pode_excluir
 
         st.divider()
 
-    if st.button("Fechar", use_container_width=True, key="notif_central_fechar"):
+    if st.button("Fechar", width='stretch', key="notif_central_fechar"):
         st.session_state["_luxiz_abrir_central_notif"] = False
         st.rerun()
 
