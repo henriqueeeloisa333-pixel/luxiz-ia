@@ -486,6 +486,7 @@ eh_gestao_prefixo = usuario_atual.startswith("Gestao.")
 eh_separador = usuario_atual.startswith("Separador.")
 eh_conferente = usuario_atual.startswith("Conferente.")
 eh_recebimento = usuario_atual.startswith("Recebimento.")
+eh_painel = usuario_atual.startswith("Painel.")
 
 acesso_restrito = eh_separador or eh_conferente
 
@@ -503,6 +504,9 @@ elif eh_conferente:
 
 elif eh_recebimento:
     badge = "📥 Recebimento"
+
+elif eh_painel:
+    badge = "📟 Painel Logístico"
 
 else:
     badge = "👤 Usuário"
@@ -857,6 +861,17 @@ elif eh_recebimento:
         ("nav_checklist", "✅", "Checklist"),
         ("nav_equipamentos", "🧰", "Equipamentos"),
         ("nav_epi", "🦺", "Controle de EPI's"),
+    ]
+
+elif eh_painel:
+
+    NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
+        ("nav_dashboard", "📊", "Dashboard"),
+        ("nav_remanejamento", "⚡", "Remanejamento"),
+        ("nav_sac", "😊", "SAC"),
+        ("nav_auditoria", "🎯", "Auditoria"),
+        ("nav_rotativo", "🔄", "Rodízio"),
     ]
 
 else:
@@ -1327,77 +1342,206 @@ def render_conteudo_inicio():
     st.divider()
 
     st.subheader(
-        "Permissões do Perfil"
+        "🔐 Permissões do Perfil"
     )
 
+    st.caption(
+        "O que o seu login pode ver e fazer dentro do Luxiz IA."
+    )
+
+    PERFIS_PERMISSOES = {
+        "fundador": (
+            "👑", "Fundador", "#f59e0b",
+            "Controle total do sistema, sem restrições.",
+            [
+                ("👥", "Criar usuários"),
+                ("🛡️", "Criar gestores"),
+                ("🗑️", "Excluir usuários"),
+                ("🗑️", "Excluir gestores"),
+                ("🔑", "Resetar senhas"),
+                ("⚙️", "Controle total do sistema"),
+            ]
+        ),
+        "gestao": (
+            "🛡️", "Gestão", "#3b82f6",
+            "Gerencia a operação e o time no dia a dia.",
+            [
+                ("👥", "Criar usuários"),
+                ("🗑️", "Excluir usuários comuns"),
+                ("🔑", "Resetar senhas"),
+                ("📋", "Gerenciar operação"),
+            ]
+        ),
+        "painel": (
+            "📟", "Painel Logístico", "#6366f1",
+            "Visão consolidada e ao vivo da operação, sem acesso administrativo.",
+            [
+                ("📊", "Dashboard"),
+                ("⚡", "Remanejamento"),
+                ("😊", "SAC"),
+                ("🎯", "Auditoria"),
+                ("🔄", "Rodízio"),
+            ]
+        ),
+        "separador": (
+            "📦", "Separador", "#22c55e",
+            "Acesso focado na rotina operacional do separador.",
+            [
+                ("📊", "Dashboard"),
+                ("😊", "SAC"),
+                ("🔄", "Rodízio"),
+                ("✅", "Checklist"),
+            ]
+        ),
+        "conferente": (
+            "🔎", "Conferente", "#06b6d4",
+            "Acesso focado na rotina operacional do conferente.",
+            [
+                ("📊", "Dashboard"),
+                ("😊", "SAC"),
+                ("🔄", "Rodízio"),
+                ("✅", "Checklist"),
+            ]
+        ),
+        "recebimento": (
+            "📥", "Recebimento", "#a855f7",
+            "Acesso focado na conferência e na própria auditoria.",
+            [
+                ("🎯", "Auditoria (apenas o próprio card)"),
+                ("✅", "Checklist"),
+            ]
+        ),
+        "usuario": (
+            "👤", "Usuário", "#64748b",
+            "Acesso padrão à operação do dia a dia.",
+            [
+                ("📊", "Dashboard"),
+                ("😊", "SAC"),
+                ("⚡", "Remanejamento"),
+                ("🎯", "Auditoria"),
+                ("🔄", "Rodízio"),
+                ("✅", "Checklist"),
+                ("⚙️", "Administrativo operacional"),
+            ]
+        ),
+    }
+
     if tipo == "fundador" or eh_fundador_prefixo:
-
-        st.success("""
-### 👑 Fundador
-
-- Criar usuários
-- Criar gestores
-- Excluir usuários
-- Excluir gestores
-- Resetar senhas
-- Controle total do sistema
-        """)
-
+        perfil_chave_atual = "fundador"
     elif tipo == "gestao" or eh_gestao_prefixo:
-
-        st.info("""
-### 🛡️ Gestão
-
-- Criar usuários
-- Excluir usuários comuns
-- Resetar senhas
-- Gerenciar operação
-        """)
-
+        perfil_chave_atual = "gestao"
+    elif eh_painel:
+        perfil_chave_atual = "painel"
     elif eh_separador:
-
-        st.warning("""
-### 📦 Separador
-
-- Dashboard
-- SAC
-- Rodízio
-- Checklist
-        """)
-
+        perfil_chave_atual = "separador"
     elif eh_conferente:
-
-        st.warning("""
-### 🔎 Conferente
-
-- Dashboard
-- SAC
-- Rodízio
-- Checklist
-        """)
-
+        perfil_chave_atual = "conferente"
     elif eh_recebimento:
-
-        st.warning("""
-### 📥 Recebimento
-
-- Auditoria (apenas o próprio card)
-- Checklist
-        """)
-
+        perfil_chave_atual = "recebimento"
     else:
+        perfil_chave_atual = "usuario"
 
-        st.warning("""
-### 👤 Usuário
+    icone_perfil, titulo_perfil, cor_perfil, desc_perfil, lista_permissoes = (
+        PERFIS_PERMISSOES[perfil_chave_atual]
+    )
 
-- Dashboard
-- SAC
-- Remanejamento
-- Auditoria
-- Rodízio
-- Checklist
-- Administrativo operacional
-        """)
+    chips_permissoes_html = "".join(
+        f"""
+        <span style="
+            display:inline-flex;align-items:center;gap:.4rem;
+            background:{cor_perfil}16;
+            border:1px solid {cor_perfil}45;
+            padding:.4rem .85rem;
+            border-radius:999px;
+            font-size:.82rem;
+            font-weight:700;
+            margin:.25rem .4rem .25rem 0;
+        ">{emoji_p} {texto_p}</span>
+        """
+        for emoji_p, texto_p in lista_permissoes
+    )
+
+    st.markdown(
+        f"""
+        <style>
+        @keyframes luxizPerfilSubir {{
+            from {{ opacity:0; transform:translateY(10px); }}
+            to   {{ opacity:1; transform:translateY(0); }}
+        }}
+        .luxiz-perfil-card {{
+            position:relative;
+            overflow:hidden;
+            border-radius:1.2rem;
+            padding:1.5rem 1.7rem;
+            border:1px solid {cor_perfil}40;
+            background:linear-gradient(135deg, {cor_perfil}18, {cor_perfil}05 65%);
+            animation:luxizPerfilSubir .4s ease;
+        }}
+        .luxiz-perfil-card::before {{
+            content:"";
+            position:absolute;
+            width:200px;height:200px;
+            border-radius:50%;
+            background:{cor_perfil}14;
+            top:-90px; right:-60px;
+            pointer-events:none;
+        }}
+        .luxiz-perfil-cabecalho {{
+            display:flex;
+            align-items:center;
+            gap:1rem;
+            position:relative;
+            z-index:1;
+        }}
+        .luxiz-perfil-icone {{
+            flex-shrink:0;
+            width:56px;height:56px;
+            border-radius:16px;
+            background:{cor_perfil}25;
+            display:flex;align-items:center;justify-content:center;
+            font-size:1.7rem;
+            box-shadow:0 8px 18px {cor_perfil}35;
+        }}
+        .luxiz-perfil-titulo {{
+            font-size:1.3rem;
+            font-weight:800;
+            color:{cor_perfil};
+            margin:0;
+        }}
+        .luxiz-perfil-desc {{
+            font-size:.85rem;
+            opacity:.8;
+            margin:.15rem 0 0 0;
+        }}
+        .luxiz-perfil-rotulo-lista {{
+            font-size:.72rem;
+            font-weight:800;
+            letter-spacing:.5px;
+            text-transform:uppercase;
+            opacity:.6;
+            margin:1.2rem 0 .5rem 0;
+            position:relative;
+            z-index:1;
+        }}
+        .luxiz-perfil-permissoes {{
+            position:relative;
+            z-index:1;
+        }}
+        </style>
+        <div class="luxiz-perfil-card">
+            <div class="luxiz-perfil-cabecalho">
+                <div class="luxiz-perfil-icone">{icone_perfil}</div>
+                <div>
+                    <p class="luxiz-perfil-titulo">{titulo_perfil}</p>
+                    <p class="luxiz-perfil-desc">{desc_perfil}</p>
+                </div>
+            </div>
+            <p class="luxiz-perfil-rotulo-lista">✅ Acessos liberados</p>
+            <div class="luxiz-perfil-permissoes">{chips_permissoes_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     if (tipo == "fundador" or eh_fundador_prefixo) or (tipo == "gestao" or eh_gestao_prefixo):
 
@@ -1433,6 +1577,8 @@ def render_conteudo_inicio():
                     - `Gestao.` 🛡️ — acesso de gestão
                     - `Separador.` 📦
                     - `Conferente.` 🔎
+                    - `Painel.` 📟 — Dashboard, Remanejamento,
+                      SAC, Auditoria e Rodízio
                     """
                 )
 
