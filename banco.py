@@ -878,7 +878,7 @@ def inicializar_banco():
 # DASHBOARD
 # ==================================================
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def listar_ruas(armazem_id):
 
     conn = conectar()
@@ -1029,7 +1029,7 @@ def salvar_perfil(
     ler_perfis.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_perfil(usuario):
 
     if not usuario:
@@ -1064,7 +1064,7 @@ def ler_perfil(usuario):
     }
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_perfis(armazem_id):
 
     conn = conectar()
@@ -1236,7 +1236,7 @@ def epi_pertence_ao_usuario(nome_epi, usuario_atual):
     return texto_bate_com_perfil(perfil, nome_epi)
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_epis(armazem_id):
 
     conn = conectar()
@@ -1449,7 +1449,7 @@ def _mes_fechado_mais_recente():
     return primeiro_dia_deste_mes - timedelta(days=1)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, show_spinner=False)
 def ler_top3_fechamento_mes(armazem_id):
     """
     Devolve (top3, data_fechamento): o pódio (até 3 ruas) com base
@@ -1508,7 +1508,7 @@ def ler_top3_fechamento_mes(armazem_id):
 # Marcar uma como lida não afeta os outros usuários — cada um só
 # deixa de ver a que ele mesmo marcou.
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=15, show_spinner=False)
 def notificacoes_lidas_usuario(usuario, armazem_id):
 
     conn = conectar()
@@ -1567,7 +1567,7 @@ def marcar_notificacao_lida(usuario, notificacao_id, armazem_id):
 # TODOS os usuários daquele armazém (diferente de "lida", que é
 # só individual).
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=15, show_spinner=False)
 def notificacoes_excluidas(armazem_id):
 
     conn = conectar()
@@ -1617,7 +1617,7 @@ def excluir_notificacao(notificacao_id, armazem_id, usuario):
     notificacoes_excluidas.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_notas(armazem_id):
 
     conn = conectar()
@@ -1644,7 +1644,7 @@ def ler_notas(armazem_id):
     return dados
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_duplas(armazem_id):
 
     conn = conectar()
@@ -1671,7 +1671,7 @@ def ler_duplas(armazem_id):
     return dados
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_tudo(armazem_id):
 
     conn = conectar()
@@ -1772,7 +1772,7 @@ def salvar_dados(
     ler_historico_rua.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_historico_rua(
     rua,
     armazem_id,
@@ -1812,7 +1812,7 @@ def ler_historico_rua(
 # REMANEJAMENTO
 # ==================================================
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_remanejamentos(armazem_id):
 
     conn = conectar()
@@ -1967,7 +1967,7 @@ def excluir_remanejamento_lote(
     total_remanejamentos.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def total_remanejamentos(armazem_id):
 
     conn = conectar()
@@ -1988,7 +1988,7 @@ def total_remanejamentos(armazem_id):
 
     return total
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_historico_remanejamento(
     armazem_id,
     limite=20
@@ -2023,7 +2023,7 @@ def ler_historico_remanejamento(
 # REMANEJAMENTO AGENDADO (por horário/dia da semana)
 # ==================================================
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_remanejamentos_agendados(armazem_id):
 
     conn = conectar()
@@ -2192,7 +2192,7 @@ def atualizar_sac_mensal(
     total_reclamacoes.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_historico_sac(armazem_id):
 
     conn = conectar()
@@ -2220,7 +2220,7 @@ def ler_historico_sac(armazem_id):
     return dados
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def total_reclamacoes(armazem_id):
 
     conn = conectar()
@@ -2305,7 +2305,7 @@ def salvar_planilha_sac(armazem_id, nome_arquivo, conteudo_bytes, usuario):
     ler_planilha_sac.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_planilha_sac(armazem_id):
 
     conn = conectar()
@@ -2582,7 +2582,7 @@ def adicionar_analise_tecnica(
     ler_analise_tecnica.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_analise_tecnica(armazem_id):
 
     conn = conectar()
@@ -2751,7 +2751,7 @@ def adicionar_auditoria(
     ler_auditoria.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_auditoria(armazem_id):
 
     conn = conectar()
@@ -2872,7 +2872,7 @@ def adicionar_pessoa_rotativo(nome, armazem_id):
     listar_pessoas_rotativo.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def listar_pessoas_rotativo(armazem_id):
 
     conn = conectar()
@@ -2947,7 +2947,7 @@ def adicionar_atividade_rotativo(
     listar_atividades_rotativo.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def listar_atividades_rotativo(armazem_id):
 
     conn = conectar()
@@ -3160,7 +3160,7 @@ def adicionar_checklist_hidraulico(nome, numero, data_checklist, status, descric
     ler_checklist_hidraulicos.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_hidraulicos(armazem_id):
 
     return _ler_checklist("checklist_hidraulicos", armazem_id)
@@ -3213,7 +3213,7 @@ def adicionar_checklist_carrinho(nome, numero, data_checklist, status, descricao
     ler_checklist_carrinhos.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_carrinhos(armazem_id):
 
     return _ler_checklist("checklist_carrinhos", armazem_id)
@@ -3266,7 +3266,7 @@ def adicionar_checklist_empilhadeira(nome, numero, data_checklist, status, descr
     ler_checklist_empilhadeiras.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_empilhadeiras(armazem_id):
 
     return _ler_checklist("checklist_empilhadeiras", armazem_id)
@@ -3332,7 +3332,7 @@ def adicionar_checklist_pigmentacao(nome, data_checklist, status, descricao, arm
     ler_checklist_pigmentacao.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_pigmentacao(armazem_id):
 
     conn = conectar()
@@ -3484,7 +3484,7 @@ def _excluir_responsavel(tabela, id_registro, armazem_id):
         liberar(conn)
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_responsaveis_hidraulicos(armazem_id):
 
     return _ler_responsaveis("responsaveis_hidraulicos", armazem_id)
@@ -3508,7 +3508,7 @@ def excluir_responsavel_hidraulico(id_registro, armazem_id):
     ler_responsaveis_hidraulicos.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_responsaveis_carrinhos(armazem_id):
 
     return _ler_responsaveis("responsaveis_carrinhos", armazem_id)
@@ -3532,7 +3532,7 @@ def excluir_responsavel_carrinho(id_registro, armazem_id):
     ler_responsaveis_carrinhos.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def ler_carrinhos_fixos(armazem_id):
 
     conn = conectar()
@@ -3814,7 +3814,7 @@ def criar_usuario(
     listar_usuarios.clear()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def listar_usuarios(armazem_id):
 
     conn = conectar()
@@ -3896,34 +3896,6 @@ def excluir_usuario(usuario):
         WHERE usuario = %s
         """, (
             usuario,
-        ))
-
-        conn.commit()
-
-    finally:
-        liberar(conn)
-
-    listar_usuarios.clear()
-
-
-def excluir_usuarios_lote(ids_usuarios):
-
-    if not ids_usuarios:
-        return
-
-    conn = conectar()
-
-    try:
-        cursor = conn.cursor()
-
-        # Nunca permitir apagar o fundador, mesmo por id
-        cursor.execute("""
-        DELETE FROM usuarios
-        WHERE id = ANY(%s)
-        AND usuario IS DISTINCT FROM %s
-        """, (
-            ids_usuarios,
-            USUARIO_FUNDADOR,
         ))
 
         conn.commit()
@@ -4025,7 +3997,7 @@ def resetar_senha(
 # ARMAZÉNS (MULTI-TENANT)
 # ==================================================
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def listar_armazens():
 
     conn = conectar()

@@ -1074,7 +1074,7 @@ def marca_desenvolvedor_login():
     )
 
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def _logo_base64():
     """
     Lê o arquivo da logo (assets/luxiz_logo.png, na raiz do projeto)
@@ -1092,7 +1092,7 @@ def _logo_base64():
         return base64.b64encode(arquivo.read()).decode()
 
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def _favicon_base64():
     """
     Lê o arquivo assets/favicon.png e devolve em base64 — usado como
