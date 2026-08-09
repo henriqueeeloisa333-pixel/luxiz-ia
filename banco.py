@@ -1,11 +1,13 @@
 import os
 import secrets
 import time
+import unicodedata
+import base64
 import streamlit as st
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -653,6 +655,55 @@ def _garantir_schema():
 
         conn.commit()
 
+        # ==============================
+        # PERFIS (nome, sobrenome, função e foto de cada usuário)
+        # ==============================
+        # Um perfil por usuário (usuario é PK e referencia a tabela
+        # usuarios). O objetivo é resolver a ambiguidade de nomes
+        # repetidos (ex.: dois "João") — em vez de cadastrar registros
+        # (EPI, auditoria etc.) só com o primeiro nome, o sistema passa
+        # a reconhecer nome + sobrenome de cada pessoa.
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS perfis (
+            usuario TEXT PRIMARY KEY REFERENCES usuarios(usuario) ON DELETE CASCADE,
+            nome TEXT NOT NULL,
+            sobrenome TEXT NOT NULL,
+            funcao TEXT,
+            foto TEXT,
+            armazem_id BIGINT REFERENCES armazens(id),
+            atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_perfis_armazem ON perfis (armazem_id)")
+
+        conn.commit()
+
+        # ==============================
+        # PLANILHA DO SAC (vinculada pelo Administrativo)
+        # ==============================
+        # PLANILHA VINCULADA DO SAC
+        # ==============================
+        # Guarda o último arquivo Excel enviado pelo Administrativo,
+        # por armazém. O conteúdo fica salvo no próprio banco (BYTEA)
+        # — o app relê ESSA cópia periodicamente, não o arquivo no
+        # computador da pessoa (que ele não teria como acessar).
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS planilha_sac (
+            armazem_id BIGINT PRIMARY KEY REFERENCES armazens(id),
+            nome_arquivo TEXT,
+            conteudo BYTEA,
+            enviado_por TEXT,
+            enviado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ultima_checagem TIMESTAMP,
+            ultimo_resultado TEXT
+        )
+        """)
+
+        conn.commit()
+
         TABELAS_COM_ARMAZEM = [
             "notas", "historico_notas",
             "remanejamento", "historico_remanejamento",
@@ -909,6 +960,237 @@ def excluir_rua(nome, armazem_id):
 
 
 # ==================================================
+# PERFIS (nome, sobrenome, função, foto)
+# ==================================================
+# Resolve a ambiguidade de nomes repetidos (dois "João" etc.):
+# cada usuário preenche seu próprio nome + sobrenome uma vez em
+# "Perfil", e o app passa a reconhecer, em qualquer lugar que só
+# tenha o primeiro nome digitado, se aquele texto bate com o nome,
+# o sobrenome ou o nome completo do perfil de alguém.
+
+import unicodedata
+import base64
+
+
+def _normalizar_texto(texto):
+
+    texto = (texto or "").strip().lower()
+
+    # remove acentos (ex.: "joão" -> "joao"), pra comparar sem
+    # depender do usuário digitar acento igualzinho
+    texto_sem_acento = unicodedata.normalize("NFKD", texto)
+
+    return "".join(
+        c for c in texto_sem_acento
+        if not unicodedata.combining(c)
+    )
+
+
+def salvar_perfil(
+    usuario,
+    nome,
+    sobrenome,
+    funcao,
+    foto,
+    armazem_id
+):
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        INSERT INTO perfis
+        (usuario, nome, sobrenome, funcao, foto, armazem_id, atualizado_em)
+        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (usuario) DO UPDATE SET
+            nome = EXCLUDED.nome,
+            sobrenome = EXCLUDED.sobrenome,
+            funcao = EXCLUDED.funcao,
+            foto = COALESCE(EXCLUDED.foto, perfis.foto),
+            armazem_id = EXCLUDED.armazem_id,
+            atualizado_em = CURRENT_TIMESTAMP
+        """, (
+            usuario,
+            nome.strip(),
+            sobrenome.strip(),
+            (funcao or "").strip(),
+            foto,
+            armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
+
+    ler_perfil.clear()
+    ler_perfis.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_perfil(usuario):
+
+    if not usuario:
+        return None
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT nome, sobrenome, funcao, foto, atualizado_em
+        FROM perfis
+        WHERE usuario = %s
+        """, (usuario,))
+
+        linha = cursor.fetchone()
+
+    finally:
+        liberar(conn)
+
+    if not linha:
+        return None
+
+    return {
+        "usuario": usuario,
+        "nome": linha[0],
+        "sobrenome": linha[1],
+        "funcao": linha[2],
+        "foto": linha[3],
+        "atualizado_em": linha[4],
+    }
+
+
+@st.cache_data(ttl=30)
+def ler_perfis(armazem_id):
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT usuario, nome, sobrenome, funcao, foto
+        FROM perfis
+        WHERE armazem_id = %s
+        ORDER BY nome, sobrenome
+        """, (armazem_id,))
+
+        linhas = cursor.fetchall()
+
+    finally:
+        liberar(conn)
+
+    return [
+        {
+            "usuario": linha[0],
+            "nome": linha[1],
+            "sobrenome": linha[2],
+            "funcao": linha[3],
+            "foto": linha[4],
+        }
+        for linha in linhas
+    ]
+
+
+def nome_completo_perfil(perfil):
+
+    if not perfil:
+        return ""
+
+    return f"{perfil['nome']} {perfil['sobrenome']}".strip()
+
+
+def texto_bate_com_perfil(perfil, texto):
+    """
+    Compara um texto livre (ex.: um Nome digitado ao cadastrar um
+    EPI, uma auditoria etc.) contra o perfil de alguém — bate se o
+    texto for igual ao nome, ao sobrenome ou ao nome completo,
+    sem diferenciar maiúsculas/minúsculas nem acentos.
+    """
+
+    if not perfil:
+        return False
+
+    texto_normalizado = _normalizar_texto(texto)
+
+    if not texto_normalizado:
+        return False
+
+    candidatos = [
+        perfil.get("nome"),
+        perfil.get("sobrenome"),
+        nome_completo_perfil(perfil),
+    ]
+
+    return any(
+        _normalizar_texto(candidato) == texto_normalizado
+        for candidato in candidatos
+        if candidato
+    )
+
+
+def encontrar_perfil_por_nome(texto, armazem_id):
+    """
+    Dado um texto livre (ex.: "Paula" ou "Silva" ou "Paula Silva"),
+    procura entre os perfis cadastrados do armazém alguém cujo nome,
+    sobrenome ou nome completo bata. Se mais de uma pessoa bater
+    (ex.: duas "Paula" diferentes), não arrisca escolher errado —
+    devolve None nesse caso.
+    """
+
+    correspondentes = [
+        perfil for perfil in ler_perfis(armazem_id)
+        if texto_bate_com_perfil(perfil, texto)
+    ]
+
+    if len(correspondentes) == 1:
+        return correspondentes[0]
+
+    return None
+
+
+def foto_para_base64(arquivo_upload, lado_max=256):
+    """
+    Recebe um arquivo enviado via st.file_uploader, redimensiona
+    (lado máximo = lado_max) pra não pesar no banco, e devolve como
+    string base64 (com prefixo data:image/...) pronta pra usar num
+    <img src="...">.
+    """
+
+    from PIL import Image
+    import io
+
+    imagem = Image.open(arquivo_upload).convert("RGB")
+
+    imagem.thumbnail((lado_max, lado_max))
+
+    buffer = io.BytesIO()
+    imagem.save(buffer, format="JPEG", quality=85)
+
+    b64 = base64.b64encode(buffer.getvalue()).decode()
+
+    return f"data:image/jpeg;base64,{b64}"
+
+
+def chamados_ja_importados(armazem_id):
+    """
+    Conjunto com o número de todos os CHs (chamados) já registrados
+    em Análise Técnica pra esse armazém — usado pra não duplicar um
+    chamado que já foi importado de uma vez anterior da planilha.
+    """
+
+    return {
+        registro["chamado"]
+        for registro in ler_analise_tecnica(armazem_id)
+        if registro.get("chamado")
+    }
+
+
+# ==================================================
 # CONTROLE DE EPI's
 # ==================================================
 # Prefixos de usuário que podem receber a notificação de
@@ -934,15 +1216,24 @@ def epi_pertence_ao_usuario(nome_epi, usuario_atual):
     """
     Compara sem diferenciar maiúsculas/minúsculas — "Separador.teste"
     (usuário) deve bater com um EPI cadastrado para "Teste", "TESTE"
-    ou "teste".
+    ou "teste". Também reconhece pelo Perfil (nome/sobrenome) do
+    usuário logado, resolvendo o caso de nomes repetidos (dois
+    "João" etc.) — se o EPI foi cadastrado como "João Ramires" e o
+    usuário logado tem perfil com nome "João" e sobrenome "Ramires",
+    bate certinho mesmo que outro "João" também exista.
     """
 
     usuario_normalizado = (usuario_atual or "").strip().lower()
 
-    return any(
+    if any(
         candidato.strip().lower() == usuario_normalizado
         for candidato in usuarios_alvo_epi(nome_epi)
-    )
+    ):
+        return True
+
+    perfil = ler_perfil(usuario_atual)
+
+    return texto_bate_com_perfil(perfil, nome_epi)
 
 
 @st.cache_data(ttl=30)
@@ -1958,6 +2249,295 @@ def total_reclamacoes(armazem_id):
 # ANÁLISE TÉCNICA (SAC)
 # ==================================================
 
+# ==================================================
+# PLANILHA VINCULADA DO SAC (importação automática)
+# ==================================================
+# A pessoa envia (upload) o Excel pelo Administrativo. O app guarda
+# essa cópia no banco e, periodicamente, relê a aba do MÊS ATUAL
+# (ex.: "Agosto 2026") procurando linhas com "CH" (chamado) que
+# ainda não existem em analise_tecnica — cada linha nova vira um
+# chamado automaticamente, com o Separador/Conferente já notificados
+# do mesmo jeito que um cadastro manual notificaria.
+
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
+
+
+def nome_aba_mes_atual():
+
+    agora = datetime.now(ZoneInfo("America/Campo_Grande"))
+
+    return f"{MESES_PT[agora.month - 1]} {agora.year}"
+
+
+def salvar_planilha_sac(armazem_id, nome_arquivo, conteudo_bytes, usuario):
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        INSERT INTO planilha_sac
+        (armazem_id, nome_arquivo, conteudo, enviado_por, enviado_em, ultima_checagem, ultimo_resultado)
+        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, NULL, NULL)
+        ON CONFLICT (armazem_id) DO UPDATE SET
+            nome_arquivo = EXCLUDED.nome_arquivo,
+            conteudo = EXCLUDED.conteudo,
+            enviado_por = EXCLUDED.enviado_por,
+            enviado_em = CURRENT_TIMESTAMP,
+            ultima_checagem = NULL,
+            ultimo_resultado = NULL
+        """, (
+            armazem_id,
+            nome_arquivo,
+            psycopg2.Binary(conteudo_bytes),
+            usuario
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
+
+    ler_planilha_sac.clear()
+
+
+@st.cache_data(ttl=30)
+def ler_planilha_sac(armazem_id):
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT nome_arquivo, conteudo, enviado_por, enviado_em,
+               ultima_checagem, ultimo_resultado
+        FROM planilha_sac
+        WHERE armazem_id = %s
+        """, (armazem_id,))
+
+        linha = cursor.fetchone()
+
+    finally:
+        liberar(conn)
+
+    if not linha:
+        return None
+
+    return {
+        "nome_arquivo": linha[0],
+        "conteudo": bytes(linha[1]) if linha[1] is not None else None,
+        "enviado_por": linha[2],
+        "enviado_em": linha[3],
+        "ultima_checagem": linha[4],
+        "ultimo_resultado": linha[5],
+    }
+
+
+def _registrar_checagem_planilha_sac(armazem_id, resultado_texto):
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        UPDATE planilha_sac
+        SET ultima_checagem = CURRENT_TIMESTAMP,
+            ultimo_resultado = %s
+        WHERE armazem_id = %s
+        """, (resultado_texto, armazem_id))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
+
+    ler_planilha_sac.clear()
+
+
+def _valor_texto(valor):
+
+    if valor is None:
+        return ""
+
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+
+    return str(valor).strip()
+
+
+def _valor_hora(valor):
+
+    from datetime import time as time_type, datetime as datetime_type
+
+    if valor is None:
+        return None
+
+    if isinstance(valor, time_type):
+        return valor
+
+    if isinstance(valor, datetime_type):
+        return valor.time()
+
+    texto = str(valor).strip()
+
+    for formato in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime_type.strptime(texto, formato).time()
+        except ValueError:
+            continue
+
+    return None
+
+
+def _valor_data(valor):
+
+    if valor is None:
+        return None
+
+    if hasattr(valor, "date") and callable(valor.date):
+        return valor.date()
+
+    if hasattr(valor, "year"):
+        return valor
+
+    return None
+
+
+def importar_planilha_sac(armazem_id, usuario="Planilha Vinculada"):
+    """
+    Relê a cópia da planilha guardada para este armazém, acha a aba
+    do mês atual e cria em analise_tecnica os chamados ("CH") que
+    ainda não existem — comparando pelo número do chamado. Devolve
+    um dicionário com o resultado (pra mostrar na tela).
+    """
+
+    import openpyxl
+    import io as io_module
+
+    registro_planilha = ler_planilha_sac(armazem_id)
+
+    if not registro_planilha or not registro_planilha.get("conteudo"):
+        return {"ok": False, "mensagem": "Nenhuma planilha vinculada ainda."}
+
+    aba_alvo = nome_aba_mes_atual()
+
+    try:
+        pasta_trabalho = openpyxl.load_workbook(
+            io_module.BytesIO(registro_planilha["conteudo"]),
+            data_only=True
+        )
+    except Exception as erro:
+        resultado = f"Erro ao abrir a planilha: {erro}"
+        _registrar_checagem_planilha_sac(armazem_id, resultado)
+        return {"ok": False, "mensagem": resultado}
+
+    if aba_alvo not in pasta_trabalho.sheetnames:
+        resultado = f"Aba '{aba_alvo}' não encontrada na planilha."
+        _registrar_checagem_planilha_sac(armazem_id, resultado)
+        return {"ok": False, "mensagem": resultado}
+
+    planilha = pasta_trabalho[aba_alvo]
+
+    chamados_existentes = {
+        (registro.get("chamado") or "").strip().lower()
+        for registro in ler_analise_tecnica(armazem_id)
+    }
+
+    novos = 0
+    ignorados = 0
+
+    linhas = planilha.iter_rows(min_row=2, values_only=True)
+
+    for linha in linhas:
+
+        if linha is None or len(linha) < 19:
+            continue
+
+        (
+            data_col, ch_col, cliente_col, nf_col, descricao_col,
+            cod_pdt_col, produto_col, tratativa_col, data2_col, hora_col,
+            separador_col, volume_col, carga_col, regiao_col, motorista_col,
+            balanca_col, conf_col, tipo_col, _separador2_col
+        ) = linha[:19]
+
+        chamado = _valor_texto(ch_col)
+
+        if not chamado:
+            continue
+
+        if chamado.strip().lower() in chamados_existentes:
+            ignorados += 1
+            continue
+
+        data_erro = _valor_data(data_col) or datetime.now(ZoneInfo("America/Campo_Grande")).date()
+
+        separador = _valor_texto(separador_col) or None
+
+        conferente_bruto = _valor_texto(conf_col)
+
+        conferente = (
+            conferente_bruto
+            if conferente_bruto and conferente_bruto.lower() not in ("não", "nao", "-")
+            else None
+        )
+
+        dados = {
+            "tipo_erro": _valor_texto(tipo_col) or "Não informado",
+            "data_erro": data_erro,
+            "data_fechamento": None,
+            "descricao": _valor_texto(descricao_col),
+            "chamado": chamado,
+            "cliente": _valor_texto(cliente_col),
+            "nota_fiscal": _valor_texto(nf_col),
+            "cod_produto": _valor_texto(cod_pdt_col),
+            "produto": _valor_texto(produto_col),
+            "tratativa": _valor_texto(tratativa_col) or "Não informado",
+            "hora": _valor_hora(hora_col),
+            "separador": separador,
+            "volume": _valor_texto(volume_col),
+            "carga": _valor_texto(carga_col),
+            "regiao": _valor_texto(regiao_col),
+            "motorista": _valor_texto(motorista_col),
+            "balanca": _valor_texto(balanca_col),
+            "conferente": conferente,
+        }
+
+        vinculos = []
+
+        if separador:
+            vinculos.append({"nome": separador, "papel": "Separador"})
+
+        if conferente:
+            vinculos.append({"nome": conferente, "papel": "Conferente"})
+
+        adicionar_analise_tecnica(dados, vinculos, armazem_id, usuario=usuario)
+
+        chamados_existentes.add(chamado.strip().lower())
+
+        novos += 1
+
+    if novos:
+        resultado = f"{novos} chamado(s) novo(s) importado(s) de '{aba_alvo}'."
+    else:
+        resultado = f"Nenhum chamado novo em '{aba_alvo}' ({ignorados} já existente(s))."
+
+    _registrar_checagem_planilha_sac(armazem_id, resultado)
+
+    return {
+        "ok": True,
+        "mensagem": resultado,
+        "novos": novos,
+        "ignorados": ignorados,
+        "aba": aba_alvo,
+    }
+
+
 def adicionar_analise_tecnica(
     dados,
     vinculos,
@@ -2533,59 +3113,14 @@ def _retornar_manutencao_checklist(tabela, id_registro, usuario, armazem_id):
         cursor = conn.cursor()
 
         cursor.execute(f"""
-        SELECT descricao, manutencao_enviado_em
-        FROM {tabela}
-        WHERE id = %s
-        AND armazem_id = %s
-        """, (
-            id_registro, armazem_id
-        ))
-
-        linha = cursor.fetchone()
-
-        descricao_atual = linha[0] if linha else None
-        enviado_em = linha[1] if linha else None
-
-        agora_utc = datetime.now(timezone.utc)
-
-        texto_evento = "🔧 Foi para manutenção"
-
-        if enviado_em:
-
-            enviado_local = enviado_em.replace(
-                tzinfo=timezone.utc
-            ).astimezone(
-                ZoneInfo("America/Campo_Grande")
-            )
-
-            texto_evento += f" em {enviado_local.strftime('%d/%m/%Y')}"
-
-        retornado_local = agora_utc.astimezone(
-            ZoneInfo("America/Campo_Grande")
-        )
-
-        texto_evento += f" e retornou em {retornado_local.strftime('%d/%m/%Y')}."
-
-        nova_descricao = (
-            f"{descricao_atual.strip()}\n{texto_evento}"
-            if descricao_atual and descricao_atual.strip()
-            else texto_evento
-        )
-
-        cursor.execute(f"""
         UPDATE {tabela}
         SET em_manutencao = FALSE,
             manutencao_retornado_por = %s,
-            manutencao_retornado_em = %s,
-            descricao = %s
+            manutencao_retornado_em = CURRENT_TIMESTAMP
         WHERE id = %s
         AND armazem_id = %s
         """, (
-            usuario,
-            agora_utc.replace(tzinfo=None),
-            nova_descricao,
-            id_registro,
-            armazem_id
+            usuario, id_registro, armazem_id
         ))
 
         conn.commit()
@@ -3361,6 +3896,34 @@ def excluir_usuario(usuario):
         WHERE usuario = %s
         """, (
             usuario,
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
+
+    listar_usuarios.clear()
+
+
+def excluir_usuarios_lote(ids_usuarios):
+
+    if not ids_usuarios:
+        return
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        # Nunca permitir apagar o fundador, mesmo por id
+        cursor.execute("""
+        DELETE FROM usuarios
+        WHERE id = ANY(%s)
+        AND usuario IS DISTINCT FROM %s
+        """, (
+            ids_usuarios,
+            USUARIO_FUNDADOR,
         ))
 
         conn.commit()

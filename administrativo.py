@@ -2,11 +2,190 @@ import streamlit as st
 import banco
 import estilos
 import remanejamento
+import perfil
 import pandas as pd
 import io
+import openpyxl
 
 from datetime import datetime, timezone, time as time_type
 from zoneinfo import ZoneInfo
+
+
+# =====================================================
+# PLANILHA DO SAC — leitura e importação de chamados
+# =====================================================
+# Mapa de coluna (posição, 0-indexada) -> campo da Análise Técnica,
+# de acordo com o layout real da planilha "<Mês> <Ano>":
+# Data(abertura) | CH | Cliente | NF | Descrição | Cód.Pdt | Produto |
+# Tratativa | Data(fechamento) | Hora | Separador | Volume | Carga |
+# Região | Motorista | Balança | Conf. | Tipo | Separador(ignorado)
+
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
+
+VALORES_SEM_NOME = {"", "não", "nao", "sim", "-", "n/a", "na"}
+
+
+def _texto_celula(valor):
+
+    if valor is None:
+        return ""
+
+    return str(valor).strip()
+
+
+def _data_celula(valor):
+
+    if valor is None or valor == "" or valor == " - ":
+        return None
+
+    if isinstance(valor, datetime):
+        return valor.date()
+
+    if hasattr(valor, "year") and hasattr(valor, "month") and hasattr(valor, "day"):
+        # datetime.date puro (célula formatada só como Data, sem hora) —
+        # não tem método .date(), mas já é a data em si.
+        return valor
+
+    return None
+
+
+def _hora_celula(valor):
+
+    if valor is None:
+        return None
+
+    if hasattr(valor, "hour"):
+        return valor
+
+    return None
+
+
+def nome_aba_mes_atual():
+
+    agora = estilos.agora_local()
+
+    return f"{MESES_PT[agora.month - 1]} {agora.year}"
+
+
+def processar_planilha_sac(arquivo_bytes, armazem_id, usuario):
+    """
+    Lê a cópia da planilha vinculada, acha a aba do mês atual (ex.:
+    "Agosto 2026") e registra em Análise Técnica todo chamado (CH)
+    que ainda não tinha sido importado, notificando o Separador e o
+    Conferente vinculados a cada um. Devolve (importados, nome_aba,
+    diagnostico) — ou (None, None, None) se a aba do mês não existir
+    na planilha. `diagnostico` é uma lista de strings explicando por
+    que cada linha não numerada foi pulada (útil pra debugar planilha
+    com formatação diferente do esperado).
+    """
+
+    nome_aba = nome_aba_mes_atual()
+
+    workbook = openpyxl.load_workbook(
+        io.BytesIO(arquivo_bytes),
+        data_only=True
+    )
+
+    if nome_aba not in workbook.sheetnames:
+        return None, nome_aba, None
+
+    planilha = workbook[nome_aba]
+
+    ja_importados = banco.chamados_ja_importados(armazem_id)
+
+    importados = 0
+    diagnostico = []
+
+    for indice_linha, linha in enumerate(
+        planilha.iter_rows(min_row=2, values_only=True),
+        start=2
+    ):
+
+        if linha[0] is None and (len(linha) <= 1 or linha[1] is None):
+            # Linha totalmente vazia — não vale nem logar.
+            continue
+
+        chamado = _texto_celula(linha[1]) if len(linha) > 1 else ""
+
+        if not chamado:
+            diagnostico.append(
+                f"Linha {indice_linha}: pulada — coluna CH (B) vazia."
+            )
+            continue
+
+        if chamado in ja_importados:
+            diagnostico.append(
+                f"Linha {indice_linha}: pulada — CH '{chamado}' já estava "
+                f"importado (duplicado)."
+            )
+            continue
+
+        data_erro = _data_celula(linha[0])
+
+        if not data_erro:
+            diagnostico.append(
+                f"Linha {indice_linha}: pulada — CH '{chamado}' com data "
+                f"inválida/vazia na coluna A (valor bruto: "
+                f"{linha[0]!r}, tipo: {type(linha[0]).__name__})."
+            )
+            continue
+
+        dados = {
+            "tipo_erro": _texto_celula(linha[17]) or "Não informado",
+            "data_erro": data_erro,
+            "data_fechamento": _data_celula(linha[8]),
+            "descricao": _texto_celula(linha[4]),
+            "chamado": chamado,
+            "cliente": _texto_celula(linha[2]),
+            "nota_fiscal": _texto_celula(linha[3]),
+            "cod_produto": _texto_celula(linha[5]),
+            "produto": _texto_celula(linha[6]),
+            "tratativa": _texto_celula(linha[7]),
+            "hora": _hora_celula(linha[9]),
+            "separador": _texto_celula(linha[10]),
+            "volume": _texto_celula(linha[11]),
+            "carga": _texto_celula(linha[12]),
+            "regiao": _texto_celula(linha[13]),
+            "motorista": _texto_celula(linha[14]),
+            "balanca": _texto_celula(linha[15]),
+            "conferente": _texto_celula(linha[16]),
+        }
+
+        vinculos = []
+
+        if dados["separador"]:
+
+            vinculos.append({
+                "nome": dados["separador"],
+                "papel": "Separador"
+            })
+
+        if dados["conferente"].strip().lower() not in VALORES_SEM_NOME:
+
+            vinculos.append({
+                "nome": dados["conferente"],
+                "papel": "Conferente"
+            })
+
+        banco.adicionar_analise_tecnica(
+            dados,
+            vinculos,
+            armazem_id,
+            usuario=usuario
+        )
+
+        ja_importados.add(chamado)
+        importados += 1
+
+        diagnostico.append(
+            f"Linha {indice_linha}: importada — CH '{chamado}', "
+            f"vínculos: {[v['nome'] + ' (' + v['papel'] + ')' for v in vinculos] or 'nenhum'}."
+        )
+
+    return importados, nome_aba, diagnostico
 
 
 # =====================================================
@@ -157,6 +336,28 @@ def confirmar_exclusao_usuario(uid, nome_usuario):
         with estilos.mostrar_processando(f"excluindo usuário '{nome_usuario}'..."):
             banco.excluir_usuario_por_id(uid)
         estilos.notificar_sucesso(f"usuário '{nome_usuario}' excluído.")
+        st.rerun(scope="fragment")
+
+
+def confirmar_exclusao_usuarios_inconsistentes(ids_selecionados):
+
+    st.write(
+        f"Tem certeza que deseja excluir os **{len(ids_selecionados)}** "
+        "registro(s) inconsistente(s) (usuários sem nome)?"
+    )
+
+    st.caption(
+        "Essa ação não pode ser desfeita."
+    )
+
+    if st.button(
+        "✅ Confirmar exclusão",
+        width='stretch',
+        key="confirma_del_lote_usuarios_inconsistentes"
+    ):
+        with estilos.mostrar_processando(f"excluindo {len(ids_selecionados)} registro(s)..."):
+            banco.excluir_usuarios_lote(ids_selecionados)
+        estilos.notificar_sucesso(f"{len(ids_selecionados)} registro(s) inconsistente(s) excluído(s).")
         st.rerun(scope="fragment")
 
 
@@ -957,6 +1158,142 @@ def render():
 
                     estilos.notificar_sucesso("SAC atualizado.")
                     st.rerun(scope="fragment")
+
+            st.divider()
+
+            # -----------------------------------------------
+            # VINCULAR PLANILHA
+            # -----------------------------------------------
+
+            st.subheader("🔗 Vincular planilha")
+
+            st.caption(
+                "Envie o Excel de chamados. O app procura, dentro dele, "
+                f"a aba do mês atual (**{nome_aba_mes_atual()}**) e "
+                "registra em Análise Técnica todo chamado (CH) que "
+                "ainda não existir no sistema, notificando quem estiver "
+                "vinculado (Separador/Conferente)."
+            )
+
+            planilha_vinculada = banco.ler_planilha_sac(armazem_id_atual)
+
+            if planilha_vinculada:
+
+                atualizado_em_local = estilos.horario_local(
+                    planilha_vinculada["enviado_em"]
+                )
+
+                st.caption(
+                    f"📎 Planilha atual: **{planilha_vinculada['nome_arquivo']}** "
+                    f"— enviada por {planilha_vinculada['enviado_por'] or 'desconhecido'} "
+                    f"em {atualizado_em_local.strftime('%d/%m/%Y %H:%M')}"
+                )
+
+            novo_arquivo_sac = st.file_uploader(
+                "Planilha de chamados (.xlsx)",
+                type=["xlsx"],
+                key="upload_planilha_sac"
+            )
+
+            col_vincular, col_processar = st.columns(2)
+
+            with col_vincular:
+
+                if st.button(
+                    "📎 Vincular planilha",
+                    width='stretch',
+                    disabled=novo_arquivo_sac is None
+                ):
+
+                    with estilos.mostrar_processando("vinculando planilha..."):
+
+                        banco.salvar_planilha_sac(
+                            armazem_id_atual,
+                            novo_arquivo_sac.name,
+                            novo_arquivo_sac.getvalue(),
+                            usuario_logado
+                        )
+
+                        importados, nome_aba, diagnostico = processar_planilha_sac(
+                            novo_arquivo_sac.getvalue(),
+                            armazem_id_atual,
+                            usuario_logado
+                        )
+
+                    st.session_state["diagnostico_planilha_sac"] = diagnostico
+
+                    if importados is None:
+
+                        st.warning(
+                            f"Planilha vinculada, mas não encontrei a aba "
+                            f"'{nome_aba}' nela — confira o nome da aba do "
+                            f"mês atual."
+                        )
+
+                    else:
+
+                        estilos.notificar_sucesso(
+                            f"Planilha vinculada. {importados} chamado(s) "
+                            f"novo(s) importado(s) de '{nome_aba}'."
+                        )
+
+                    st.rerun(scope="fragment")
+
+            with col_processar:
+
+                if st.button(
+                    "🔄 Reprocessar planilha atual",
+                    width='stretch',
+                    disabled=not planilha_vinculada
+                ):
+
+                    with estilos.mostrar_processando("procurando chamados novos..."):
+                        importados, nome_aba, diagnostico = processar_planilha_sac(
+                            planilha_vinculada["conteudo"],
+                            armazem_id_atual,
+                            usuario_logado
+                        )
+
+                    st.session_state["diagnostico_planilha_sac"] = diagnostico
+
+                    if importados is None:
+
+                        st.warning(
+                            f"Não encontrei a aba '{nome_aba}' na planilha "
+                            f"vinculada."
+                        )
+
+                    elif importados == 0:
+
+                        st.info("Nenhum chamado novo encontrado.")
+
+                    else:
+
+                        estilos.notificar_sucesso(
+                            f"{importados} chamado(s) novo(s) importado(s) "
+                            f"de '{nome_aba}'."
+                        )
+
+                    st.rerun(scope="fragment")
+
+            diagnostico_salvo = st.session_state.get("diagnostico_planilha_sac")
+
+            if diagnostico_salvo:
+
+                with st.expander(
+                    f"🔬 Diagnóstico do último processamento "
+                    f"({len(diagnostico_salvo)} linha(s) lida(s))"
+                ):
+
+                    for linha_diagnostico in diagnostico_salvo:
+                        st.caption(linha_diagnostico)
+
+            st.caption(
+                "⚠️ O app não enxerga o arquivo no seu computador — ele "
+                "trabalha sempre em cima da última cópia enviada aqui. "
+                "Editou a planilha local? Envie ela de novo em "
+                "'Vincular planilha' pra atualizar."
+            )
 
             st.divider()
 
@@ -2400,10 +2737,23 @@ def render():
 
                 usuarios = banco.listar_usuarios(armazem_id_atual)
 
-                total_usuarios = len(usuarios)
+                # =====================================================
+                # SEPARA REGISTROS REAIS DE REGISTROS INCONSISTENTES
+                # =====================================================
+                # "Inconsistente" = linha sem nome de usuário (sobra de
+                # algum cadastro que falhou no passado). Cada um desses
+                # antes virava um card individual — com muitos deles
+                # cadastrados, isso pesava na tela à toa. Agora só os
+                # usuários de verdade viram card; os inconsistentes
+                # entram num resumo único, com exclusão em lote.
+
+                usuarios_validos = [u for u in usuarios if u[1]]
+                usuarios_inconsistentes = [u for u in usuarios if not u[1]]
+
+                total_usuarios = len(usuarios_validos)
 
                 total_online = sum(
-                    1 for u in usuarios
+                    1 for u in usuarios_validos
                     if u[3] and (
                         datetime.now(timezone.utc)
                         - u[3].replace(tzinfo=timezone.utc)
@@ -2419,6 +2769,26 @@ def render():
                     st.metric("🟢 Online agora", total_online)
 
                 st.divider()
+
+                if usuarios_inconsistentes:
+
+                    with st.container(border=True):
+
+                        st.warning(
+                            f"⚠️ {len(usuarios_inconsistentes)} registro(s) "
+                            "inconsistente(s) encontrado(s) (usuários sem "
+                            "nome, provavelmente de cadastros que falharam). "
+                            "Não contam como usuário e não geram card — "
+                            "recomendo excluir."
+                        )
+
+                        with st.popover("🗑️ Excluir todos os inconsistentes"):
+
+                            confirmar_exclusao_usuarios_inconsistentes(
+                                [u[0] for u in usuarios_inconsistentes]
+                            )
+
+                    st.divider()
 
                 with st.expander("➕ Criar novo usuário"):
 
@@ -2442,29 +2812,37 @@ def render():
                         "➕ Criar Usuário"
                     ):
 
-                        try:
+                        if not novo_usuario.strip() or not senha_usuario.strip():
 
-                            with estilos.mostrar_processando(f"criando usuário '{novo_usuario}'..."):
-                                banco.criar_usuario(
-                                    novo_usuario,
-                                    senha_usuario,
-                                    armazem_id_atual
-                                )
-
-                            estilos.notificar_sucesso(f"usuário '{novo_usuario}' criado.")
-                            st.rerun(scope="fragment")
-
-                        except Exception as erro:
-
-                            st.error(
-                                str(erro)
+                            st.warning(
+                                "Preencha o usuário e a senha inicial."
                             )
+
+                        else:
+
+                            try:
+
+                                with estilos.mostrar_processando(f"criando usuário '{novo_usuario.strip()}'..."):
+                                    banco.criar_usuario(
+                                        novo_usuario.strip(),
+                                        senha_usuario,
+                                        armazem_id_atual
+                                    )
+
+                                estilos.notificar_sucesso(f"usuário '{novo_usuario.strip()}' criado.")
+                                st.rerun(scope="fragment")
+
+                            except Exception as erro:
+
+                                st.error(
+                                    str(erro)
+                                )
 
                 st.divider()
 
                 st.markdown("##### 👥 Usuários cadastrados")
 
-                if not usuarios:
+                if not usuarios_validos:
 
                     st.info("Nenhum usuário cadastrado ainda.")
 
@@ -2472,27 +2850,20 @@ def render():
 
                     cols = st.columns(3)
 
-                    for indice, usuario in enumerate(usuarios):
+                    for indice, usuario in enumerate(usuarios_validos):
 
                         uid = usuario[0]
-                        nome = usuario[1] or ""
+                        nome = usuario[1]
                         ultimo_acesso = usuario[3]
 
                         emblema, rotulo_funcao, cor = badge_usuario(nome)
                         emblema_status, texto_status, horario_acesso = status_presenca(ultimo_acesso)
 
-                        if not nome:
-
-                            nome_exibicao = "⚠️ Usuário sem nome (id " + str(uid) + ")"
-                            rotulo_funcao = "Registro inconsistente — recomendo excluir"
-
-                        else:
-
-                            nome_exibicao = (
-                                nome.split(".", 1)[1].strip().title()
-                                if "." in nome
-                                else nome
-                            )
+                        nome_exibicao = (
+                            nome.split(".", 1)[1].strip().title()
+                            if "." in nome
+                            else nome
+                        )
 
                         chave_card = f"card-user-{uid}"
 
@@ -2545,14 +2916,36 @@ def render():
                                     st.write("")
                                     st.caption("👑 Conta principal — não pode ser excluída.")
 
+                                    with st.popover("🪪 Perfil", key=f"pop_perfil_user_{uid}"):
+
+                                        perfil._formulario_perfil(
+                                            nome,
+                                            armazem_id_atual,
+                                            chave_prefixo=f"admcard_{uid}_"
+                                        )
+
                                 else:
 
-                                    with st.popover("🗑️ Excluir", key=f"pop_del_user_{uid}"):
+                                    col_perfil, col_excluir = st.columns(2)
 
-                                        confirmar_exclusao_usuario(
-                                            uid,
-                                            nome or nome_exibicao
-                                        )
+                                    with col_perfil:
+
+                                        with st.popover("🪪 Perfil", key=f"pop_perfil_user_{uid}"):
+
+                                            perfil._formulario_perfil(
+                                                nome,
+                                                armazem_id_atual,
+                                                chave_prefixo=f"admcard_{uid}_"
+                                            )
+
+                                    with col_excluir:
+
+                                        with st.popover("🗑️ Excluir", key=f"pop_del_user_{uid}"):
+
+                                            confirmar_exclusao_usuario(
+                                                uid,
+                                                nome or nome_exibicao
+                                            )
 
             _fragmento_usuarios()
 

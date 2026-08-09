@@ -1,6 +1,8 @@
 import streamlit as st
 import contextlib
 import time
+import base64
+import os
 
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -273,7 +275,7 @@ def _css_base(tema):
         .luxiz-logo{
             display:flex;
             align-items:center;
-            gap:14px;
+            gap:0;
             margin-bottom:10px;
         }
 
@@ -288,6 +290,17 @@ def _css_base(tema):
             font-size:1.5rem;
             background:linear-gradient(135deg,#0284c7,#7c3aed);
             box-shadow:0 6px 18px rgba(2,132,199,.35);
+        }
+
+        .luxiz-logo-imagem{
+            height:76px;
+            width:auto;
+            display:block;
+            filter:drop-shadow(0 4px 14px rgba(2,132,199,.35));
+        }
+
+        .luxiz-logo-texto{
+            margin-left:-12px;
         }
 
         .luxiz-logo-texto h1{
@@ -310,6 +323,7 @@ def _css_base(tema):
             letter-spacing:2px;
             text-transform:uppercase;
             color:#64748b;
+            white-space:nowrap;
         }
 
         .luxiz-teaser-wrap{
@@ -328,6 +342,10 @@ def _css_base(tema):
         }
 
         .luxiz-dev-footer .marca{
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:0;
             font-size:.85rem;
             font-weight:700;
             letter-spacing:.5px;
@@ -335,6 +353,13 @@ def _css_base(tema):
             -webkit-background-clip:text;
             -webkit-text-fill-color:transparent;
             background-clip:text;
+        }
+
+        .luxiz-dev-footer-logo{
+            height:20px;
+            width:auto;
+            display:block;
+            margin-right:-4px;
         }
 
         .luxiz-dev-footer .sub{
@@ -526,7 +551,7 @@ def _css_base(tema):
     .luxiz-logo{
         display:flex;
         align-items:center;
-        gap:14px;
+        gap:0;
         margin-bottom:10px;
     }
 
@@ -541,6 +566,17 @@ def _css_base(tema):
         font-size:1.5rem;
         background:linear-gradient(135deg,#00c8ff,#a855f7);
         box-shadow:0 6px 18px rgba(0,200,255,.35);
+    }
+
+    .luxiz-logo-imagem{
+        height:76px;
+        width:auto;
+        display:block;
+        filter:drop-shadow(0 4px 14px rgba(0,200,255,.35));
+    }
+
+    .luxiz-logo-texto{
+        margin-left:-12px;
     }
 
     .luxiz-logo-texto h1{
@@ -563,6 +599,7 @@ def _css_base(tema):
         letter-spacing:2px;
         text-transform:uppercase;
         color:#94a3b8;
+        white-space:nowrap;
     }
 
     .luxiz-teaser-wrap{
@@ -581,6 +618,10 @@ def _css_base(tema):
     }
 
     .luxiz-dev-footer .marca{
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:0;
         font-size:.85rem;
         font-weight:700;
         letter-spacing:.5px;
@@ -588,6 +629,13 @@ def _css_base(tema):
         -webkit-background-clip:text;
         -webkit-text-fill-color:transparent;
         background-clip:text;
+    }
+
+    .luxiz-dev-footer-logo{
+        height:20px;
+        width:auto;
+        display:block;
+        margin-right:-4px;
     }
 
     .luxiz-dev-footer .sub{
@@ -690,10 +738,23 @@ def _css_base(tema):
     }
 
     .luxiz-overlay-titulo{
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:8px;
+        margin-bottom:8px;
+    }
+
+    .luxiz-overlay-logo{
+        width:24px;
+        height:24px;
+        object-fit:contain;
+    }
+
+    .luxiz-overlay-titulo-texto{
         font-size:1.25rem;
         font-weight:800;
         letter-spacing:.4px;
-        margin-bottom:8px;
         background:linear-gradient(90deg,#00c8ff,#a855f7);
         -webkit-background-clip:text;
         -webkit-text-fill-color:transparent;
@@ -1013,12 +1074,66 @@ def marca_desenvolvedor_login():
     )
 
 
+@st.cache_data
+def _logo_base64():
+    """
+    Lê o arquivo da logo (assets/luxiz_logo.png, na raiz do projeto)
+    e devolve em base64, para embutir direto no HTML sem depender
+    de servir arquivo estático. Cacheado — só lê o arquivo uma vez.
+    """
+
+    caminho = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "assets",
+        "luxiz_logo.png"
+    )
+
+    with open(caminho, "rb") as arquivo:
+        return base64.b64encode(arquivo.read()).decode()
+
+
+@st.cache_data
+def _favicon_base64():
+    """
+    Lê o arquivo assets/favicon.png e devolve em base64 — usado como
+    marca nos avisos centrais de processamento/sucesso, no lugar do
+    antigo "✨" em texto.
+    """
+
+    caminho = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "assets",
+        "favicon.png"
+    )
+
+    with open(caminho, "rb") as arquivo:
+        return base64.b64encode(arquivo.read()).decode()
+
+
+def _titulo_overlay_html():
+    """
+    HTML do título "Luxiz IA" usado nos avisos centrais, com o
+    favicon.png no lugar do emoji "✨".
+    """
+
+    favicon_b64 = _favicon_base64()
+
+    return (
+        '<div class="luxiz-overlay-titulo">'
+        f'<img class="luxiz-overlay-logo" src="data:image/png;base64,{favicon_b64}" alt="Luxiz IA">'
+        '<span class="luxiz-overlay-titulo-texto">Luxiz IA</span>'
+        '</div>'
+    )
+
+
 def logo_header(subtitulo="Centro Inteligente de Operações"):
+
+    logo_b64 = _logo_base64()
 
     st.markdown(
         f"""
         <div class="luxiz-logo">
-            <div class="luxiz-logo-icon">✨</div>
+            <img class="luxiz-logo-imagem" src="data:image/png;base64,{logo_b64}" alt="Luxiz IA">
             <div class="luxiz-logo-texto">
                 <h1>Luxiz IA</h1>
                 <p>{subtitulo}</p>
@@ -1114,10 +1229,15 @@ def cabecalho_pagina(icone, titulo, subtitulo, cor="#3b82f6"):
 
 def rodape():
 
+    logo_b64 = _logo_base64()
+
     st.markdown(
-        """
+        f"""
         <div class="luxiz-dev-footer">
-            <div class="marca">✨ Luxiz IA</div>
+            <div class="marca">
+                <img class="luxiz-dev-footer-logo" src="data:image/png;base64,{logo_b64}" alt="Luxiz IA">
+                Luxiz IA
+            </div>
             <div class="sub">Centro Inteligente de Operações</div>
         </div>
         """,
@@ -1150,7 +1270,7 @@ def mostrar_processando(mensagem):
         <div class="luxiz-overlay">
             <div class="luxiz-overlay-card">
                 <div class="luxiz-overlay-spinner"></div>
-                <div class="luxiz-overlay-titulo">✨ Luxiz IA</div>
+                {_titulo_overlay_html()}
                 <div class="luxiz-overlay-texto">{mensagem}</div>
             </div>
         </div>
@@ -1191,7 +1311,7 @@ def exibir_notificacao_pendente():
         <div class="luxiz-overlay luxiz-overlay-sucesso">
             <div class="luxiz-overlay-card">
                 <div class="luxiz-overlay-check">✅</div>
-                <div class="luxiz-overlay-titulo">✨ Luxiz IA</div>
+                {_titulo_overlay_html()}
                 <div class="luxiz-overlay-texto">{mensagem}</div>
             </div>
         </div>
@@ -1260,7 +1380,7 @@ def mostrar_atualizacao_automatica(segundos_entre_ciclos=120):
             <div class="luxiz-overlay{classe_extra}">
                 <div class="luxiz-overlay-card">
                     {icone_fase}
-                    <div class="luxiz-overlay-titulo">✨ Luxiz IA</div>
+                    {_titulo_overlay_html()}
                     <div class="luxiz-overlay-texto">{texto}</div>
                 </div>
             </div>

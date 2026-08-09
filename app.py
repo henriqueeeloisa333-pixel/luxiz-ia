@@ -1,6 +1,9 @@
 import streamlit as st
 import banco
 import estilos
+import os
+
+from datetime import datetime, timezone
 
 import dashboard
 import remanejamento
@@ -12,14 +15,21 @@ import checklist
 import equipamentos
 import epi
 import notificacoes
+import perfil
 
 # =====================================================
 # CONFIGURAÇÃO
 # =====================================================
 
+_CAMINHO_FAVICON = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "assets",
+    "favicon.png"
+)
+
 st.set_page_config(
     page_title="Luxiz IA",
-    page_icon="✨",
+    page_icon=_CAMINHO_FAVICON,
     layout="wide"
 )
 
@@ -776,7 +786,58 @@ def render_cabecalho_inicio():
 
     with col2:
 
-        st.success("🟢 Online")
+        usuarios_armazem_hero = banco.listar_usuarios(armazem_id_atual)
+
+        perfis_armazem_hero = {
+            perfil["usuario"]: perfil
+            for perfil in banco.ler_perfis(armazem_id_atual)
+        }
+
+        usuarios_online_hero = []
+
+        for uid_hero, nome_usuario_hero, tipo_usuario_hero, ultimo_acesso_hero in usuarios_armazem_hero:
+
+            if not nome_usuario_hero or not ultimo_acesso_hero:
+                continue
+
+            segundos_desde_acesso_hero = (
+                datetime.now(timezone.utc)
+                - ultimo_acesso_hero.replace(tzinfo=timezone.utc)
+            ).total_seconds()
+
+            if segundos_desde_acesso_hero > 240:
+                continue
+
+            perfil_usuario_hero = perfis_armazem_hero.get(nome_usuario_hero)
+
+            nome_exibicao_hero = (
+                banco.nome_completo_perfil(perfil_usuario_hero)
+                if perfil_usuario_hero else
+                (
+                    nome_usuario_hero.split(".", 1)[1].strip().title()
+                    if "." in nome_usuario_hero
+                    else nome_usuario_hero
+                )
+            )
+
+            usuarios_online_hero.append(nome_exibicao_hero)
+
+        with st.popover(
+            f"🟢 Online ({len(usuarios_online_hero)})",
+            help="Online agora"
+        ):
+
+            st.caption("👥 Quem está online agora")
+
+            if usuarios_online_hero:
+
+                for nome_online_hero in sorted(usuarios_online_hero):
+
+                    st.markdown(f"🟢 {nome_online_hero}")
+
+            else:
+
+                st.caption("Ninguém online no momento.")
 
         notificacoes.sino(usuario_atual, armazem_id_atual)
 
@@ -889,6 +950,7 @@ else:
         ("nav_administrativo", "⚙️", "Administrativo"),
     ]
 
+NAV_ITENS.append(("nav_perfil", "🪪", "Perfil"))
 CHAVES_VALIDAS = [chave for chave, _, _ in NAV_ITENS]
 
 if (
@@ -915,7 +977,7 @@ def render_sidebar():
     # st.rerun() (que já dispara sozinho, uma vez, por ser um botão
     # dentro de um fragment).
     if st.button(
-        "✨  Luxiz IA" if st.session_state.sidebar_aberta else "✨",
+        "\u200b",
         key="toggle_sidebar_luxiz"
     ):
         st.session_state.sidebar_aberta = not st.session_state.sidebar_aberta
@@ -1002,16 +1064,43 @@ def render_sidebar():
             background:transparent !important;
             border:none !important;
             box-shadow:none !important;
-            color:{COR_TEXTO_TOGGLE} !important;
-            font-weight:800 !important;
-            font-size:1.05rem !important;
-            letter-spacing:.4px;
+            color:transparent !important;
             width:100%;
+            height:40px;
             padding:.3rem 0 !important;
         }}
-        div[class*="st-key-toggle_sidebar_luxiz"] button:hover{{
-            filter:brightness(1.4);
-            transform:scale(1.05);
+        div[class*="st-key-toggle_sidebar_luxiz"] button:hover ~ .luxiz-sidebar-toggle-visual,
+        .luxiz-sidebar-toggle-visual:hover{{
+            filter:brightness(1.25);
+        }}
+        .luxiz-sidebar-toggle-visual{{
+            position:fixed;
+            left:0;
+            top:16px;
+            width:{LARGURA_PAINEL_PX}px;
+            height:40px;
+            z-index:999998;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:0;
+            pointer-events:none;
+            overflow:hidden;
+            transition:width .18s ease;
+        }}
+        .luxiz-sidebar-toggle-visual img{{
+            height:28px;
+            width:auto;
+            display:block;
+            flex-shrink:0;
+        }}
+        .luxiz-sidebar-toggle-visual span{{
+            font-weight:800;
+            font-size:1.05rem;
+            letter-spacing:.4px;
+            color:{COR_TEXTO_TOGGLE};
+            white-space:nowrap;
+            margin-left:-10px;
         }}
         div[class*="st-key-painel_navegacao_scroll"]{{
             position:fixed;
@@ -1122,6 +1211,18 @@ def render_sidebar():
         unsafe_allow_html=True
     )
 
+    _logo_toggle_b64 = estilos._logo_base64()
+
+    st.markdown(
+        f"""
+        <div class="luxiz-sidebar-toggle-visual">
+            <img src="data:image/png;base64,{_logo_toggle_b64}" alt="Luxiz IA">
+            {'<span>Luxiz IA</span>' if st.session_state.sidebar_aberta else ''}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     if st.session_state.sidebar_aberta:
 
         st.markdown(
@@ -1155,10 +1256,42 @@ def render_sidebar():
     # Fica sempre fixo, acima da barra global "Sistema Online" do
     # rodapé da página — só a área de navegação (acima) rola.
 
+    perfil_atual_sidebar = banco.ler_perfil(usuario_atual)
+
+    if perfil_atual_sidebar:
+        nome_perfil_sidebar = banco.nome_completo_perfil(perfil_atual_sidebar)
+        foto_perfil_sidebar = perfil_atual_sidebar.get("foto")
+    else:
+        nome_perfil_sidebar = nome_exibicao
+        foto_perfil_sidebar = None
+
+    if foto_perfil_sidebar:
+
+        avatar_html_sidebar = (
+            f'<img src="{foto_perfil_sidebar}" style="'
+            f'width:24px;height:24px;border-radius:50%;object-fit:cover;'
+            f'flex-shrink:0;">'
+        )
+
+    else:
+
+        iniciais_sidebar = "".join(
+            p[0].upper() for p in nome_perfil_sidebar.split()[:2]
+        ) or "?"
+
+        avatar_html_sidebar = (
+            f'<div style="'
+            f'width:24px;height:24px;border-radius:50%;flex-shrink:0;'
+            f'background:linear-gradient(135deg,#3b82f6,#a855f7);'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'color:white;font-weight:800;font-size:.62rem;'
+            f'">{iniciais_sidebar}</div>'
+        )
+
     rotulo_rodape_sidebar = (
-        f"🟢 {nome_exibicao}"
+        f'{avatar_html_sidebar}<span class="luxiz-sidebar-rodape-nome">{nome_perfil_sidebar}</span>'
         if st.session_state.sidebar_aberta
-        else "🟢"
+        else avatar_html_sidebar
     )
 
     st.markdown(
@@ -1174,17 +1307,23 @@ def render_sidebar():
             display:flex;
             align-items:center;
             justify-content:center;
+            gap:8px;
             z-index:999998;
             font-size:.78rem;
             font-weight:700;
             color:{COR_TEXTO_TOGGLE};
             white-space:nowrap;
             overflow:hidden;
-            text-overflow:ellipsis;
             padding:0 12px;
             border-top:1px solid {COR_BORDA_SIDEBAR};
             background:{COR_FUNDO_SIDEBAR};
             transition:width .18s ease;
+        }}
+        .luxiz-sidebar-rodape-nome{{
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+            min-width:0;
         }}
         </style>
         <div class="luxiz-sidebar-rodape">{rotulo_rodape_sidebar}</div>
@@ -1203,6 +1342,7 @@ aba_rotativo = st.session_state.aba_atual == "nav_rotativo"
 aba_checklist = st.session_state.aba_atual == "nav_checklist"
 aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
 aba_epi = st.session_state.aba_atual == "nav_epi"
+aba_perfil = st.session_state.aba_atual == "nav_perfil"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
 
 
@@ -1730,7 +1870,7 @@ def render_conteudo_inicio():
 
     st.divider()
 
-    estilos.rodape()
+    botao_sair_rodape("inicio")
 
 if aba_inicio:
     render_cabecalho_inicio()
@@ -1744,7 +1884,6 @@ def render_aba_dashboard():
         dashboard.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("dashboard")
 
 if aba_dashboard:
@@ -1761,7 +1900,6 @@ def render_aba_remanejamento():
         remanejamento.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("remanejamento")
 
 if aba_remanejamento:
@@ -1778,7 +1916,6 @@ def render_aba_sac():
         sac.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("sac")
 
 if aba_sac:
@@ -1795,7 +1932,6 @@ def render_aba_auditoria():
         auditoria.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("auditoria")
 
 if aba_auditoria:
@@ -1812,7 +1948,6 @@ def render_aba_rotativo():
         rotativo.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("rotativo")
 
 if aba_rotativo:
@@ -1828,7 +1963,6 @@ def render_aba_checklist():
     checklist.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("checklist")
 
 if aba_checklist:
@@ -1845,7 +1979,6 @@ def render_aba_equipamentos():
         equipamentos.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("equipamentos")
 
 if aba_equipamentos:
@@ -1861,11 +1994,25 @@ def render_aba_epi():
     epi.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("epi")
 
 if aba_epi:
     render_aba_epi()
+
+# =====================================================
+# PERFIL
+# =====================================================
+
+@st.fragment
+def render_aba_perfil():
+
+    perfil.render()
+
+    st.write("")
+    botao_sair_rodape("perfil")
+
+if aba_perfil:
+    render_aba_perfil()
 
 # =====================================================
 # ADMINISTRATIVO
@@ -1884,7 +2031,6 @@ def render_aba_admin():
     administrativo.render()
 
     st.write("")
-    estilos.rodape()
     botao_sair_rodape("admin")
 
 if aba_admin:
