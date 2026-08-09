@@ -1254,19 +1254,16 @@ def rodape():
 # "✨ Luxiz IA" — um enquanto a ação está rodando, outro
 # confirmando o que foi feito, sumindo sozinho.
 
-@contextlib.contextmanager
-def mostrar_processando(mensagem):
+def _conteudo_overlay_processando(mensagem):
     """
-    Uso: with estilos.mostrar_processando("atualizando..."):
-             banco.fazer_algo()
-    Mostra o aviso central enquanto o bloco roda e some assim
-    que ele termina (sozinho, sem precisar de rerun).
+    HTML do aviso central "em andamento" (spinner + título + texto).
+    Isolado numa função à parte para poder ser gerado de novo, com
+    um texto diferente, sem recriar o placeholder — é isso que
+    permite ao overlay ir mudando de "Carregando..." para
+    "Carregando usuários...", "Carregando armazéns..." etc.
     """
 
-    marcador = st.empty()
-
-    marcador.markdown(
-        f"""
+    return f"""
         <div class="luxiz-overlay">
             <div class="luxiz-overlay-card">
                 <div class="luxiz-overlay-spinner"></div>
@@ -1274,14 +1271,69 @@ def mostrar_processando(mensagem):
                 <div class="luxiz-overlay-texto">{mensagem}</div>
             </div>
         </div>
-        """,
+        """
+
+
+@contextlib.contextmanager
+def mostrar_processando(mensagem):
+    """
+    Uso: with estilos.mostrar_processando("atualizando..."):
+             banco.fazer_algo()
+    Mostra o aviso central enquanto o bloco roda e some assim
+    que ele termina (sozinho, sem precisar de rerun).
+
+    Enquanto está aberto, funções do banco.py chamam
+    estilos.atualizar_etapa("...") para trocar o texto pelo que
+    está sendo carregado/verificado naquele instante — em vez de
+    ficar parado só no texto inicial.
+    """
+
+    marcador = st.empty()
+
+    marcador.markdown(
+        _conteudo_overlay_processando(mensagem),
         unsafe_allow_html=True
     )
+
+    marcador_anterior = st.session_state.get("_luxiz_overlay_ativo")
+    st.session_state["_luxiz_overlay_ativo"] = marcador
 
     try:
         yield
     finally:
         marcador.empty()
+
+        # Restaura o overlay anterior (se houver um "por fora" deste,
+        # em algum caso de aninhamento) em vez de simplesmente apagar
+        # a referência — evita que atualizar_etapa() perca de vista
+        # um overlay mais externo ainda aberto.
+        if marcador_anterior is not None:
+            st.session_state["_luxiz_overlay_ativo"] = marcador_anterior
+        else:
+            st.session_state.pop("_luxiz_overlay_ativo", None)
+
+
+def atualizar_etapa(mensagem):
+    """
+    Atualiza o texto do aviso central "Luxiz IA" que estiver aberto
+    no momento (aberto por mostrar_processando ou
+    mostrar_atualizacao_automatica), mostrando o que está sendo
+    carregado/verificado agora — ex.: "Carregando usuários...".
+
+    Se não houver nenhum aviso aberto (ex.: uma função do banco
+    rodando fora de um mostrar_processando), não faz nada — é
+    seguro chamar de qualquer lugar.
+    """
+
+    marcador = st.session_state.get("_luxiz_overlay_ativo")
+
+    if marcador is None:
+        return
+
+    marcador.markdown(
+        _conteudo_overlay_processando(mensagem),
+        unsafe_allow_html=True
+    )
 
 
 def notificar_sucesso(mensagem):
@@ -1391,9 +1443,17 @@ def mostrar_atualizacao_automatica(segundos_entre_ciclos=120):
     _mostrar_fase("Lendo dados...")
     time.sleep(.5)
 
+    marcador_anterior = st.session_state.get("_luxiz_overlay_ativo")
+    st.session_state["_luxiz_overlay_ativo"] = marcador
+
     try:
         yield
     finally:
+        if marcador_anterior is not None:
+            st.session_state["_luxiz_overlay_ativo"] = marcador_anterior
+        else:
+            st.session_state.pop("_luxiz_overlay_ativo", None)
+
         _mostrar_fase("Atualizando dados...")
         time.sleep(.5)
 

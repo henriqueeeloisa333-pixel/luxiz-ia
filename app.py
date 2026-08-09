@@ -1880,7 +1880,7 @@ if aba_inicio:
 @st.fragment(run_every=120)
 def render_aba_dashboard():
 
-    with estilos.mostrar_processando("Dashboard..."):
+    with estilos.mostrar_processando("Carregando..."):
         dashboard.render()
 
     st.write("")
@@ -1896,7 +1896,7 @@ if aba_dashboard:
 @st.fragment
 def render_aba_remanejamento():
 
-    with estilos.mostrar_processando("Remanejamento..."):
+    with estilos.mostrar_processando("Carregando..."):
         remanejamento.render()
 
     st.write("")
@@ -1912,7 +1912,7 @@ if aba_remanejamento:
 @st.fragment(run_every=120)
 def render_aba_sac():
 
-    with estilos.mostrar_processando("Central SAC..."):
+    with estilos.mostrar_processando("Carregando..."):
         sac.render()
 
     st.write("")
@@ -1928,7 +1928,7 @@ if aba_sac:
 @st.fragment(run_every=120)
 def render_aba_auditoria():
 
-    with estilos.mostrar_processando("Auditoria de Atividades..."):
+    with estilos.mostrar_processando("Carregando..."):
         auditoria.render()
 
     st.write("")
@@ -1944,7 +1944,7 @@ if aba_auditoria:
 @st.fragment(run_every=120)
 def render_aba_rotativo():
 
-    with estilos.mostrar_processando("Rodízio de Fim de Expediente..."):
+    with estilos.mostrar_processando("Carregando..."):
         rotativo.render()
 
     st.write("")
@@ -1975,7 +1975,7 @@ if aba_checklist:
 @st.fragment(run_every=120)
 def render_aba_equipamentos():
 
-    with estilos.mostrar_processando("Equipamentos..."):
+    with estilos.mostrar_processando("Carregando..."):
         equipamentos.render()
 
     st.write("")
