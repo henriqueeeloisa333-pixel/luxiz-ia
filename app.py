@@ -1873,9 +1873,10 @@ def render_conteudo_inicio():
     botao_sair_rodape("inicio")
 
 if aba_inicio:
-    render_cabecalho_inicio()
-    notificacoes.renderizar(usuario_atual, armazem_id_atual)
-    render_conteudo_inicio()
+    with estilos.mostrar_processando("Carregando..."):
+        render_cabecalho_inicio()
+        notificacoes.renderizar(usuario_atual, armazem_id_atual)
+        render_conteudo_inicio()
 
 @st.fragment(run_every=120)
 def render_aba_dashboard():
@@ -1960,7 +1961,8 @@ if aba_rotativo:
 @st.fragment
 def render_aba_checklist():
 
-    checklist.render()
+    with estilos.mostrar_processando("Carregando..."):
+        checklist.render()
 
     st.write("")
     botao_sair_rodape("checklist")
@@ -1991,7 +1993,8 @@ if aba_equipamentos:
 @st.fragment
 def render_aba_epi():
 
-    epi.render()
+    with estilos.mostrar_processando("Carregando..."):
+        epi.render()
 
     st.write("")
     botao_sair_rodape("epi")
@@ -2006,7 +2009,8 @@ if aba_epi:
 @st.fragment
 def render_aba_perfil():
 
-    perfil.render()
+    with estilos.mostrar_processando("Carregando..."):
+        perfil.render()
 
     st.write("")
     botao_sair_rodape("perfil")
@@ -2028,7 +2032,8 @@ if aba_perfil:
 @st.fragment
 def render_aba_admin():
 
-    administrativo.render()
+    with estilos.mostrar_processando("Carregando..."):
+        administrativo.render()
 
     st.write("")
     botao_sair_rodape("admin")
