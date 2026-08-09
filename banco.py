@@ -4,7 +4,6 @@ import time
 import unicodedata
 import base64
 import streamlit as st
-import estilos
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
@@ -882,7 +881,6 @@ def inicializar_banco():
 @st.cache_data(ttl=30, show_spinner=False)
 def listar_ruas(armazem_id):
 
-    estilos.atualizar_etapa("Carregando ruas...")
 
     conn = conectar()
 
@@ -1035,7 +1033,6 @@ def salvar_perfil(
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_perfil(usuario):
 
-    estilos.atualizar_etapa("Carregando perfil...")
 
     if not usuario:
         return None
@@ -1072,7 +1069,6 @@ def ler_perfil(usuario):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_perfis(armazem_id):
 
-    estilos.atualizar_etapa("Carregando perfis da equipe...")
 
     conn = conectar()
 
@@ -1246,7 +1242,6 @@ def epi_pertence_ao_usuario(nome_epi, usuario_atual):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_epis(armazem_id):
 
-    estilos.atualizar_etapa("Carregando EPIs...")
 
     conn = conectar()
 
@@ -1461,7 +1456,6 @@ def _mes_fechado_mais_recente():
 @st.cache_data(ttl=300, show_spinner=False)
 def ler_top3_fechamento_mes(armazem_id):
 
-    estilos.atualizar_etapa("Calculando top 3 do mês...")
     """
     Devolve (top3, data_fechamento): o pódio (até 3 ruas) com base
     na nota que cada rua tinha no fechamento do mês mais recente já
@@ -1522,7 +1516,6 @@ def ler_top3_fechamento_mes(armazem_id):
 @st.cache_data(ttl=15, show_spinner=False)
 def notificacoes_lidas_usuario(usuario, armazem_id):
 
-    estilos.atualizar_etapa("Verificando notificações lidas...")
 
     conn = conectar()
 
@@ -1583,7 +1576,6 @@ def marcar_notificacao_lida(usuario, notificacao_id, armazem_id):
 @st.cache_data(ttl=15, show_spinner=False)
 def notificacoes_excluidas(armazem_id):
 
-    estilos.atualizar_etapa("Verificando notificações excluídas...")
 
     conn = conectar()
 
@@ -1635,7 +1627,6 @@ def excluir_notificacao(notificacao_id, armazem_id, usuario):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_notas(armazem_id):
 
-    estilos.atualizar_etapa("Carregando notas...")
 
     conn = conectar()
 
@@ -1664,7 +1655,6 @@ def ler_notas(armazem_id):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_duplas(armazem_id):
 
-    estilos.atualizar_etapa("Carregando duplas...")
 
     conn = conectar()
 
@@ -1693,7 +1683,6 @@ def ler_duplas(armazem_id):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_tudo(armazem_id):
 
-    estilos.atualizar_etapa("Carregando dados do dashboard...")
 
     conn = conectar()
 
@@ -1800,7 +1789,6 @@ def ler_historico_rua(
     limite=10
 ):
 
-    estilos.atualizar_etapa("Carregando histórico da rua...")
 
     conn = conectar()
 
@@ -1838,7 +1826,6 @@ def ler_historico_rua(
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_remanejamentos(armazem_id):
 
-    estilos.atualizar_etapa("Carregando remanejamentos...")
 
     conn = conectar()
 
@@ -1995,7 +1982,6 @@ def excluir_remanejamento_lote(
 @st.cache_data(ttl=30, show_spinner=False)
 def total_remanejamentos(armazem_id):
 
-    estilos.atualizar_etapa("Contando remanejamentos...")
 
     conn = conectar()
 
@@ -2021,7 +2007,6 @@ def ler_historico_remanejamento(
     limite=20
 ):
 
-    estilos.atualizar_etapa("Carregando histórico de remanejamento...")
 
     conn = conectar()
 
@@ -2055,7 +2040,6 @@ def ler_historico_remanejamento(
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_remanejamentos_agendados(armazem_id):
 
-    estilos.atualizar_etapa("Carregando remanejamentos agendados...")
 
     conn = conectar()
 
@@ -2226,7 +2210,6 @@ def atualizar_sac_mensal(
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_historico_sac(armazem_id):
 
-    estilos.atualizar_etapa("Carregando histórico do SAC...")
 
     conn = conectar()
 
@@ -2256,7 +2239,6 @@ def ler_historico_sac(armazem_id):
 @st.cache_data(ttl=30, show_spinner=False)
 def total_reclamacoes(armazem_id):
 
-    estilos.atualizar_etapa("Contando reclamações...")
 
     conn = conectar()
 
@@ -2343,7 +2325,6 @@ def salvar_planilha_sac(armazem_id, nome_arquivo, conteudo_bytes, usuario):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_planilha_sac(armazem_id):
 
-    estilos.atualizar_etapa("Carregando planilha do SAC...")
 
     conn = conectar()
 
@@ -2622,7 +2603,6 @@ def adicionar_analise_tecnica(
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_analise_tecnica(armazem_id):
 
-    estilos.atualizar_etapa("Carregando análise técnica...")
 
     conn = conectar()
 
@@ -2793,7 +2773,6 @@ def adicionar_auditoria(
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_auditoria(armazem_id):
 
-    estilos.atualizar_etapa("Carregando auditoria...")
 
     conn = conectar()
 
@@ -2916,7 +2895,6 @@ def adicionar_pessoa_rotativo(nome, armazem_id):
 @st.cache_data(ttl=30, show_spinner=False)
 def listar_pessoas_rotativo(armazem_id):
 
-    estilos.atualizar_etapa("Carregando pessoas do rodízio...")
 
     conn = conectar()
 
@@ -2993,7 +2971,6 @@ def adicionar_atividade_rotativo(
 @st.cache_data(ttl=30, show_spinner=False)
 def listar_atividades_rotativo(armazem_id):
 
-    estilos.atualizar_etapa("Carregando atividades do rodízio...")
 
     conn = conectar()
 
@@ -3208,7 +3185,6 @@ def adicionar_checklist_hidraulico(nome, numero, data_checklist, status, descric
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_hidraulicos(armazem_id):
 
-    estilos.atualizar_etapa("Carregando checklist de hidráulicos...")
 
     return _ler_checklist("checklist_hidraulicos", armazem_id)
 
@@ -3263,7 +3239,6 @@ def adicionar_checklist_carrinho(nome, numero, data_checklist, status, descricao
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_carrinhos(armazem_id):
 
-    estilos.atualizar_etapa("Carregando checklist de carrinhos...")
 
     return _ler_checklist("checklist_carrinhos", armazem_id)
 
@@ -3318,7 +3293,6 @@ def adicionar_checklist_empilhadeira(nome, numero, data_checklist, status, descr
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_empilhadeiras(armazem_id):
 
-    estilos.atualizar_etapa("Carregando checklist de empilhadeiras...")
 
     return _ler_checklist("checklist_empilhadeiras", armazem_id)
 
@@ -3386,7 +3360,6 @@ def adicionar_checklist_pigmentacao(nome, data_checklist, status, descricao, arm
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_checklist_pigmentacao(armazem_id):
 
-    estilos.atualizar_etapa("Carregando checklist de pigmentação...")
 
     conn = conectar()
 
@@ -3540,7 +3513,6 @@ def _excluir_responsavel(tabela, id_registro, armazem_id):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_responsaveis_hidraulicos(armazem_id):
 
-    estilos.atualizar_etapa("Carregando responsáveis por hidráulicos...")
 
     return _ler_responsaveis("responsaveis_hidraulicos", armazem_id)
 
@@ -3566,7 +3538,6 @@ def excluir_responsavel_hidraulico(id_registro, armazem_id):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_responsaveis_carrinhos(armazem_id):
 
-    estilos.atualizar_etapa("Carregando responsáveis por carrinhos...")
 
     return _ler_responsaveis("responsaveis_carrinhos", armazem_id)
 
@@ -3592,7 +3563,6 @@ def excluir_responsavel_carrinho(id_registro, armazem_id):
 @st.cache_data(ttl=30, show_spinner=False)
 def ler_carrinhos_fixos(armazem_id):
 
-    estilos.atualizar_etapa("Carregando carrinhos fixos...")
 
     conn = conectar()
 
@@ -3876,7 +3846,6 @@ def criar_usuario(
 @st.cache_data(ttl=30, show_spinner=False)
 def listar_usuarios(armazem_id):
 
-    estilos.atualizar_etapa("Carregando usuários...")
 
     conn = conectar()
 
@@ -4061,7 +4030,6 @@ def resetar_senha(
 @st.cache_data(ttl=30, show_spinner=False)
 def listar_armazens():
 
-    estilos.atualizar_etapa("Carregando armazéns...")
 
     conn = conectar()
 
