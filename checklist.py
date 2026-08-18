@@ -79,9 +79,19 @@ def renderizar_checklist(
 
             else:
 
+                # Normaliza o nome digitado: se bater com o Perfil de
+                # alguém cadastrado, salva o nome completo (nome +
+                # sobrenome) já certo; senão, só corrige a
+                # capitalização (ex.: "larissa santos" -> "Larissa
+                # Santos"). Isso também resolve o vínculo com quem
+                # está logado quando o nome vem completo.
+                nome_normalizado = banco.normalizar_nome_pessoa(
+                    nome, armazem_id
+                )
+
                 with estilos.mostrar_processando(f"registrando checklist..."):
                     funcao_adicionar(
-                        nome,
+                        nome_normalizado,
                         numero,
                         data_checklist,
                         status,
@@ -212,10 +222,17 @@ def renderizar_checklist(
 
                     if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
 
+                        # Mesma normalização aplicada também na edição
+                        # direta pela tabela — assim um nome corrigido
+                        # manualmente aqui também casa com o Perfil.
+                        nome_editado_normalizado = banco.normalizar_nome_pessoa(
+                            linha_editada["Nome"], armazem_id
+                        )
+
                         with estilos.mostrar_processando("salvando alterações..."):
                             funcao_editar(
                                 id_registro,
-                                linha_editada["Nome"],
+                                nome_editado_normalizado,
                                 linha_editada[rotulo_numero],
                                 linha_editada["Data"],
                                 linha_editada["Situação"],
@@ -497,9 +514,16 @@ def renderizar_checklist_pigmentacao(
 
             else:
 
+                # Mesma normalização usada em renderizar_checklist:
+                # se bater com um Perfil, salva o nome completo já
+                # certo; senão, só corrige a capitalização.
+                nome_normalizado = banco.normalizar_nome_pessoa(
+                    nome, armazem_id
+                )
+
                 with estilos.mostrar_processando("registrando checklist..."):
                     funcao_adicionar(
-                        nome,
+                        nome_normalizado,
                         data_checklist,
                         status,
                         descricao,
@@ -627,10 +651,14 @@ def renderizar_checklist_pigmentacao(
 
                     if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
 
+                        nome_editado_normalizado = banco.normalizar_nome_pessoa(
+                            linha_editada["Nome"], armazem_id
+                        )
+
                         with estilos.mostrar_processando("salvando alterações..."):
                             funcao_editar(
                                 id_registro,
-                                linha_editada["Nome"],
+                                nome_editado_normalizado,
                                 linha_editada["Data"],
                                 linha_editada["Situação"],
                                 linha_editada["Descrição"],
