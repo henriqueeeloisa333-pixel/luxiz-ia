@@ -1156,6 +1156,58 @@ def encontrar_perfil_por_nome(texto, armazem_id):
     return None
 
 
+def normalizar_nome_pessoa(texto, armazem_id):
+    """
+    Normaliza um nome digitado ou importado livremente (ex.: "alexandre",
+    "Alexandre Vasques", "larissa santos"): se bater com o Perfil de
+    alguém cadastrado nesse armazém (pelo nome, sobrenome ou nome
+    completo, sem diferenciar maiúsculas/minúsculas nem acentos),
+    devolve o nome completo do perfil (nome + sobrenome) — já
+    corrigindo a capitalização e preenchendo o sobrenome que faltava.
+    Se não bater com ninguém, apenas corrige a capitalização do texto
+    digitado (Title Case).
+    """
+
+    texto = (texto or "").strip()
+
+    if not texto:
+        return texto
+
+    perfil = encontrar_perfil_por_nome(texto, armazem_id)
+
+    if perfil:
+        return nome_completo_perfil(perfil)
+
+    return texto.title()
+
+
+def pessoa_pertence_ao_usuario(nome_pessoa, usuario_atual, armazem_id):
+    """
+    Verifica se um nome registrado livremente (análise técnica,
+    auditoria etc.) corresponde ao usuário logado — seja pelo nome
+    depois do prefixo tradicional (ex.: "Separador.Alexandre" bate
+    com "Alexandre"), seja pelo Perfil dele (nome + sobrenome).
+    Resolve o caso em que o registro tem o nome completo (ex.:
+    "Alexandre Vasques") mas o login só tem o primeiro nome.
+    """
+
+    if not nome_pessoa:
+        return False
+
+    nome_normalizado = _normalizar_texto(nome_pessoa)
+
+    if "." in (usuario_atual or ""):
+
+        nome_login = usuario_atual.split(".", 1)[1].strip()
+
+        if _normalizar_texto(nome_login) == nome_normalizado:
+            return True
+
+    perfil = ler_perfil(usuario_atual)
+
+    return texto_bate_com_perfil(perfil, nome_pessoa)
+
+
 def foto_para_base64(arquivo_upload, lado_max=256):
     """
     Recebe um arquivo enviado via st.file_uploader, redimensiona
@@ -3695,9 +3747,10 @@ def autenticar(
 # ==================================================
 # Um token é gerado a cada login e colocado na URL da página.
 # Como a URL fica salva no navegador, se a página recarregar
-# sozinha (F5, queda de rede, reconexão) o app consegue validar
-# esse token aqui e devolver o usuário para onde estava, sem
-# precisar fazer login de novo.
+# sozinha (F5, uma queda de rede rápida, o navegador reconectando
+# o "fio" da aplicação), usamos esse token para reconhecer quem
+# era e devolvê-la exatamente para onde estava, sem pedir login
+# de novo.
 
 def criar_sessao(usuario, dias_validade=30):
 
