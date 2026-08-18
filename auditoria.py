@@ -97,11 +97,13 @@ def render():
 
     usuario_atual = st.session_state.get("usuario", "")
 
-    nome_restrito = None
-
-    if usuario_atual.startswith(PREFIXOS_RESTRITOS):
-
-        nome_restrito = usuario_atual.split(".", 1)[1].strip().title()
+    # Antes: extraía "nome_restrito" do login (ex.: "Alexandre") e
+    # comparava exato com o nome do registro. Como o nome do
+    # registro agora pode vir completo pelo Perfil (ex.: "Alexandre
+    # Vasques"), essa comparação exata deixava de bater. Agora só
+    # guardamos QUE o acesso é restrito — quem bate com quem é
+    # decidido mais abaixo por banco.pessoa_pertence_ao_usuario.
+    acesso_restrito_auditoria = usuario_atual.startswith(PREFIXOS_RESTRITOS)
 
     # =====================================================
     # AGRUPA POR PESSOA
@@ -111,18 +113,26 @@ def render():
 
     for registro in registros:
 
-        nome_normalizado = registro["nome"].strip().title()
+        # Antes: registro["nome"].strip().title() — isso deixava
+        # "Alexandre" e "Alexandre Vasques" em cards separados. Agora
+        # usa o Perfil (quando existir) para juntar os dois num card
+        # só, já com o nome completo certo.
+        nome_normalizado = banco.normalizar_nome_pessoa(
+            registro["nome"], armazem_id_atual
+        )
 
         por_pessoa.setdefault(
             nome_normalizado,
             []
         ).append(registro)
 
-    if nome_restrito:
+    if acesso_restrito_auditoria:
 
         por_pessoa = {
             nome: regs for nome, regs in por_pessoa.items()
-            if nome == nome_restrito
+            if banco.pessoa_pertence_ao_usuario(
+                nome, usuario_atual, armazem_id_atual
+            )
         }
 
     # =====================================================
@@ -138,7 +148,7 @@ def render():
         if total_geral else 0
     )
 
-    if not nome_restrito:
+    if not acesso_restrito_auditoria:
 
         c1, c2, c3, c4 = st.columns(4)
 
@@ -162,7 +172,7 @@ def render():
 
     if not por_pessoa:
 
-        if nome_restrito:
+        if acesso_restrito_auditoria:
 
             st.info(
                 "Nenhum registro de auditoria encontrado para você ainda."
