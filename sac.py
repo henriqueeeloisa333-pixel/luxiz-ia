@@ -375,11 +375,16 @@ significativamente a meta.
 
     usuario_atual = st.session_state.get("usuario", "")
 
-    nome_restrito = None
-
-    if usuario_atual.startswith("Separador.") or usuario_atual.startswith("Conferente."):
-
-        nome_restrito = usuario_atual.split(".", 1)[1].strip().title()
+    # Antes: comparava exato o nome depois do prefixo do login (ex.:
+    # "Alexandre") com o nome salvo no registro. Como o nome salvo
+    # agora pode vir completo pelo Perfil (ex.: "Alexandre Vasques"),
+    # essa comparação exata deixava de bater. Agora só guardamos QUE
+    # o acesso é restrito — quem bate com quem é decidido mais abaixo
+    # por banco.pessoa_pertence_ao_usuario (nome/sobrenome/perfil).
+    acesso_restrito_sac = (
+        usuario_atual.startswith("Separador.")
+        or usuario_atual.startswith("Conferente.")
+    )
 
     registros_todos = banco.ler_analise_tecnica(armazem_id_atual)
 
@@ -420,7 +425,13 @@ significativamente a meta.
 
         for vinculo in vinculos:
 
-            nome_normalizado = vinculo["nome"].strip().title()
+            # Antes: vinculo["nome"].strip().title() — isso deixava
+            # "Alexandre" e "Alexandre Vasques" em cards separados.
+            # Agora usa o Perfil (quando existir) para juntar os dois
+            # num card só, já com o nome completo certo.
+            nome_normalizado = banco.normalizar_nome_pessoa(
+                vinculo["nome"], armazem_id_atual
+            )
 
             if nome_normalizado in nomes_ja_contados_neste_registro:
                 continue
@@ -435,16 +446,18 @@ significativamente a meta.
                 []
             ).append(entrada)
 
-    if nome_restrito:
+    if acesso_restrito_sac:
 
         por_pessoa = {
             nome: erros for nome, erros in por_pessoa.items()
-            if nome == nome_restrito
+            if banco.pessoa_pertence_ao_usuario(
+                nome, usuario_atual, armazem_id_atual
+            )
         }
 
     if not por_pessoa:
 
-        if nome_restrito:
+        if acesso_restrito_sac:
 
             st.info(
                 "Nenhuma ocorrência registrada para você ainda."
