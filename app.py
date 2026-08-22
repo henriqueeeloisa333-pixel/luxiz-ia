@@ -34,6 +34,97 @@ st.set_page_config(
 )
 
 # =====================================================
+# AVISO DE CONEXÃO (queda de rede / rede reestabelecida)
+# =====================================================
+# Isso é puramente client-side (JavaScript no navegador), porque uma
+# queda de rede de verdade impede qualquer script Python de rodar —
+# não tem como o servidor "avisar" que a rede caiu enquanto ela está
+# caída. O truque é ouvir os eventos nativos do navegador
+# (window.addEventListener('offline'/'online')) e mostrar uma faixa
+# fixa no topo da tela, sem depender do Streamlit rodar nada.
+#
+# injetado uma única vez por sessão de navegador (guarda de
+# `window.__luxizNetStatusInit`) para não empilhar vários avisos a
+# cada rerun/clique.
+
+def _injetar_aviso_de_rede():
+
+    st.components.v1.html(
+        """
+        <script>
+        (function() {
+            try {
+                var win = window.parent;
+                var doc = win.document;
+
+                if (win.__luxizNetStatusInit) {
+                    return;
+                }
+                win.__luxizNetStatusInit = true;
+
+                var banner = doc.createElement('div');
+                banner.id = 'luxiz-net-status';
+                banner.style.position = 'fixed';
+                banner.style.top = '0';
+                banner.style.left = '0';
+                banner.style.width = '100%';
+                banner.style.zIndex = '4000000';
+                banner.style.textAlign = 'center';
+                banner.style.padding = '10px 16px';
+                banner.style.fontFamily = 'sans-serif';
+                banner.style.fontWeight = '700';
+                banner.style.fontSize = '14px';
+                banner.style.display = 'none';
+                banner.style.transition = 'opacity .35s ease';
+                banner.style.boxShadow = '0 2px 12px rgba(0,0,0,.25)';
+                doc.body.appendChild(banner);
+
+                var esconderTimeout = null;
+
+                function mostrarOffline() {
+                    clearTimeout(esconderTimeout);
+                    banner.style.background = '#dc2626';
+                    banner.style.color = '#ffffff';
+                    banner.innerHTML = '📡 Sem rede no momento... aguardando reconexão';
+                    banner.style.display = 'block';
+                    banner.style.opacity = '1';
+                }
+
+                function mostrarOnline() {
+                    clearTimeout(esconderTimeout);
+                    banner.style.background = '#16a34a';
+                    banner.style.color = '#ffffff';
+                    banner.innerHTML = '✅ Rede estabelecida novamente';
+                    banner.style.display = 'block';
+                    banner.style.opacity = '1';
+
+                    esconderTimeout = setTimeout(function() {
+                        banner.style.opacity = '0';
+                        setTimeout(function() {
+                            banner.style.display = 'none';
+                        }, 400);
+                    }, 4000);
+                }
+
+                win.addEventListener('offline', mostrarOffline);
+                win.addEventListener('online', mostrarOnline);
+
+                if (win.navigator && win.navigator.onLine === false) {
+                    mostrarOffline();
+                }
+            } catch (erro) {
+                // Se o navegador bloquear o acesso ao parent por
+                // qualquer motivo, falha em silêncio — nunca deve
+                // quebrar o resto do app.
+            }
+        })();
+        </script>
+        """,
+        height=0
+    )
+
+
+# =====================================================
 # RODAPÉ DE STATUS (fragmento com autorefresh isolado)
 # =====================================================
 # Antes o st_autorefresh recarregava o app INTEIRO a cada 80s
@@ -102,6 +193,13 @@ banco.inicializar_banco()
 # nela (?sessao=...). Se a pessoa cair e a página recarregar,
 # usamos esse token para reconhecer quem era e devolvê-la
 # exatamente para onde estava, sem pedir login de novo.
+#
+# O MESMO vale para a aba em que a pessoa estava (?aba=...): sem
+# isso, ao restaurar a sessão o app não sabia em qual tela ela
+# estava e sempre voltava para "Início" — péssimo para quem deixa
+# o app aberto num monitor de operação. Guardando a aba na URL
+# também, a restauração devolve a pessoa para a MESMA aba de onde
+# ela estava assim que a rede volta.
 
 if not st.session_state.logado:
 
@@ -130,6 +228,15 @@ if not st.session_state.logado:
             st.session_state.armazem_visualizado_id = armazem_id_restaurado
             st.session_state.armazem_visualizado_nome = armazem_nome_restaurado
             st.session_state.token_sessao = token_sessao_url
+
+            # Restaura também a aba em que a pessoa estava (se houver
+            # uma salva na URL) — a validação final contra as abas
+            # que esse usuário pode ver acontece mais abaixo, depois
+            # que CHAVES_VALIDAS é montado.
+            aba_url_restaurada = st.query_params.get("aba")
+
+            if aba_url_restaurada:
+                st.session_state.aba_atual = aba_url_restaurada
 
         else:
 
@@ -482,6 +589,12 @@ if st.session_state.logado and st.session_state.get("trocar_senha"):
                 st.rerun()
 
     st.stop()
+
+# =====================================================
+# AVISO DE CONEXÃO (só depois de logado)
+# =====================================================
+
+_injetar_aviso_de_rede()
 
 # =====================================================
 # PERFIL
@@ -959,6 +1072,26 @@ if (
 ):
     st.session_state.aba_atual = CHAVES_VALIDAS[0]
 
+# Mantém a URL sempre sincronizada com a aba atual — é o que
+# permite, numa queda de rede seguida de reconexão, devolver a
+# pessoa exatamente para a mesma tela (ver bloco de restauração de
+# sessão, mais acima).
+if st.query_params.get("aba") != st.session_state.aba_atual:
+    st.query_params["aba"] = st.session_state.aba_atual
+
+
+def ir_para_aba(chave_destino):
+    """
+    Troca a aba atual e já grava a escolha na URL (?aba=...), para
+    que uma queda de rede seguida de reconexão devolva a pessoa
+    para essa mesma aba em vez de cair na tela Início.
+    """
+
+    st.session_state.aba_atual = chave_destino
+    st.query_params["aba"] = chave_destino
+    st.rerun()
+
+
 @st.fragment
 def render_sidebar():
 
@@ -1247,8 +1380,7 @@ def render_sidebar():
                 key=chave,
                 type="primary" if ativo else "secondary"
             ):
-                st.session_state.aba_atual = chave
-                st.rerun()
+                ir_para_aba(chave)
 
     # =====================================================
     # RODAPÉ DA BARRA LATERAL (bolinha online + usuário logado)
@@ -1476,8 +1608,7 @@ def render_conteudo_inicio():
                         key=f"home-ir-{chave}",
                         width='stretch'
                     ):
-                        st.session_state.aba_atual = chave
-                        st.rerun()
+                        ir_para_aba(chave)
 
     st.divider()
 
