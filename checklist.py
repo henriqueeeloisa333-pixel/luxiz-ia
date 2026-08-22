@@ -18,7 +18,8 @@ def renderizar_checklist(
     funcao_editar=None,
     funcao_excluir=None,
     funcao_enviar_manutencao=None,
-    funcao_retornar_manutencao=None
+    funcao_retornar_manutencao=None,
+    funcao_concluir_manutencao=None
 ):
 
     st.subheader(
@@ -157,17 +158,9 @@ def renderizar_checklist(
             "descricao": "Descrição"
         })[["Nome", rotulo_numero, "Data", "Situação", "Descrição"]]
 
-        if funcao_excluir:
-            df_exibir.insert(0, "🗑️ Excluir", False)
+        legenda_edicao = "✏️ Clique em uma célula para editar."
 
         if funcao_editar:
-
-            legenda_edicao = (
-                "✏️ Clique em uma célula para editar."
-            )
-
-            if funcao_excluir:
-                legenda_edicao += " Marque **🗑️ Excluir** para remover um registro."
 
             legenda_edicao += " Depois de ajustar, clique em **Salvar alterações**."
 
@@ -183,11 +176,6 @@ def renderizar_checklist(
                 )
             }
 
-            if funcao_excluir:
-                column_config["🗑️ Excluir"] = st.column_config.CheckboxColumn(
-                    help="Marque para excluir este registro ao salvar"
-                )
-
             df_editado = st.data_editor(
                 df_exibir,
                 width='stretch',
@@ -201,26 +189,14 @@ def renderizar_checklist(
                 key=f"salvar_{prefixo_key}"
             ):
 
-                colunas_comparar = [
-                    coluna for coluna in df_exibir.columns
-                    if coluna != "🗑️ Excluir"
-                ]
-
-                ids_para_excluir = []
                 houve_alteracao = False
 
                 for posicao, id_registro in enumerate(ids_registros):
 
                     linha_editada = df_editado.iloc[posicao]
-
-                    if funcao_excluir and bool(linha_editada["🗑️ Excluir"]):
-
-                        ids_para_excluir.append(id_registro)
-                        continue
-
                     linha_original = df_exibir.iloc[posicao]
 
-                    if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
+                    if not linha_original.equals(linha_editada):
 
                         # Mesma normalização aplicada também na edição
                         # direta pela tabela — assim um nome corrigido
@@ -242,18 +218,7 @@ def renderizar_checklist(
 
                         houve_alteracao = True
 
-                if ids_para_excluir:
-
-                    with estilos.mostrar_processando("excluindo registro(s)..."):
-                        for id_excluir in ids_para_excluir:
-                            funcao_excluir(id_excluir, armazem_id)
-
-                    estilos.notificar_sucesso(
-                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
-                    )
-                    st.rerun(scope="fragment")
-
-                elif houve_alteracao:
+                if houve_alteracao:
 
                     estilos.notificar_sucesso("alterações salvas com sucesso.")
                     st.rerun(scope="fragment")
@@ -271,12 +236,56 @@ def renderizar_checklist(
             )
 
         # =====================================================
+        # EXCLUIR REGISTROS
+        # Usa um multiselect nativo (em vez de checkbox dentro da
+        # tabela) porque o grid da tabela (data_editor) sempre
+        # renderiza no tema escuro internamente, e ficava invisível
+        # com o app no modo claro. O multiselect é um componente
+        # normal do Streamlit e já segue o tema claro/escuro do app.
+        # =====================================================
+
+        if funcao_excluir:
+
+            st.write("")
+
+            rotulos_registros = {
+                id_registro: (
+                    f"{df_exibir.iloc[posicao]['Nome']} — "
+                    f"{rotulo_numero}: {df_exibir.iloc[posicao][rotulo_numero]} "
+                    f"({pd.to_datetime(df_exibir.iloc[posicao]['Data']).strftime('%d/%m/%Y')})"
+                )
+                for posicao, id_registro in enumerate(ids_registros)
+            }
+
+            selecionados_excluir = st.multiselect(
+                "🗑️ Selecionar registro(s) para excluir",
+                options=ids_registros,
+                format_func=lambda id_registro: rotulos_registros.get(id_registro, str(id_registro)),
+                key=f"excluir_sel_{prefixo_key}"
+            )
+
+            if st.button(
+                "🗑️ Excluir selecionado(s)",
+                key=f"excluir_btn_{prefixo_key}",
+                disabled=not selecionados_excluir
+            ):
+
+                with estilos.mostrar_processando("excluindo registro(s)..."):
+                    for id_excluir in selecionados_excluir:
+                        funcao_excluir(id_excluir, armazem_id)
+
+                estilos.notificar_sucesso(
+                    f"{len(selecionados_excluir)} registro(s) excluído(s)."
+                )
+                st.rerun(scope="fragment")
+
+        # =====================================================
         # MANUTENÇÃO
         # =====================================================
         # A visibilidade de "quais itens estão em manutenção" é liberada
         # para todos que têm acesso ao checklist. Só os comandos que
-        # alteram o estado (enviar para manutenção / retornar) continuam
-        # restritos ao Fundador e à Gestão.
+        # alteram o estado (enviar para manutenção / concluir / retornar)
+        # continuam restritos ao Fundador e à Gestão.
 
         usuario_atual = st.session_state.get("usuario", "")
 
@@ -303,7 +312,7 @@ def renderizar_checklist(
                     with st.container(border=True):
 
                         if admin_master:
-                            col_texto, col_botao = st.columns([5, 1])
+                            col_texto, col_botoes = st.columns([5, 2])
                         else:
                             col_texto = st.container()
 
@@ -330,26 +339,54 @@ def renderizar_checklist(
 
                         if admin_master:
 
-                            with col_botao:
+                            with col_botoes:
 
-                                if st.button(
-                                    "↩️",
-                                    key=f"retornar_manut_{prefixo_key}_{item['id']}",
-                                    help=(
-                                        f"Marcar {item['nome']} ({rotulo_numero} "
-                                        f"{item['numero']}) como retornado da manutenção"
-                                    )
-                                ):
+                                sub_col1, sub_col2 = st.columns(2)
 
-                                    with estilos.mostrar_processando("registrando retorno..."):
-                                        funcao_retornar_manutencao(
-                                            item["id"],
-                                            usuario_atual,
-                                            armazem_id
+                                with sub_col1:
+
+                                    if funcao_concluir_manutencao and st.button(
+                                        "✅",
+                                        key=f"concluir_manut_{prefixo_key}_{item['id']}",
+                                        help=(
+                                            f"Marcar manutenção de {item['nome']} "
+                                            f"({rotulo_numero} {item['numero']}) como concluída"
                                         )
+                                    ):
 
-                                    estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
-                                    st.rerun(scope="fragment")
+                                        with estilos.mostrar_processando("registrando manutenção concluída..."):
+                                            funcao_concluir_manutencao(
+                                                item["id"],
+                                                usuario_atual,
+                                                armazem_id
+                                            )
+
+                                        estilos.notificar_sucesso(
+                                            f"✅ Manutenção de {item['nome']} concluída."
+                                        )
+                                        st.rerun(scope="fragment")
+
+                                with sub_col2:
+
+                                    if st.button(
+                                        "↩️",
+                                        key=f"retornar_manut_{prefixo_key}_{item['id']}",
+                                        help=(
+                                            f"Marcar {item['nome']} ({rotulo_numero} "
+                                            f"{item['numero']}) como retornado da manutenção, "
+                                            f"sem alterar a situação registrada"
+                                        )
+                                    ):
+
+                                        with estilos.mostrar_processando("registrando retorno..."):
+                                            funcao_retornar_manutencao(
+                                                item["id"],
+                                                usuario_atual,
+                                                armazem_id
+                                            )
+
+                                        estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
+                                        st.rerun(scope="fragment")
 
             if admin_master:
 
@@ -413,9 +450,7 @@ def renderizar_checklist(
 
             return texto
 
-        df_exportar = df_exibir.drop(
-            columns=["🗑️ Excluir"], errors="ignore"
-        )
+        df_exportar = df_exibir.copy()
 
         if funcao_enviar_manutencao:
 
@@ -586,19 +621,12 @@ def renderizar_checklist_pigmentacao(
             "descricao": "Descrição"
         })[["Nome", "Data", "Situação", "Descrição"]]
 
-        if funcao_excluir:
-            df_exibir.insert(0, "🗑️ Excluir", False)
-
         if funcao_editar:
 
             legenda_edicao = (
                 "✏️ Clique em uma célula para editar."
+                " Depois de ajustar, clique em **Salvar alterações**."
             )
-
-            if funcao_excluir:
-                legenda_edicao += " Marque **🗑️ Excluir** para remover um registro."
-
-            legenda_edicao += " Depois de ajustar, clique em **Salvar alterações**."
 
             st.caption(legenda_edicao)
 
@@ -611,11 +639,6 @@ def renderizar_checklist_pigmentacao(
                     format="DD/MM/YYYY"
                 )
             }
-
-            if funcao_excluir:
-                column_config["🗑️ Excluir"] = st.column_config.CheckboxColumn(
-                    help="Marque para excluir este registro ao salvar"
-                )
 
             df_editado = st.data_editor(
                 df_exibir,
@@ -630,26 +653,14 @@ def renderizar_checklist_pigmentacao(
                 key=f"salvar_{prefixo_key}"
             ):
 
-                colunas_comparar = [
-                    coluna for coluna in df_exibir.columns
-                    if coluna != "🗑️ Excluir"
-                ]
-
-                ids_para_excluir = []
                 houve_alteracao = False
 
                 for posicao, id_registro in enumerate(ids_registros):
 
                     linha_editada = df_editado.iloc[posicao]
-
-                    if funcao_excluir and bool(linha_editada["🗑️ Excluir"]):
-
-                        ids_para_excluir.append(id_registro)
-                        continue
-
                     linha_original = df_exibir.iloc[posicao]
 
-                    if not linha_original[colunas_comparar].equals(linha_editada[colunas_comparar]):
+                    if not linha_original.equals(linha_editada):
 
                         nome_editado_normalizado = banco.normalizar_nome_pessoa(
                             linha_editada["Nome"], armazem_id
@@ -667,18 +678,7 @@ def renderizar_checklist_pigmentacao(
 
                         houve_alteracao = True
 
-                if ids_para_excluir:
-
-                    with estilos.mostrar_processando("excluindo registro(s)..."):
-                        for id_excluir in ids_para_excluir:
-                            funcao_excluir(id_excluir, armazem_id)
-
-                    estilos.notificar_sucesso(
-                        f"{len(ids_para_excluir)} registro(s) excluído(s)."
-                    )
-                    st.rerun(scope="fragment")
-
-                elif houve_alteracao:
+                if houve_alteracao:
 
                     estilos.notificar_sucesso("alterações salvas com sucesso.")
                     st.rerun(scope="fragment")
@@ -695,16 +695,46 @@ def renderizar_checklist_pigmentacao(
                 hide_index=True
             )
 
-        st.write("")
+        if funcao_excluir:
 
-        df_exportar = df_exibir.drop(
-            columns=["🗑️ Excluir"], errors="ignore"
-        )
+            st.write("")
+
+            rotulos_registros = {
+                id_registro: (
+                    f"{df_exibir.iloc[posicao]['Nome']} — "
+                    f"({pd.to_datetime(df_exibir.iloc[posicao]['Data']).strftime('%d/%m/%Y')})"
+                )
+                for posicao, id_registro in enumerate(ids_registros)
+            }
+
+            selecionados_excluir = st.multiselect(
+                "🗑️ Selecionar registro(s) para excluir",
+                options=ids_registros,
+                format_func=lambda id_registro: rotulos_registros.get(id_registro, str(id_registro)),
+                key=f"excluir_sel_{prefixo_key}"
+            )
+
+            if st.button(
+                "🗑️ Excluir selecionado(s)",
+                key=f"excluir_btn_{prefixo_key}",
+                disabled=not selecionados_excluir
+            ):
+
+                with estilos.mostrar_processando("excluindo registro(s)..."):
+                    for id_excluir in selecionados_excluir:
+                        funcao_excluir(id_excluir, armazem_id)
+
+                estilos.notificar_sucesso(
+                    f"{len(selecionados_excluir)} registro(s) excluído(s)."
+                )
+                st.rerun(scope="fragment")
+
+        st.write("")
 
         buffer_excel = io.BytesIO()
 
         with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
-            df_exportar.to_excel(
+            df_exibir.to_excel(
                 writer,
                 index=False,
                 sheet_name=titulo[:31]
@@ -758,7 +788,8 @@ def render():
             funcao_editar=banco.editar_checklist_hidraulico,
             funcao_excluir=banco.excluir_checklist_hidraulico,
             funcao_enviar_manutencao=banco.enviar_manutencao_hidraulico,
-            funcao_retornar_manutencao=banco.retornar_manutencao_hidraulico
+            funcao_retornar_manutencao=banco.retornar_manutencao_hidraulico,
+            funcao_concluir_manutencao=banco.concluir_manutencao_hidraulico
         )
 
     with aba_carrinhos:
@@ -775,7 +806,8 @@ def render():
             funcao_editar=banco.editar_checklist_carrinho,
             funcao_excluir=banco.excluir_checklist_carrinho,
             funcao_enviar_manutencao=banco.enviar_manutencao_carrinho,
-            funcao_retornar_manutencao=banco.retornar_manutencao_carrinho
+            funcao_retornar_manutencao=banco.retornar_manutencao_carrinho,
+            funcao_concluir_manutencao=banco.concluir_manutencao_carrinho
         )
 
     with aba_empilhadeira:
@@ -792,7 +824,8 @@ def render():
             funcao_editar=banco.editar_checklist_empilhadeira,
             funcao_excluir=banco.excluir_checklist_empilhadeira,
             funcao_enviar_manutencao=banco.enviar_manutencao_empilhadeira,
-            funcao_retornar_manutencao=banco.retornar_manutencao_empilhadeira
+            funcao_retornar_manutencao=banco.retornar_manutencao_empilhadeira,
+            funcao_concluir_manutencao=banco.concluir_manutencao_empilhadeira
         )
 
     with aba_pigmentacao:
