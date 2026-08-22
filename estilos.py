@@ -11,23 +11,11 @@ from zoneinfo import ZoneInfo
 # =====================================================
 # FUSO HORÁRIO (conversão UTC -> Campo Grande)
 # =====================================================
-# Todo horário gravado no banco (CURRENT_TIMESTAMP do Postgres) fica
-# em UTC. Isso é o correto — o servidor e o banco já têm o relógio
-# certo via NTP, não é um problema de sincronização. O que precisa
-# acontecer é converter esse horário UTC para o fuso local sempre
-# que ele for exibido na tela. Use estas duas funções em vez de
-# lidar com timezone "na mão" em cada página.
 
 FUSO_PADRAO = ZoneInfo("America/Campo_Grande")
 
 
 def horario_local(momento):
-    """
-    Converte um datetime vindo do banco (gravado em UTC, geralmente
-    sem timezone/"ingênuo") para o horário de Campo Grande. Se já
-    vier com timezone, só faz a conversão direto. Devolve None se
-    `momento` for None.
-    """
 
     if momento is None:
         return None
@@ -39,7 +27,6 @@ def horario_local(momento):
 
 
 def agora_local():
-    """Horário atual já no fuso de Campo Grande (para relógios/rodapé)."""
 
     return datetime.now(FUSO_PADRAO)
 
@@ -47,13 +34,6 @@ def agora_local():
 # =====================================================
 # INTENSIDADE DE COR DOS CARTÕES (por tema)
 # =====================================================
-# As cores dos cartões (rgba de fundo + borda em hex) foram
-# pensadas pro tema escuro — nesse fundo bem escuro, uma opacidade
-# baixa (tipo 0.14/0.16) já contrasta bem. No tema claro, a mesma
-# opacidade em cima de fundo branco quase some. Esta função pega
-# o rgba "original" (pensado pro escuro) e, só quando o tema atual
-# for "claro", aumenta a opacidade — no escuro devolve sem mexer.
-# Uso: cor_fundo = estilos.cor_fundo_cartao("rgba(59,130,246,0.16)")
 
 import re as _re
 
@@ -464,10 +444,6 @@ def _css_base(tema):
         color:#00c8ff !important;
     }
 
-    /* Mesma explicação do bloco claro, espelhada — garante o
-       inverso também (se um dia o config.toml mudar pra base
-       claro, esses widgets continuam obedecendo o toggle). */
-
     div[data-baseweb="select"] > div,
     div[data-baseweb="input"] > div{
         background:rgba(255,255,255,0.05) !important;
@@ -644,12 +620,27 @@ def _css_base(tema):
         margin-top:2px;
     }
 
-    /* =====================================================
-       AVISO CENTRAL "LUXIZ IA" (carregando / sucesso)
-       Sempre com o mesmo visual (escuro translúcido), para não
-       depender do tema claro/escuro — é uma camada por cima de
-       tudo, some sozinha, e nunca bloqueia cliques por baixo.
-       ===================================================== */
+    </style>
+    """
+
+
+# =====================================================
+# CSS DO AVISO CENTRAL "LUXIZ IA" (carregando / sucesso)
+# =====================================================
+# CORREÇÃO: este bloco antes só existia dentro da string do tema
+# ESCURO em _css_base(). Por isso, no tema claro, as classes
+# .luxiz-overlay* (spinner, card, texto) não tinham CSS nenhum —
+# o card ficava sem fundo/posição (por isso "sumia") e a
+# <img class="luxiz-overlay-logo"> aparecia no tamanho original
+# do arquivo (por isso a logo enorme) até a tela recarregar e
+# tirar o aviso de cena. Agora esse CSS é uma função própria,
+# aplicada sempre, nos dois temas — visual igual, independente
+# do tema escolhido.
+
+def _css_overlay():
+
+    return """
+    <style>
 
     @keyframes luxizGirar{
         to{ transform:rotate(360deg); }
@@ -834,9 +825,6 @@ def _css_fundo(tema, tela):
                 padding:8px;
             }
 
-            /* Leve reflexo de vidro: uma faixa fina de brilho que
-               atravessa o card de login devagar, num loop contínuo,
-               como o reflexo natural sobre um vidro. */
             .st-key-login-card::before{
                 content:"";
                 position:absolute;
@@ -903,9 +891,6 @@ def _css_fundo(tema, tela):
             padding:8px;
         }
 
-        /* Leve reflexo de vidro: uma faixa fina de brilho que
-           atravessa o card de login devagar, num loop contínuo,
-           como o reflexo natural sobre um vidro. */
         .st-key-login-card::before{
             content:"";
             position:absolute;
@@ -921,11 +906,6 @@ def _css_fundo(tema, tela):
         }
         </style>
         """
-
-    # Fundo suave para a tela Início — um efeito bem mais discreto que
-    # o do login (blobs de baixa opacidade, deslocamento lento), só
-    # pra dar vida à tela inicial sem chamar tanta atenção quanto o
-    # gradiente do login nem ficar chapado como o fundo sólido do app.
 
     if tela == "inicio":
 
@@ -971,9 +951,6 @@ def _css_fundo(tema, tela):
         </style>
         """
 
-    # Fundo sólido para o restante do app (Dashboard, Remanejamento,
-    # SAC, Administrativo etc.) — sem gradiente chamativo.
-
     if tema == "claro":
 
         return """
@@ -1018,17 +995,20 @@ def aplicar_fundo(tema="escuro", tela="app"):
         unsafe_allow_html=True
     )
 
+    # O aviso central ("Luxiz IA carregando/sucesso") tem o mesmo
+    # visual independente do tema, então é injetado sempre — nos
+    # dois temas — em vez de morar dentro de só um dos blocos acima.
+    st.markdown(
+        _css_overlay(),
+        unsafe_allow_html=True
+    )
+
 
 # =====================================================
 # LOGO / CABEÇALHO PADRÃO
 # =====================================================
 
 def marca_desenvolvedor_login():
-    """
-    Mensagem discreta em um canto da tela de login, com um leve
-    efeito de brilho passando sobre "Luxiz IA" — só usada na tela
-    de login.
-    """
 
     st.markdown(
         """
@@ -1076,11 +1056,6 @@ def marca_desenvolvedor_login():
 
 @st.cache_data(show_spinner=False)
 def _logo_base64():
-    """
-    Lê o arquivo da logo (assets/luxiz_logo.png, na raiz do projeto)
-    e devolve em base64, para embutir direto no HTML sem depender
-    de servir arquivo estático. Cacheado — só lê o arquivo uma vez.
-    """
 
     caminho = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -1094,11 +1069,6 @@ def _logo_base64():
 
 @st.cache_data(show_spinner=False)
 def _favicon_base64():
-    """
-    Lê o arquivo assets/favicon.png e devolve em base64 — usado como
-    marca nos avisos centrais de processamento/sucesso, no lugar do
-    antigo "✨" em texto.
-    """
 
     caminho = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -1111,10 +1081,6 @@ def _favicon_base64():
 
 
 def _titulo_overlay_html():
-    """
-    HTML do título "Luxiz IA" usado nos avisos centrais, com o
-    favicon.png no lugar do emoji "✨".
-    """
 
     favicon_b64 = _favicon_base64()
 
@@ -1147,10 +1113,6 @@ def logo_header(subtitulo="Centro Inteligente de Operações"):
 # =====================================================
 # CABEÇALHO DE PÁGINA (animado, leve — só CSS)
 # =====================================================
-# Usado no lugar de st.title()+st.caption() em cada aba, pra dar
-# uma entrada suave (fade + slide), um ícone com leve balanço e
-# uma barrinha de destaque com brilho correndo — tudo via CSS,
-# sem nenhum JS, então não pesa a aba.
 
 def cabecalho_pagina(icone, titulo, subtitulo, cor="#3b82f6"):
 
@@ -1248,20 +1210,8 @@ def rodape():
 # =====================================================
 # AVISO CENTRAL "LUXIZ IA" (carregando / sucesso)
 # =====================================================
-# Substitui st.spinner (cantinho da tela, passava despercebido)
-# e st.toast (sumia rápido demais / em local que ninguém olhava)
-# por um aviso bem no centro da tela, sempre com a marca
-# "✨ Luxiz IA" — um enquanto a ação está rodando, outro
-# confirmando o que foi feito, sumindo sozinho.
 
 def _conteudo_overlay_processando(mensagem):
-    """
-    HTML do aviso central "em andamento" (spinner + título + texto).
-    Isolado numa função à parte para poder ser gerado de novo, com
-    um texto diferente, sem recriar o placeholder — é isso que
-    permite ao overlay ir mudando de "Carregando..." para
-    "Carregando usuários...", "Carregando armazéns..." etc.
-    """
 
     return f"""
         <div class="luxiz-overlay">
@@ -1276,17 +1226,6 @@ def _conteudo_overlay_processando(mensagem):
 
 @contextlib.contextmanager
 def mostrar_processando(mensagem):
-    """
-    Uso: with estilos.mostrar_processando("atualizando..."):
-             banco.fazer_algo()
-    Mostra o aviso central enquanto o bloco roda e some assim
-    que ele termina (sozinho, sem precisar de rerun).
-
-    Enquanto está aberto, funções do banco.py chamam
-    estilos.atualizar_etapa("...") para trocar o texto pelo que
-    está sendo carregado/verificado naquele instante — em vez de
-    ficar parado só no texto inicial.
-    """
 
     marcador = st.empty()
 
@@ -1303,10 +1242,6 @@ def mostrar_processando(mensagem):
     finally:
         marcador.empty()
 
-        # Restaura o overlay anterior (se houver um "por fora" deste,
-        # em algum caso de aninhamento) em vez de simplesmente apagar
-        # a referência — evita que atualizar_etapa() perca de vista
-        # um overlay mais externo ainda aberto.
         if marcador_anterior is not None:
             st.session_state["_luxiz_overlay_ativo"] = marcador_anterior
         else:
@@ -1314,16 +1249,6 @@ def mostrar_processando(mensagem):
 
 
 def atualizar_etapa(mensagem):
-    """
-    Atualiza o texto do aviso central "Luxiz IA" que estiver aberto
-    no momento (aberto por mostrar_processando ou
-    mostrar_atualizacao_automatica), mostrando o que está sendo
-    carregado/verificado agora — ex.: "Carregando usuários...".
-
-    Se não houver nenhum aviso aberto (ex.: uma função do banco
-    rodando fora de um mostrar_processando), não faz nada — é
-    seguro chamar de qualquer lugar.
-    """
 
     marcador = st.session_state.get("_luxiz_overlay_ativo")
 
@@ -1337,21 +1262,11 @@ def atualizar_etapa(mensagem):
 
 
 def notificar_sucesso(mensagem):
-    """
-    Guarda uma mensagem para ser exibida, centralizada na tela,
-    assim que a página recarregar (chamar logo antes do
-    st.rerun() que normalmente já vem depois de salvar algo).
-    """
 
     st.session_state["_luxiz_notificacao"] = mensagem
 
 
 def exibir_notificacao_pendente():
-    """
-    Mostra (uma única vez, sumindo sozinha) a mensagem de sucesso
-    deixada por notificar_sucesso(), se houver alguma. Chamada no
-    topo de cada página/fragmento que executa ações.
-    """
 
     mensagem = st.session_state.pop("_luxiz_notificacao", None)
 
@@ -1375,23 +1290,9 @@ def exibir_notificacao_pendente():
 # =====================================================
 # AVISO DA ATUALIZAÇÃO AUTOMÁTICA (em fases)
 # =====================================================
-# Usado só na aba Administrativo: como agora ela não recarrega
-# tudo na hora que alguém adiciona/exclui algo (isso deixava a
-# aba lenta), quem avisa que os dados foram atualizados é a
-# atualização automática (a cada 120s). Esse aviso mostra as
-# fases "Lendo dados" -> "Atualizando dados" -> "Concluído com
-# sucesso" só quando é de fato essa atualização de fundo — se o
-# recarregamento foi por causa de um clique (adicionar, excluir,
-# editar), não faz sentido atrasar a pessoa com esse aviso, já
-# que o próprio clique já mostrou seu aviso de "processando" e o
-# toast de sucesso.
 
 @contextlib.contextmanager
 def mostrar_atualizacao_automatica(segundos_entre_ciclos=120):
-    """
-    Uso: with estilos.mostrar_atualizacao_automatica():
-             administrativo.render()
-    """
 
     agora = time.time()
 
@@ -1401,10 +1302,6 @@ def mostrar_atualizacao_automatica(segundos_entre_ciclos=120):
 
     st.session_state["_luxiz_ultima_leitura_admin"] = agora
 
-    # Só trata como "atualização automática de fundo" se já tinha
-    # passado tempo suficiente desde a última vez — um clique
-    # (adicionar/excluir/editar) recarrega de novo bem mais rápido
-    # que isso, então não entra nessa condição.
     eh_atualizacao_de_fundo = (
         ultima_execucao is not None
         and (agora - ultima_execucao) >= (segundos_entre_ciclos - 30)
