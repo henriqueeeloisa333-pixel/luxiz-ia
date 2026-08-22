@@ -3203,6 +3203,42 @@ def _retornar_manutencao_checklist(tabela, id_registro, usuario, armazem_id):
         liberar(conn)
 
 
+def _concluir_manutencao_checklist(tabela, id_registro, usuario, armazem_id):
+    """
+    Usado pelo botão "✅ Manutenção feita": além de encerrar a
+    manutenção (igual _retornar_manutencao_checklist), também
+    atualiza o registro do checklist preenchido no dia — a Situação
+    volta para "Conforme" e a Descrição passa a registrar que a
+    manutenção foi concluída (mantendo o texto antigo, se houver,
+    depois de um traço).
+    """
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(f"""
+        UPDATE {tabela}
+        SET status = 'Conforme',
+            descricao = 'Manutenção concluída em ' || to_char(CURRENT_DATE, 'DD/MM/YYYY')
+                || CASE WHEN descricao IS NOT NULL AND descricao <> ''
+                        THEN ' — ' || descricao ELSE '' END,
+            em_manutencao = FALSE,
+            manutencao_retornado_por = %s,
+            manutencao_retornado_em = CURRENT_TIMESTAMP
+        WHERE id = %s
+        AND armazem_id = %s
+        """, (
+            usuario, id_registro, armazem_id
+        ))
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
+
+
 def _excluir_checklist(tabela, id_registro, armazem_id):
 
     conn = conectar()
@@ -3269,6 +3305,15 @@ def retornar_manutencao_hidraulico(id_registro, usuario, armazem_id):
     ler_checklist_hidraulicos.clear()
 
 
+def concluir_manutencao_hidraulico(id_registro, usuario, armazem_id):
+
+    _concluir_manutencao_checklist(
+        "checklist_hidraulicos", id_registro, usuario, armazem_id
+    )
+
+    ler_checklist_hidraulicos.clear()
+
+
 def excluir_checklist_hidraulico(id_registro, armazem_id):
 
     _excluir_checklist(
@@ -3323,6 +3368,15 @@ def retornar_manutencao_carrinho(id_registro, usuario, armazem_id):
     ler_checklist_carrinhos.clear()
 
 
+def concluir_manutencao_carrinho(id_registro, usuario, armazem_id):
+
+    _concluir_manutencao_checklist(
+        "checklist_carrinhos", id_registro, usuario, armazem_id
+    )
+
+    ler_checklist_carrinhos.clear()
+
+
 def excluir_checklist_carrinho(id_registro, armazem_id):
 
     _excluir_checklist(
@@ -3371,6 +3425,15 @@ def enviar_manutencao_empilhadeira(id_registro, motivo, usuario, armazem_id):
 def retornar_manutencao_empilhadeira(id_registro, usuario, armazem_id):
 
     _retornar_manutencao_checklist(
+        "checklist_empilhadeiras", id_registro, usuario, armazem_id
+    )
+
+    ler_checklist_empilhadeiras.clear()
+
+
+def concluir_manutencao_empilhadeira(id_registro, usuario, armazem_id):
+
+    _concluir_manutencao_checklist(
         "checklist_empilhadeiras", id_registro, usuario, armazem_id
     )
 
