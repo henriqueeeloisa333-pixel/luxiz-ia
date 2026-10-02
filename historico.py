@@ -225,6 +225,13 @@ def _pontuar(dados, limite):
     return resultado, sac, aud, epis
 
 
+def _nota_geral(pontuacao):
+
+    pcts = [m["pct"] for m in pontuacao.values() if m["pct"] is not None]
+
+    return sum(pcts) / len(pcts) if pcts else None
+
+
 def _evolucao_mensal(dados, hoje):
     """Pontos de atenção por mês (últimos 6) para o gráfico de barras."""
 
@@ -264,71 +271,179 @@ def _evolucao_mensal(dados, hoje):
 
 
 # =====================================================
-# TELA
+# RANKING DA EQUIPE (Fundador / Gestão)
 # =====================================================
 
-def render():
+# Perfis administrativos/painel não entram no ranking operacional.
+PREFIXOS_FORA_DO_RANKING = ("Fundador.", "Gestao.", "Painel.")
 
-    estilos.exibir_notificacao_pendente()
+ROTULOS_FUNCAO = {
+    "Separador.": "📦 Separador",
+    "Conferente.": "🔎 Conferente",
+    "Recebimento.": "📥 Recebimento",
+    "Empilhador.": "🏗️ Empilhador",
+    "Assistente.": "🧑‍💼 Assistente Logístico",
+}
 
-    usuario_logado = st.session_state.get("usuario", "")
 
-    armazem_id = st.session_state.get(
-        "armazem_visualizado_id",
-        st.session_state.get("armazem_id")
-    )
+def _rotulo_funcao(usuario):
 
-    admin_master = (
-        usuario_logado.startswith("Fundador.")
-        or usuario_logado.startswith("Gestao.")
-    )
+    for prefixo, rotulo in ROTULOS_FUNCAO.items():
+        if usuario.startswith(prefixo):
+            return rotulo
 
-    estilos.cabecalho_pagina(
-        "📈",
-        "Histórico Produtivo",
-        "Veja como está o seu empenho dentro do Luxiz IA",
-        cor="#14b8a6"
-    )
+    return "👤 Usuário"
 
-    usuario_alvo = usuario_logado
 
-    col_filtro1, col_filtro2 = st.columns([2, 1])
+def _nome_para_exibir(usuario):
 
-    with col_filtro1:
+    perfil = banco.ler_perfil(usuario)
 
-        if admin_master:
+    if perfil:
+        return banco.nome_completo_perfil(perfil)
 
-            usuarios = [
-                u[1] for u in banco.listar_usuarios(armazem_id) if u[1]
-            ]
+    if "." in usuario:
+        return usuario.split(".", 1)[1].strip().title()
 
-            if usuario_logado not in usuarios:
-                usuarios.insert(0, usuario_logado)
+    return usuario
 
-            usuario_alvo = st.selectbox(
-                "👤 Ver o histórico de:",
-                usuarios,
-                index=usuarios.index(usuario_logado),
-                key="historico_pessoa"
-            )
 
-    with col_filtro2:
-
-        periodo = st.radio(
-            "Período",
-            ["30 dias", "90 dias", "Tudo"],
-            index=1,
-            horizontal=True,
-            key="historico_periodo"
-        )
+@st.cache_data(ttl=60, show_spinner=False)
+def _montar_ranking(armazem_id, dias):
 
     hoje = estilos.agora_local().date()
+    limite = (hoje - timedelta(days=dias)) if dias else None
 
-    limite = {
-        "30 dias": hoje - timedelta(days=30),
-        "90 dias": hoje - timedelta(days=90),
-        "Tudo": None,
-    }[periodo]
+    linhas = []
+
+    for usuario in [u[1] for u in banco.listar_usuarios(armazem_id) if u[1]]:
+
+        if usuario.startswith(PREFIXOS_FORA_DO_RANKING):
+            continue
+
+        dados = _coletar(usuario, armazem_id)
+        pontuacao, _, _, _ = _pontuar(dados, limite)
+
+        linhas.append({
+            "Pessoa": _nome_para_exibir(usuario),
+            "Função": _rotulo_funcao(usuario),
+            "Geral": _nota_geral(pontuacao),
+            "SAC": pontuacao["sac"]["pct"],
+            "Dashboard": pontuacao["dashboard"]["pct"],
+            "Checklist": pontuacao["checklist"]["pct"],
+            "Auditoria": pontuacao["auditoria"]["pct"],
+            "EPI": pontuacao["epi"]["pct"],
+        })
+
+    return pd.DataFrame(
+        linhas,
+        columns=["Pessoa", "Função", "Geral", "SAC", "Dashboard", "Checklist", "Auditoria", "EPI"]
+    )
+
+
+def _render_ranking(armazem_id, dias):
+
+    st.subheader("🏅 Ranking da equipe")
+
+    st.caption(
+        "Ordenado da nota geral mais alta para a mais baixa. Quem não tem "
+        "dados em nenhum módulo aparece no final, sem nota."
+    )
+
+    with estilos.mostrar_processando("calculando ranking..."):
+        tabela = _montar_ranking(armazem_id, dias)
+
+    if tabela.empty:
+        st.info("Nenhum usuário operacional cadastrado ainda.")
+        return
+
+    com_nota = tabela[tabela["Geral"].notna()].sort_values("Geral", ascending=False)
+    sem_nota = tabela[tabela["Geral"].isna()]
+
+    # ------------- resumo -------------
+
+    total = len(tabela)
+    saudaveis = int((com_nota["Geral"] >= 80).sum())
+    atencao = int(((com_nota["Geral"] >= 50) & (com_nota["Geral"] < 80)).sum())
+    criticos = int((com_nota["Geral"] < 50).sum())
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric("👥 Pessoas", total)
+    with c2:
+        st.metric("🟢 Saudáveis", saudaveis)
+    with c3:
+        st.metric("🟡 Atenção", atencao)
+    with c4:
+        st.metric("🔴 Precisam de apoio", criticos)
+
+    st.divider()
+
+    # ------------- gráfico -------------
+
+    if not com_nota.empty:
+
+        st.markdown("##### 📊 Nota geral por pessoa")
+
+        st.bar_chart(
+            com_nota.set_index("Pessoa")["Geral"],
+            horizontal=True
+        )
+
+    # ------------- tabela detalhada -------------
+
+    st.markdown("##### 📋 Detalhe por módulo")
+
+    ordenada = pd.concat([com_nota, sem_nota], ignore_index=True)
+
+    ordenada.insert(0, "Posição", range(1, len(ordenada) + 1))
+
+    config_barra = st.column_config.ProgressColumn(
+        min_value=0, max_value=100, format="%d%%"
+    )
+
+    st.dataframe(
+        ordenada,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Geral": config_barra,
+            "SAC": config_barra,
+            "Dashboard": config_barra,
+            "Checklist": config_barra,
+            "Auditoria": config_barra,
+            "EPI": config_barra,
+        }
+    )
+
+    # ------------- quem precisa de atenção -------------
+
+    precisam = com_nota[com_nota["Geral"] < 50]
+
+    if not precisam.empty:
+
+        st.markdown("##### 🔴 Pessoas que precisam de apoio")
+
+        for _, linha in precisam.sort_values("Geral").iterrows():
+
+            fracos = [
+                modulo for modulo in ["SAC", "Dashboard", "Checklist", "Auditoria", "EPI"]
+                if pd.notna(linha[modulo]) and linha[modulo] < 80
+            ]
+
+            st.warning(
+                f"**{linha['Pessoa']}** ({linha['Função']}) — nota geral "
+                f"{round(linha['Geral'])}%. Pontos de atenção: "
+                f"{', '.join(fracos) if fracos else '—'}."
+            )
+
+
+# =====================================================
+# VISÃO INDIVIDUAL
+# =====================================================
+
+def _render_pessoa(usuario_alvo, armazem_id, limite, hoje):
 
     dados = _coletar(usuario_alvo, armazem_id)
 
@@ -338,8 +453,7 @@ def render():
 
     # ------------- NOTA GERAL + ANÉIS POR MÓDULO -------------
 
-    pcts = [m["pct"] for m in pontuacao.values() if m["pct"] is not None]
-    geral = sum(pcts) / len(pcts) if pcts else None
+    geral = _nota_geral(pontuacao)
 
     col_geral, col_modulos = st.columns([1, 4])
 
@@ -369,12 +483,12 @@ def render():
 
     # ------------- O QUE MELHORAR -------------
 
-    st.subheader("🎯 O que você precisa melhorar")
+    st.subheader("🎯 O que precisa melhorar")
 
     pontos = []
 
     if len(sac):
-        pontos.append(f"😊 **SAC** — {len(sac)} ocorrência(s) com o seu nome no período.")
+        pontos.append(f"😊 **SAC** — {len(sac)} ocorrência(s) com o nome no período.")
 
     p = pontuacao["dashboard"]["pct"]
     if p is not None and p < 80:
@@ -391,7 +505,7 @@ def render():
 
     pendentes_epi = [e for e in epis if not e["assinatura"]]
     if pendentes_epi:
-        pontos.append(f"🦺 **EPI** — {len(pendentes_epi)} item(ns) aguardando a sua assinatura.")
+        pontos.append(f"🦺 **EPI** — {len(pendentes_epi)} item(ns) aguardando assinatura.")
 
     if not pontos:
         st.success("Tudo em dia! Nenhum ponto de atenção no período. 👏")
@@ -413,3 +527,76 @@ def render():
         st.success("Nenhum ponto de atenção nos últimos 6 meses. 🌟")
     else:
         st.bar_chart(evolucao)
+
+
+# =====================================================
+# TELA
+# =====================================================
+
+def render():
+
+    estilos.exibir_notificacao_pendente()
+
+    usuario_logado = st.session_state.get("usuario", "")
+
+    armazem_id = st.session_state.get(
+        "armazem_visualizado_id",
+        st.session_state.get("armazem_id")
+    )
+
+    admin_master = (
+        usuario_logado.startswith("Fundador.")
+        or usuario_logado.startswith("Gestao.")
+    )
+
+    estilos.cabecalho_pagina(
+        "📈",
+        "Histórico Produtivo",
+        "Veja como está o empenho dentro do Luxiz IA",
+        cor="#14b8a6"
+    )
+
+    periodo = st.radio(
+        "Período",
+        ["30 dias", "90 dias", "Tudo"],
+        index=1,
+        horizontal=True,
+        key="historico_periodo"
+    )
+
+    dias = {"30 dias": 30, "90 dias": 90, "Tudo": None}[periodo]
+
+    hoje = estilos.agora_local().date()
+
+    limite = (hoje - timedelta(days=dias)) if dias else None
+
+    if not admin_master:
+
+        _render_pessoa(usuario_logado, armazem_id, limite, hoje)
+        return
+
+    aba_pessoa, aba_ranking = st.tabs(
+        ["👤 Meu histórico", "🏅 Ranking da equipe"]
+    )
+
+    with aba_pessoa:
+
+        usuarios = [
+            u[1] for u in banco.listar_usuarios(armazem_id) if u[1]
+        ]
+
+        if usuario_logado not in usuarios:
+            usuarios.insert(0, usuario_logado)
+
+        usuario_alvo = st.selectbox(
+            "👤 Ver o histórico de:",
+            usuarios,
+            index=usuarios.index(usuario_logado),
+            key="historico_pessoa"
+        )
+
+        _render_pessoa(usuario_alvo, armazem_id, limite, hoje)
+
+    with aba_ranking:
+
+        _render_ranking(armazem_id, dias)
