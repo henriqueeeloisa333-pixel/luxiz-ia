@@ -16,6 +16,7 @@ import equipamentos
 import epi
 import notificacoes
 import perfil
+import historico
 
 # =====================================================
 # CONFIGURAÇÃO
@@ -354,6 +355,12 @@ Registro das inspeções de hidráulicos, carrinhos, empilhadeiras e pigmentaç�
 ## 🧰 Equipamentos
 
 Mostra quem é o responsável por cada hidráulico e carrinho, e quais carrinhos ficam fixos em cada local, sem precisar de remanejamento.
+
+---
+
+## 📈 Histórico Produtivo
+
+Reúne, em gráficos simples, o empenho de cada pessoa em todo o sistema — SAC, Dashboard, Checklist, Auditoria e Controle de EPI's — e aponta o que precisa melhorar.
 
 ---
 
@@ -1008,6 +1015,7 @@ def render_cabecalho_inicio():
 - 📥 Botão para exportar toda a Análise Técnica para uma planilha Excel.
 - 🗑️ É possível excluir vários registros de Remanejamento e de Análise Técnica de uma vez, usando as caixinhas de seleção.
 - 👥 Perfis de acesso **Separador**, **Conferente** e **Recebimento**, cada um com visão restrita aos módulos que fazem parte da sua rotina.
+- 📈 Nova aba **Histórico Produtivo**: gráficos do seu empenho no SAC, Dashboard, Checklist, Auditoria e Controle de EPI's, mostrando o que precisa melhorar.
         """
     )
 
@@ -1063,6 +1071,7 @@ else:
         ("nav_administrativo", "⚙️", "Administrativo"),
     ]
 
+NAV_ITENS.append(("nav_historico", "📈", "Histórico Produtivo"))
 NAV_ITENS.append(("nav_perfil", "🪪", "Perfil"))
 CHAVES_VALIDAS = [chave for chave, _, _ in NAV_ITENS]
 
@@ -1474,6 +1483,7 @@ aba_rotativo = st.session_state.aba_atual == "nav_rotativo"
 aba_checklist = st.session_state.aba_atual == "nav_checklist"
 aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
 aba_epi = st.session_state.aba_atual == "nav_epi"
+aba_historico = st.session_state.aba_atual == "nav_historico"
 aba_perfil = st.session_state.aba_atual == "nav_perfil"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
 
@@ -1520,6 +1530,7 @@ def render_conteudo_inicio():
         "nav_checklist": "Inspeção de hidráulicos, carrinhos, empilhadeiras e pigmentação.",
         "nav_equipamentos": "Responsáveis por hidráulicos e carrinhos, e carrinhos fixos por local.",
         "nav_epi": "Registro de entrega de EPIs, com assinatura digital do colaborador.",
+        "nav_historico": "Gráficos do seu empenho e do que precisa melhorar.",
         "nav_administrativo": "Gestão completa da operação em um só lugar.",
     }
 
@@ -1532,6 +1543,7 @@ def render_conteudo_inicio():
         "nav_checklist": "#a855f7",
         "nav_equipamentos": "#0ea5e9",
         "nav_epi": "#f97316",
+        "nav_historico": "#14b8a6",
         "nav_administrativo": "#64748b",
     }
 
@@ -1954,6 +1966,14 @@ def render_conteudo_inicio():
             "Ter um registro confiável, com assinatura, de cada EPI entregue."
         ),
         (
+            "📈", "Histórico Produtivo", "#14b8a6",
+            "Abra a aba para ver os gráficos do seu empenho no SAC, Dashboard, "
+            "Checklist, Auditoria e Controle de EPI's. Verde significa em dia; "
+            "amarelo e vermelho mostram onde há o que melhorar.",
+            "Mostrar a cada pessoa, de forma simples e visual, o que ela precisa "
+            "melhorar dentro do sistema."
+        ),
+        (
             "⚙️", "Administrativo", "#64748b",
             "Cadastre usuários, responsáveis, atividades do rodízio, carrinhos "
             "fixos e demais parâmetros do sistema.",
@@ -1972,6 +1992,7 @@ def render_conteudo_inicio():
         "Checklist": "nav_checklist",
         "Equipamentos": "nav_equipamentos",
         "Controle de EPI's": "nav_epi",
+        "Histórico Produtivo": "nav_historico",
         "Administrativo": "nav_administrativo",
     }
 
@@ -2132,6 +2153,22 @@ def render_aba_epi():
 
 if aba_epi:
     render_aba_epi()
+
+# =====================================================
+# HISTÓRICO PRODUTIVO
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_historico():
+
+    with estilos.mostrar_processando("Carregando..."):
+        historico.render()
+
+    st.write("")
+    botao_sair_rodape("historico")
+
+if aba_historico:
+    render_aba_historico()
 
 # =====================================================
 # PERFIL
