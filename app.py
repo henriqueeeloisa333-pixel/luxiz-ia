@@ -14,6 +14,7 @@ import rotativo
 import checklist
 import equipamentos
 import epi
+import estoque
 import notificacoes
 import perfil
 import historico
@@ -355,6 +356,12 @@ Registro das inspeções de hidráulicos, carrinhos, empilhadeiras e pigmentaç�
 ## 🧰 Equipamentos
 
 Mostra quem é o responsável por cada hidráulico e carrinho, e quais carrinhos ficam fixos em cada local, sem precisar de remanejamento.
+
+---
+
+## 📦 Controle de Estoque
+
+Registra as entradas de mercadoria e as retiradas para uso, mostrando o saldo de cada produto e quem fez cada movimentação.
 
 ---
 
@@ -1016,6 +1023,7 @@ def render_cabecalho_inicio():
 - 🗑️ É possível excluir vários registros de Remanejamento e de Análise Técnica de uma vez, usando as caixinhas de seleção.
 - 👥 Perfis de acesso **Separador**, **Conferente** e **Recebimento**, cada um com visão restrita aos módulos que fazem parte da sua rotina.
 - 📈 Nova aba **Histórico Produtivo**: gráficos do seu empenho no SAC, Dashboard, Checklist, Auditoria e Controle de EPI's, mostrando o que precisa melhorar.
+- 📦 Nova aba **Controle de Estoque**: entrada de mercadoria e retirada para uso, com saldo em tempo real e registro de quem deu a entrada e de quem retirou.
         """
     )
 
@@ -1068,6 +1076,7 @@ else:
         ("nav_checklist", "✅", "Checklist"),
         ("nav_equipamentos", "🧰", "Equipamentos"),
         ("nav_epi", "🦺", "Controle de EPI's"),
+        ("nav_estoque", "📦", "Controle de Estoque"),
         ("nav_administrativo", "⚙️", "Administrativo"),
     ]
 
@@ -1483,6 +1492,7 @@ aba_rotativo = st.session_state.aba_atual == "nav_rotativo"
 aba_checklist = st.session_state.aba_atual == "nav_checklist"
 aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
 aba_epi = st.session_state.aba_atual == "nav_epi"
+aba_estoque = st.session_state.aba_atual == "nav_estoque"
 aba_historico = st.session_state.aba_atual == "nav_historico"
 aba_perfil = st.session_state.aba_atual == "nav_perfil"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
@@ -1530,6 +1540,7 @@ def render_conteudo_inicio():
         "nav_checklist": "Inspeção de hidráulicos, carrinhos, empilhadeiras e pigmentação.",
         "nav_equipamentos": "Responsáveis por hidráulicos e carrinhos, e carrinhos fixos por local.",
         "nav_epi": "Registro de entrega de EPIs, com assinatura digital do colaborador.",
+        "nav_estoque": "Entradas e retiradas de mercadoria, com saldo em tempo real.",
         "nav_historico": "Gráficos do seu empenho e do que precisa melhorar.",
         "nav_administrativo": "Gestão completa da operação em um só lugar.",
     }
@@ -1543,6 +1554,7 @@ def render_conteudo_inicio():
         "nav_checklist": "#a855f7",
         "nav_equipamentos": "#0ea5e9",
         "nav_epi": "#f97316",
+        "nav_estoque": "#10b981",
         "nav_historico": "#14b8a6",
         "nav_administrativo": "#64748b",
     }
@@ -1704,6 +1716,7 @@ def render_conteudo_inicio():
                 ("🎯", "Auditoria"),
                 ("🔄", "Rodízio"),
                 ("✅", "Checklist"),
+                ("📦", "Controle de Estoque"),
                 ("⚙️", "Administrativo operacional"),
             ]
         ),
@@ -1966,6 +1979,14 @@ def render_conteudo_inicio():
             "Ter um registro confiável, com assinatura, de cada EPI entregue."
         ),
         (
+            "📦", "Controle de Estoque", "#10b981",
+            "Registre cada entrada de mercadoria e cada retirada para uso, "
+            "informando quem deu a entrada ou quem retirou. O saldo de cada "
+            "produto é calculado sozinho.",
+            "Saber o que temos em estoque, evitar falta de material e ter o "
+            "registro de quem movimentou cada item."
+        ),
+        (
             "📈", "Histórico Produtivo", "#14b8a6",
             "Abra a aba para ver os gráficos do seu empenho no SAC, Dashboard, "
             "Checklist, Auditoria e Controle de EPI's. Verde significa em dia; "
@@ -1992,6 +2013,7 @@ def render_conteudo_inicio():
         "Checklist": "nav_checklist",
         "Equipamentos": "nav_equipamentos",
         "Controle de EPI's": "nav_epi",
+        "Controle de Estoque": "nav_estoque",
         "Histórico Produtivo": "nav_historico",
         "Administrativo": "nav_administrativo",
     }
@@ -2153,6 +2175,25 @@ def render_aba_epi():
 
 if aba_epi:
     render_aba_epi()
+
+# =====================================================
+# CONTROLE DE ESTOQUE
+# =====================================================
+# Sem run_every de propósito: a aba tem formulários e st.tabs(), e
+# um recarregamento automático no meio do preenchimento apagaria o
+# que a pessoa estava digitando.
+
+@st.fragment
+def render_aba_estoque():
+
+    with estilos.mostrar_processando("Carregando..."):
+        estoque.render()
+
+    st.write("")
+    botao_sair_rodape("estoque")
+
+if aba_estoque:
+    render_aba_estoque()
 
 # =====================================================
 # HISTÓRICO PRODUTIVO
