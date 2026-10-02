@@ -533,6 +533,13 @@ def _render_pessoa(usuario_alvo, armazem_id, limite, hoje):
 # TELA
 # =====================================================
 
+# Perfis que enxergam SOMENTE o próprio histórico. Todos os demais
+# (Fundador, Gestao, Painel, nome.nome etc.) veem o histórico de
+# qualquer pessoa e o ranking da equipe. Para restringir mais algum
+# perfil (ex.: "Empilhador."), basta incluir o prefixo aqui.
+PREFIXOS_APENAS_PROPRIO = ("Separador.", "Conferente.", "Recebimento.")
+
+
 def render():
 
     estilos.exibir_notificacao_pendente()
@@ -544,10 +551,7 @@ def render():
         st.session_state.get("armazem_id")
     )
 
-    admin_master = (
-        usuario_logado.startswith("Fundador.")
-        or usuario_logado.startswith("Gestao.")
-    )
+    ve_tudo = not usuario_logado.startswith(PREFIXOS_APENAS_PROPRIO)
 
     estilos.cabecalho_pagina(
         "📈",
@@ -570,7 +574,7 @@ def render():
 
     limite = (hoje - timedelta(days=dias)) if dias else None
 
-    if not admin_master:
+    if not ve_tudo:
 
         _render_pessoa(usuario_logado, armazem_id, limite, hoje)
         return
