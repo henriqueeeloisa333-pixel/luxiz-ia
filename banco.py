@@ -2915,6 +2915,30 @@ def excluir_auditoria_lote(
 
     ler_auditoria.clear()
 
+
+def excluir_auditoria_todos(armazem_id):
+
+    conn = conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        DELETE FROM auditoria_atividades
+        WHERE armazem_id = %s
+        """, (armazem_id,))
+
+        apagados = cursor.rowcount
+
+        conn.commit()
+
+    finally:
+        liberar(conn)
+
+    ler_auditoria.clear()
+
+    return apagados
+
 # ==================================================
 # RODÍZIO - FIM DE EXPEDIENTE
 # ==================================================
