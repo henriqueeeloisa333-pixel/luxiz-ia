@@ -171,9 +171,10 @@ def _pontuar(dados, limite):
 
     resultado = {}
 
-    # SAC: sem cards = 100%; cada card tira 25 pontos
+    # SAC: sem cards = 100%; cada card reduz 25% do que sobrou
+    # (1 card = 75%, 3 = 42%, 7 = 13%) — nunca zera de vez
     resultado["sac"] = {
-        "pct": max(0, 100 - 25 * len(sac)),
+        "pct": 100 * (0.75 ** len(sac)),
         "detalhe": (
             "Nenhuma ocorrência 🎉" if not sac
             else f"{len(sac)} ocorrência(s) no período"
