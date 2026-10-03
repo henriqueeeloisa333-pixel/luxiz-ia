@@ -421,8 +421,14 @@ if not st.session_state.logado:
             """
             <div class="luxiz-teaser-wrap" style="justify-content:center;">
                 <div class="luxiz-teaser">
-                    🚀 A Luxiz IA está desenvolvendo o <strong>LX&nbsp;Roteiriza</strong> —
-                    em breve, mais novidades.
+                    🚀 Conheça também o
+                    <a href="https://sites.google.com/view/lx-roteiriza/in%C3%ADcio"
+                       target="_blank" rel="noopener noreferrer"
+                       style="color:inherit;font-weight:800;text-decoration:underline;">LX&nbsp;Roteiriza</a>
+                    <a href="https://sites.google.com/view/lx-roteiriza/in%C3%ADcio"
+                       target="_blank" rel="noopener noreferrer"
+                       title="Abrir o site do LX Roteiriza"
+                       style="color:inherit;text-decoration:none;font-weight:800;">➡️</a>
                 </div>
             </div>
             """,
