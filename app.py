@@ -15,6 +15,7 @@ import checklist
 import equipamentos
 import epi
 import estoque
+import solicitacoes
 import notificacoes
 import perfil
 import historico
@@ -362,6 +363,12 @@ Mostra quem é o responsável por cada hidráulico e carrinho, e quais carrinhos
 ## 📦 Controle de Estoque
 
 Registra as entradas de mercadoria e as retiradas para uso, mostrando o saldo de cada produto e quem fez cada movimentação.
+
+---
+
+## 📨 Solicitações
+
+Os colaboradores pedem folga, saída antecipada e outras solicitações direto ao supervisor escolhido (Gestão ou Fundador). O supervisor aceita ou recusa, e, em caso de recusa, o motivo fica visível para quem pediu.
 
 ---
 
@@ -1024,6 +1031,7 @@ def render_cabecalho_inicio():
 - 👥 Perfis de acesso **Separador**, **Conferente** e **Recebimento**, cada um com visão restrita aos módulos que fazem parte da sua rotina.
 - 📈 Nova aba **Histórico Produtivo**: gráficos do seu empenho no SAC, Dashboard, Checklist, Auditoria e Controle de EPI's, mostrando o que precisa melhorar.
 - 📦 Nova aba **Controle de Estoque**: entrada de mercadoria e retirada para uso, com saldo em tempo real e registro de quem deu a entrada e de quem retirou.
+- 📨 Nova aba **Solicitações**: Separador, Conferente e Recebimento pedem folga, saída antecipada e outros pedidos ao supervisor (Gestão ou Fundador), que aceita ou recusa — na recusa, o motivo fica visível para quem pediu.
         """
     )
 
@@ -1079,6 +1087,31 @@ else:
         ("nav_estoque", "📦", "Controle de Estoque"),
         ("nav_administrativo", "⚙️", "Administrativo"),
     ]
+
+# Solicitações: aparece para quem envia (Separador, Conferente,
+# Recebimento) e para quem responde (Gestão e Fundador). Para o
+# supervisor, o nome da aba mostra quantas estão aguardando resposta.
+if (
+    solicitacoes.eh_solicitante(usuario_atual)
+    or solicitacoes.eh_supervisor(usuario_atual, tipo)
+):
+
+    nome_nav_solicitacoes = "Solicitações"
+
+    if solicitacoes.eh_supervisor(usuario_atual, tipo):
+
+        try:
+            pendentes_solicitacoes = solicitacoes.contar_pendentes_supervisor(
+                armazem_id_atual,
+                usuario_atual
+            )
+        except Exception:
+            pendentes_solicitacoes = 0
+
+        if pendentes_solicitacoes:
+            nome_nav_solicitacoes = f"Solicitações ({pendentes_solicitacoes})"
+
+    NAV_ITENS.append(("nav_solicitacoes", "📨", nome_nav_solicitacoes))
 
 NAV_ITENS.append(("nav_historico", "📈", "Histórico Produtivo"))
 NAV_ITENS.append(("nav_perfil", "🪪", "Perfil"))
@@ -1493,6 +1526,7 @@ aba_checklist = st.session_state.aba_atual == "nav_checklist"
 aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
 aba_epi = st.session_state.aba_atual == "nav_epi"
 aba_estoque = st.session_state.aba_atual == "nav_estoque"
+aba_solicitacoes = st.session_state.aba_atual == "nav_solicitacoes"
 aba_historico = st.session_state.aba_atual == "nav_historico"
 aba_perfil = st.session_state.aba_atual == "nav_perfil"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
@@ -1541,6 +1575,7 @@ def render_conteudo_inicio():
         "nav_equipamentos": "Responsáveis por hidráulicos e carrinhos, e carrinhos fixos por local.",
         "nav_epi": "Registro de entrega de EPIs, com assinatura digital do colaborador.",
         "nav_estoque": "Entradas e retiradas de mercadoria, com saldo em tempo real.",
+        "nav_solicitacoes": "Pedidos de folga e saída antecipada, com resposta do supervisor.",
         "nav_historico": "Gráficos do seu empenho e do que precisa melhorar.",
         "nav_administrativo": "Gestão completa da operação em um só lugar.",
     }
@@ -1555,6 +1590,7 @@ def render_conteudo_inicio():
         "nav_equipamentos": "#0ea5e9",
         "nav_epi": "#f97316",
         "nav_estoque": "#10b981",
+        "nav_solicitacoes": "#e11d48",
         "nav_historico": "#14b8a6",
         "nav_administrativo": "#64748b",
     }
@@ -1654,6 +1690,7 @@ def render_conteudo_inicio():
                 ("🗑️", "Excluir usuários"),
                 ("🗑️", "Excluir gestores"),
                 ("🔑", "Resetar senhas"),
+                ("📨", "Responder solicitações"),
                 ("⚙️", "Controle total do sistema"),
             ]
         ),
@@ -1664,6 +1701,7 @@ def render_conteudo_inicio():
                 ("👥", "Criar usuários"),
                 ("🗑️", "Excluir usuários comuns"),
                 ("🔑", "Resetar senhas"),
+                ("📨", "Responder solicitações"),
                 ("📋", "Gerenciar operação"),
             ]
         ),
@@ -1686,6 +1724,7 @@ def render_conteudo_inicio():
                 ("😊", "SAC"),
                 ("🔄", "Rodízio"),
                 ("✅", "Checklist"),
+                ("📨", "Solicitações"),
             ]
         ),
         "conferente": (
@@ -1696,6 +1735,7 @@ def render_conteudo_inicio():
                 ("😊", "SAC"),
                 ("🔄", "Rodízio"),
                 ("✅", "Checklist"),
+                ("📨", "Solicitações"),
             ]
         ),
         "recebimento": (
@@ -1704,6 +1744,7 @@ def render_conteudo_inicio():
             [
                 ("🎯", "Auditoria (apenas o próprio card)"),
                 ("✅", "Checklist"),
+                ("📨", "Solicitações"),
             ]
         ),
         "usuario": (
@@ -1987,6 +2028,16 @@ def render_conteudo_inicio():
             "registro de quem movimentou cada item."
         ),
         (
+            "📨", "Solicitações", "#e11d48",
+            "Colaboradores (Separador, Conferente, Recebimento): escolha o "
+            "supervisor, o tipo de pedido (folga, saída antecipada etc.), o dia "
+            "e explique o motivo. Supervisores (Gestão e Fundador): abra a aba "
+            "Recebidas e aceite ou recuse; ao recusar, o motivo é obrigatório.",
+            "Dar um canal simples e registrado para os pedidos do dia a dia, "
+            "com resposta clara — quem pediu sempre sabe o resultado e, se "
+            "recusado, o porquê."
+        ),
+        (
             "📈", "Histórico Produtivo", "#14b8a6",
             "Abra a aba para ver os gráficos do seu empenho no SAC, Dashboard, "
             "Checklist, Auditoria e Controle de EPI's. Verde significa em dia; "
@@ -2014,6 +2065,7 @@ def render_conteudo_inicio():
         "Equipamentos": "nav_equipamentos",
         "Controle de EPI's": "nav_epi",
         "Controle de Estoque": "nav_estoque",
+        "Solicitações": "nav_solicitacoes",
         "Histórico Produtivo": "nav_historico",
         "Administrativo": "nav_administrativo",
     }
@@ -2194,6 +2246,25 @@ def render_aba_estoque():
 
 if aba_estoque:
     render_aba_estoque()
+
+# =====================================================
+# SOLICITAÇÕES
+# =====================================================
+# Sem run_every, pelo mesmo motivo do estoque: formulários e
+# campos de texto (motivo da recusa) não podem ser apagados por um
+# recarregamento automático enquanto a pessoa digita.
+
+@st.fragment
+def render_aba_solicitacoes():
+
+    with estilos.mostrar_processando("Carregando..."):
+        solicitacoes.render()
+
+    st.write("")
+    botao_sair_rodape("solicitacoes")
+
+if aba_solicitacoes:
+    render_aba_solicitacoes()
 
 # =====================================================
 # HISTÓRICO PRODUTIVO
