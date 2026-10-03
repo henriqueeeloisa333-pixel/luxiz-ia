@@ -260,8 +260,62 @@ if "tipo_usuario" not in st.session_state:
 if "trocar_senha" not in st.session_state:
     st.session_state.trocar_senha = False
 
+# =====================================================
+# TEMA INICIAL: SEGUE O DO NAVEGADOR / SISTEMA
+# =====================================================
+# st.context.theme.type devolve "light" ou "dark" conforme o tema
+# que o navegador da pessoa está usando (o Streamlit, por padrão,
+# segue a preferência do sistema operacional/navegador).
+#
+# Regras:
+#   1. Se a URL já tem ?tema=... (a pessoa escolheu no botão antes
+#      e deu F5), essa escolha manual vence.
+#   2. Senão, o app abre no tema do navegador e continua
+#      acompanhando-o ("modo automático").
+#   3. No momento em que a pessoa mexe no botão de tema, o modo
+#      automático desliga e a escolha dela passa a valer.
+
+def _tema_do_navegador():
+
+    try:
+        tipo_tema = st.context.theme.type
+    except Exception:
+        return None
+
+    if tipo_tema == "light":
+        return "claro"
+
+    if tipo_tema == "dark":
+        return "escuro"
+
+    return None
+
+
 if "tema" not in st.session_state:
-    st.session_state.tema = "escuro"
+
+    tema_url = st.query_params.get("tema")
+
+    if tema_url in ("claro", "escuro"):
+
+        st.session_state.tema = tema_url
+        st.session_state.tema_automatico = False
+
+    else:
+
+        st.session_state.tema = _tema_do_navegador() or "escuro"
+        st.session_state.tema_automatico = True
+
+elif st.session_state.get("tema_automatico"):
+
+    # O navegador às vezes só informa o tema depois da primeira
+    # execução; por isso o app confere de novo enquanto está no
+    # modo automático e, se mudou, atualiza o tema e o botão juntos.
+    tema_detectado = _tema_do_navegador()
+
+    if tema_detectado and tema_detectado != st.session_state.tema:
+
+        st.session_state.tema = tema_detectado
+        st.session_state["toggle_tema"] = (tema_detectado == "claro")
 
 # =====================================================
 # SELETOR DE TEMA (discreto, canto superior direito)
@@ -277,7 +331,16 @@ tema_claro = st.toggle(
     help="Alternar entre modo claro e escuro"
 )
 
-st.session_state.tema = "claro" if tema_claro else "escuro"
+novo_tema = "claro" if tema_claro else "escuro"
+
+if novo_tema != st.session_state.tema:
+
+    # A pessoa mexeu no botão: a escolha manual passa a valer e fica
+    # guardada na URL, para sobreviver a um F5 ou queda de rede.
+    st.session_state.tema_automatico = False
+    st.query_params["tema"] = novo_tema
+
+st.session_state.tema = novo_tema
 
 # =====================================================
 # ESTILO
