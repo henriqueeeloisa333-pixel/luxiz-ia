@@ -462,9 +462,8 @@ def _linha_sac(posicao, pessoa, e_voce, detalhado):
 def _render_sac(armazem_id, usuario, ve_tudo):
 
     st.caption(
-        "Pontuação = chamados da Análise Técnica vinculados ao nome da "
-        "pessoa. **Quanto menos, melhor.** Quem não tem nenhum fica em 1º "
-        "lugar e vai descendo conforme chamados entram no nome."
+        "Pontuação = Análise Técnica **Quanto menos, melhor.** Quem não tem nenhum fica em 1º "
+        "lugar e assim por diante."
     )
 
     chamados = banco.ler_analise_tecnica(armazem_id)
