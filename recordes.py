@@ -1,5 +1,8 @@
+import base64
 import html
+import re
 from datetime import datetime
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -24,6 +27,93 @@ import banco
 MEDALHAS = {1: "🥇", 2: "🥈", 3: "🥉"}
 CORES_POSICAO = {1: "#f59e0b", 2: "#94a3b8", 3: "#f97316"}
 COR_NEUTRA = "#64748b"
+
+# Cores de cada medalha: (fita A, fita B, aro claro, aro médio, aro escuro,
+# face clara, face média, face escura, cor do número)
+ESTILOS_MEDALHA = {
+    1: ("#dc2626", "#991b1b", "#fff6bf", "#f5c518", "#a87400",
+        "#ffe98a", "#f2b705", "#b8860b", "#6b4600"),
+    2: ("#2563eb", "#1e3a8a", "#ffffff", "#cfd6de", "#6b7787",
+        "#f8fafc", "#c3cad3", "#8190a1", "#3f4a59"),
+    3: ("#16a34a", "#14532d", "#ffd9b0", "#cd7f32", "#6e3a14",
+        "#f4bd88", "#cd7f32", "#8a4b1c", "#4f270c"),
+}
+
+
+def _svg_para_img(svg, altura, alt):
+    """
+    O SVG vai como imagem (data URI), igual à logo do app: funciona
+    em qualquer versão do Streamlit sem depender de HTML inline.
+    """
+
+    codificado = base64.b64encode(svg.encode("utf-8")).decode()
+
+    return (
+        f'<img src="data:image/svg+xml;base64,{codificado}" alt="{alt}" '
+        f'style="height:{altura}px;width:auto;display:block;flex-shrink:0;">'
+    )
+
+
+@lru_cache(maxsize=None)
+def _medalha_html(posicao, altura=46):
+    """Medalha metálica com fita, aro, brilho e o número da posição."""
+
+    (fita_a, fita_b, aro_1, aro_2, aro_3,
+     face_1, face_2, face_3, cor_num) = ESTILOS_MEDALHA[posicao]
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 84">
+<defs>
+<linearGradient id="fitaA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{fita_a}"/><stop offset="1" stop-color="{fita_b}"/></linearGradient>
+<linearGradient id="fitaB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{fita_b}"/><stop offset="1" stop-color="{fita_a}"/></linearGradient>
+<linearGradient id="aro" x1="0.15" y1="0" x2="0.85" y2="1"><stop offset="0" stop-color="{aro_1}"/><stop offset="0.5" stop-color="{aro_2}"/><stop offset="1" stop-color="{aro_3}"/></linearGradient>
+<radialGradient id="face" cx="0.38" cy="0.32" r="0.85"><stop offset="0" stop-color="{face_1}"/><stop offset="0.55" stop-color="{face_2}"/><stop offset="1" stop-color="{face_3}"/></radialGradient>
+<filter id="sombra" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="2" stdDeviation="1.8" flood-color="#000" flood-opacity="0.45"/></filter>
+</defs>
+<polygon points="14,0 30,0 38,34 24,38" fill="url(#fitaA)"/>
+<polygon points="34,0 50,0 40,38 26,34" fill="url(#fitaB)"/>
+<polygon points="24,0 30,0 33,14 27,16" fill="#ffffff" opacity="0.18"/>
+<g filter="url(#sombra)">
+<circle cx="32" cy="56" r="24" fill="url(#aro)"/>
+<circle cx="32" cy="56" r="24" fill="none" stroke="{aro_3}" stroke-width="0.8" opacity="0.7"/>
+<circle cx="32" cy="56" r="19" fill="url(#face)"/>
+<circle cx="32" cy="56" r="19" fill="none" stroke="{aro_3}" stroke-width="1.2" opacity="0.55"/>
+<circle cx="32" cy="56" r="16.2" fill="none" stroke="{aro_1}" stroke-width="0.7" opacity="0.7"/>
+<path d="M17 50 A17 17 0 0 1 36 39 A21 21 0 0 0 17 50 Z" fill="#ffffff" opacity="0.42"/>
+<text x="32" y="64.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="{cor_num}" stroke="{aro_1}" stroke-width="0.4" stroke-opacity="0.6">{posicao}</text>
+</g>
+</svg>"""
+
+    return _svg_para_img(svg, altura, f"{posicao}º lugar")
+
+
+@lru_cache(maxsize=None)
+def _taca_html(altura=64):
+    """Taça dourada com alças, haste, base e brilho."""
+
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 80">
+<defs>
+<linearGradient id="copo" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b8860b"/><stop offset="0.28" stop-color="#ffe98a"/><stop offset="0.55" stop-color="#f5c518"/><stop offset="1" stop-color="#a87400"/></linearGradient>
+<linearGradient id="haste" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a87400"/><stop offset="0.45" stop-color="#ffe98a"/><stop offset="1" stop-color="#8a5e00"/></linearGradient>
+<linearGradient id="base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a4a10"/><stop offset="1" stop-color="#3f2406"/></linearGradient>
+<filter id="sombra" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.45"/></filter>
+</defs>
+<g filter="url(#sombra)">
+<path d="M18 14 H8 C6 30 12 38 22 40" fill="none" stroke="url(#haste)" stroke-width="4.2" stroke-linecap="round"/>
+<path d="M54 14 H64 C66 30 60 38 50 40" fill="none" stroke="url(#haste)" stroke-width="4.2" stroke-linecap="round"/>
+<path d="M16 8 H56 V26 C56 42 47 52 36 52 C25 52 16 42 16 26 Z" fill="url(#copo)"/>
+<rect x="16" y="6" width="40" height="5" rx="2.5" fill="#ffe98a"/>
+<rect x="31" y="50" width="10" height="13" fill="url(#haste)"/>
+<ellipse cx="36" cy="52" rx="8" ry="2.6" fill="#a87400"/>
+<rect x="24" y="62" width="24" height="6" rx="1.5" fill="url(#haste)"/>
+<rect x="19" y="67" width="34" height="9" rx="2.5" fill="url(#base)"/>
+<rect x="19" y="67" width="34" height="2" rx="1" fill="#ffffff" opacity="0.22"/>
+<polygon points="36,17 38.6,24 46,24.4 40.2,29 42.2,36.4 36,32.2 29.8,36.4 31.8,29 26,24.4 33.4,24" fill="#fff6bf" opacity="0.92"/>
+<path d="M21 14 C20 28 24 38 31 44 C25 36 24 26 25 14 Z" fill="#ffffff" opacity="0.42"/>
+</g>
+</svg>"""
+
+    return _svg_para_img(svg, altura, "Taça")
+
 
 # Valores que aparecem em planilhas/cadastros no lugar de um nome
 VALORES_SEM_NOME = {"", "-", "—", "não", "nao", "n/a", "na"}
@@ -181,8 +271,8 @@ def _linha_ranking(posicao, nome, foto, subtitulo, chips, e_voce):
 
     if posicao in MEDALHAS:
         selo = (
-            f'<div style="font-size:1.9rem;line-height:1;text-align:center;">'
-            f'{MEDALHAS[posicao]}</div>'
+            '<div style="display:flex;justify-content:center;">'
+            f'{_medalha_html(posicao, 46)}</div>'
         )
     else:
         selo = (
@@ -722,20 +812,93 @@ def _meses_disponiveis_dashboard(armazem_id):
     return meses or [(ultimo.year, ultimo.month)]
 
 
-def _card_podio(posicao, item):
+# Separadores comuns ao digitar uma dupla: "João & Maria", "João e Maria",
+# "João/Maria", "João, Maria", "João + Maria", "João - Maria"
+_SEPARADOR_DUPLA = re.compile(r"\s*(?:&|/|\+|,|;|\s-\s|\s[eE]\s)\s*")
+
+
+def _pessoas_da_dupla(texto_dupla, armazem_id):
+    """
+    Quebra o texto da dupla em nomes e procura o Perfil de cada um
+    (nome, sobrenome ou nome completo — se mais de uma pessoa bater,
+    não arrisca e cai nas iniciais). Devolve [(nome, foto), ...].
+    """
+
+    if not texto_dupla or texto_dupla.strip().lower() in VALORES_SEM_NOME | {"sem dupla"}:
+        return []
+
+    pessoas = []
+
+    for parte in _SEPARADOR_DUPLA.split(texto_dupla):
+
+        parte = parte.strip()
+
+        if not parte:
+            continue
+
+        perfil = banco.encontrar_perfil_por_nome(parte, armazem_id)
+
+        if perfil:
+            pessoas.append((banco.nome_completo_perfil(perfil), perfil.get("foto")))
+        else:
+            pessoas.append((parte.title(), None))
+
+    return pessoas
+
+
+def _avatares_dupla(pessoas, cor):
+
+    if not pessoas:
+        return ""
+
+    avatares = "".join(
+        f'<div style="margin-left:{0 if indice == 0 else -12}px;'
+        f'border:3px solid {cor};border-radius:50%;line-height:0;'
+        f'background:#0b1120;">{_avatar_html(nome, foto, 58)}</div>'
+        for indice, (nome, foto) in enumerate(pessoas)
+    )
+
+    return (
+        '<div style="display:flex;justify-content:center;margin-top:.8rem;">'
+        f'{avatares}</div>'
+    )
+
+
+def _card_podio(posicao, item, armazem_id):
 
     cor = CORES_POSICAO[posicao]
+
+    pessoas = _pessoas_da_dupla(item["dupla"], armazem_id)
+
+    nomes = (
+        " &amp; ".join(html.escape(nome) for nome, _ in pessoas)
+        if pessoas else html.escape(item["dupla"])
+    )
+
+    # o 1º lugar leva a taça ao lado da medalha
+    if posicao == 1:
+        topo = (
+            '<div style="display:flex;justify-content:center;align-items:flex-end;gap:.7rem;">'
+            f'{_taca_html(84)}{_medalha_html(1, 92)}'
+            '</div>'
+        )
+    else:
+        topo = (
+            '<div style="display:flex;justify-content:center;">'
+            f'{_medalha_html(posicao, 92)}</div>'
+        )
 
     return (
         f'<div style="background:{cor}14;border:1px solid {cor}55;'
         'border-radius:1.1rem;padding:1.3rem 1rem;text-align:center;height:100%;">'
-        f'<div style="font-size:2.5rem;line-height:1;">{MEDALHAS[posicao]}</div>'
-        f'<div style="font-weight:800;font-size:1.1rem;margin-top:.5rem;">'
+        f'{topo}'
+        f'<div style="font-weight:800;font-size:1.1rem;margin-top:.6rem;">'
         f'{html.escape(item["rua"])}</div>'
         f'<div style="font-size:2.2rem;font-weight:800;color:{cor};'
         f'margin-top:.2rem;line-height:1.1;">{item["nota"]:.1f}</div>'
-        f'<div style="font-size:.8rem;opacity:.7;margin-top:.4rem;">'
-        f'👥 {html.escape(item["dupla"])}</div>'
+        f'{_avatares_dupla(pessoas, cor)}'
+        f'<div style="font-size:.82rem;opacity:.8;margin-top:.5rem;font-weight:600;">'
+        f'{nomes}</div>'
         '</div>'
     )
 
@@ -779,7 +942,7 @@ def _render_dashboard(armazem_id):
         with colunas[indice]:
 
             st.markdown(
-                _card_podio(indice + 1, item),
+                _card_podio(indice + 1, item, armazem_id),
                 unsafe_allow_html=True
             )
 
