@@ -16,6 +16,7 @@ import equipamentos
 import epi
 import estoque
 import solicitacoes
+import recordes
 import efeito_login
 import notificacoes
 import perfil
@@ -449,6 +450,12 @@ Mostra quem é o responsável por cada hidráulico e carrinho, e quais carrinhos
 ## 📦 Controle de Estoque
 
 Registra as entradas de mercadoria e as retiradas para uso, mostrando o saldo de cada produto e quem fez cada movimentação.
+
+---
+
+## 🏆 Recordes
+
+Mostra os destaques da operação em três rankings: o SAC (quem tem menos chamados vinculados ao nome fica na frente), a Auditoria (mais acertos e menos erros) e o Top 3 de ruas do Dashboard, sempre do último mês, com busca para ver os meses anteriores.
 
 ---
 
@@ -1126,6 +1133,7 @@ def render_cabecalho_inicio():
 - 📈 Nova aba **Histórico Produtivo**: gráficos do seu empenho no SAC, Dashboard, Checklist, Auditoria e Controle de EPI's, mostrando o que precisa melhorar.
 - 📦 Nova aba **Controle de Estoque**: entrada de mercadoria e retirada para uso, com saldo em tempo real e registro de quem deu a entrada e de quem retirou.
 - 📨 Nova aba **Solicitações**: Separador, Conferente e Recebimento pedem folga, saída antecipada e outros pedidos ao supervisor (Gestão ou Fundador), que aceita ou recusa — na recusa, o motivo fica visível para quem pediu.
+- 🏆 Nova aba **Recordes**: ranking do SAC (menos chamados no nome, melhor), ranking da Auditoria (mais acertos e menos erros) e o Top 3 do Dashboard do último mês, com busca para ver os meses anteriores.
         """
     )
 
@@ -1181,6 +1189,9 @@ else:
         ("nav_estoque", "📦", "Controle de Estoque"),
         ("nav_administrativo", "⚙️", "Administrativo"),
     ]
+
+# Recordes: aparece para todos os perfis.
+NAV_ITENS.append(("nav_recordes", "🏆", "Recordes"))
 
 # Solicitações: aparece para quem envia (Separador, Conferente,
 # Recebimento) e para quem responde (Gestão e Fundador). Para o
@@ -1621,6 +1632,7 @@ aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
 aba_epi = st.session_state.aba_atual == "nav_epi"
 aba_estoque = st.session_state.aba_atual == "nav_estoque"
 aba_solicitacoes = st.session_state.aba_atual == "nav_solicitacoes"
+aba_recordes = st.session_state.aba_atual == "nav_recordes"
 aba_historico = st.session_state.aba_atual == "nav_historico"
 aba_perfil = st.session_state.aba_atual == "nav_perfil"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
@@ -1670,6 +1682,7 @@ def render_conteudo_inicio():
         "nav_epi": "Registro de entrega de EPIs, com assinatura digital do colaborador.",
         "nav_estoque": "Entradas e retiradas de mercadoria, com saldo em tempo real.",
         "nav_solicitacoes": "Pedidos de folga e saída antecipada, com resposta do supervisor.",
+        "nav_recordes": "Rankings do SAC, da Auditoria e Top 3 do Dashboard por mês.",
         "nav_historico": "Gráficos do seu empenho e do que precisa melhorar.",
         "nav_administrativo": "Gestão completa da operação em um só lugar.",
     }
@@ -1685,6 +1698,7 @@ def render_conteudo_inicio():
         "nav_epi": "#f97316",
         "nav_estoque": "#10b981",
         "nav_solicitacoes": "#e11d48",
+        "nav_recordes": "#eab308",
         "nav_historico": "#14b8a6",
         "nav_administrativo": "#64748b",
     }
@@ -1856,6 +1870,10 @@ def render_conteudo_inicio():
             ]
         ),
     }
+
+    # Recordes está liberado para todos os perfis
+    for _perfil_chave in PERFIS_PERMISSOES:
+        PERFIS_PERMISSOES[_perfil_chave][4].append(("🏆", "Recordes"))
 
     if tipo == "fundador" or eh_fundador_prefixo:
         perfil_chave_atual = "fundador"
@@ -2122,6 +2140,14 @@ def render_conteudo_inicio():
             "registro de quem movimentou cada item."
         ),
         (
+            "🏆", "Recordes", "#eab308",
+            "Abra a aba e escolha SAC, Auditoria ou Dashboard. No SAC, quem "
+            "tem menos chamados no nome fica na frente; na Auditoria, ganha "
+            "quem acerta mais e erra menos; no Dashboard aparece o Top 3 de "
+            "ruas do último mês (use a busca para ver meses anteriores).",
+            "Reconhecer quem mais se empenha e motivar todos a subir de posição."
+        ),
+        (
             "📨", "Solicitações", "#e11d48",
             "Colaboradores (Separador, Conferente, Recebimento): escolha o "
             "supervisor, o tipo de pedido (folga, saída antecipada etc.), o dia "
@@ -2160,6 +2186,7 @@ def render_conteudo_inicio():
         "Controle de EPI's": "nav_epi",
         "Controle de Estoque": "nav_estoque",
         "Solicitações": "nav_solicitacoes",
+        "Recordes": "nav_recordes",
         "Histórico Produtivo": "nav_historico",
         "Administrativo": "nav_administrativo",
     }
@@ -2359,6 +2386,24 @@ def render_aba_solicitacoes():
 
 if aba_solicitacoes:
     render_aba_solicitacoes()
+
+# =====================================================
+# RECORDES
+# =====================================================
+# Sem run_every: a aba tem seletores (período, função, mês) e um
+# recarregamento automático faria a escolha da pessoa piscar/voltar.
+
+@st.fragment
+def render_aba_recordes():
+
+    with estilos.mostrar_processando("Carregando..."):
+        recordes.render()
+
+    st.write("")
+    botao_sair_rodape("recordes")
+
+if aba_recordes:
+    render_aba_recordes()
 
 # =====================================================
 # HISTÓRICO PRODUTIVO
