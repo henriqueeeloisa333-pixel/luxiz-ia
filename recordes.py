@@ -332,18 +332,21 @@ def _mostrar_kpis(kpis):
 
 def _atribuir_posicoes(itens, chave_empate):
     """
-    Posição de competição: empatados dividem a mesma posição e a
-    seguinte "pula" (1, 1, 1, 4...). `itens` já vem ordenado.
+    Posição "densa": empatados dividem a mesma posição e o próximo
+    grupo recebe a posição seguinte (1, 1, 1, 2, 2, 3, 4...). Assim
+    sempre existem 🥈 e 🥉 depois do(s) líder(es), mesmo quando muita
+    gente está empatada em 1º. `itens` já vem ordenado.
     """
 
     posicoes = []
+    posicao_atual = 0
 
     for indice, item in enumerate(itens):
 
-        if indice > 0 and chave_empate(item) == chave_empate(itens[indice - 1]):
-            posicoes.append(posicoes[-1])
-        else:
-            posicoes.append(indice + 1)
+        if indice == 0 or chave_empate(item) != chave_empate(itens[indice - 1]):
+            posicao_atual += 1
+
+        posicoes.append(posicao_atual)
 
     return posicoes
 
