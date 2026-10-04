@@ -302,7 +302,42 @@ def calcular_ranking_sac(armazem_id, periodo):
     return list(zip(posicoes, ordenados)), len(chamados)
 
 
-def _render_sac(armazem_id, usuario):
+def _linha_sac(posicao, pessoa, e_voce, detalhado):
+    """
+    detalhado=True (Gestão/Fundador, ou a própria pessoa): mostra o
+    número de chamados. Para os demais, só aparece o selo positivo
+    "Sem chamados" — ninguém vê quantos chamados os colegas têm.
+    """
+
+    chips = []
+    subtitulo = pessoa["funcao"]
+
+    if pessoa["chamados"] == 0:
+
+        chips.append(_chip("✅ Sem chamados", "#22c55e"))
+
+    elif detalhado:
+
+        plural = "chamado" if pessoa["chamados"] == 1 else "chamados"
+        chips.append(_chip(f'{pessoa["chamados"]} {plural}', "#f59e0b"))
+
+        if pessoa["ultimo"]:
+            subtitulo = (
+                f'{pessoa["funcao"]} · último chamado em '
+                f'{pessoa["ultimo"].strftime("%d/%m/%Y")}'
+            )
+
+    return _linha_ranking(
+        posicao,
+        pessoa["nome"],
+        pessoa["foto"],
+        subtitulo,
+        chips,
+        e_voce
+    )
+
+
+def _render_sac(armazem_id, usuario, ve_tudo):
 
     st.caption(
         "Pontuação = chamados da Análise Técnica vinculados ao nome da "
@@ -325,38 +360,57 @@ def _render_sac(armazem_id, usuario):
 
     sem_chamados = sum(1 for _, p in ranking if p["chamados"] == 0)
 
-    _mostrar_kpis([
+    kpis = [
         _kpi("👥", "Colaboradores no ranking", str(len(ranking)), "#3b82f6"),
         _kpi("✅", "Sem nenhum chamado", str(sem_chamados), "#22c55e"),
-        _kpi("📋", "Chamados no período", str(total_chamados), "#f59e0b"),
-    ])
+    ]
 
-    linhas = []
+    # o total de chamados só aparece para quem gerencia
+    if ve_tudo:
+        kpis.append(
+            _kpi("📋", "Chamados no período", str(total_chamados), "#f59e0b")
+        )
 
-    for posicao, pessoa in ranking:
+    _mostrar_kpis(kpis)
 
-        if pessoa["chamados"] == 0:
-            chip = _chip("✅ Sem chamados", "#22c55e")
-            subtitulo = pessoa["funcao"]
-        else:
-            plural = "chamado" if pessoa["chamados"] == 1 else "chamados"
-            chip = _chip(f'{pessoa["chamados"]} {plural}', "#f59e0b")
-            subtitulo = (
-                f'{pessoa["funcao"]} · último chamado em '
-                f'{pessoa["ultimo"].strftime("%d/%m/%Y")}'
-                if pessoa["ultimo"] else pessoa["funcao"]
+    itens = [
+        (
+            posicao,
+            pessoa,
+            banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id)
+        )
+        for posicao, pessoa in ranking
+    ]
+
+    # Colaboradores veem só o pódio (posições 1 a 3); Gestão e
+    # Fundador veem a lista completa.
+    visiveis = itens if ve_tudo else [i for i in itens if i[0] <= 3]
+
+    st.markdown(
+        "".join(
+            _linha_sac(posicao, pessoa, e_voce, detalhado=(ve_tudo or e_voce))
+            for posicao, pessoa, e_voce in visiveis
+        ),
+        unsafe_allow_html=True
+    )
+
+    if not ve_tudo:
+
+        minha = next((i for i in itens if i[2] and i[0] > 3), None)
+
+        if minha:
+
+            st.markdown("##### 📍 Sua posição")
+
+            st.markdown(
+                _linha_sac(minha[0], minha[1], True, detalhado=True),
+                unsafe_allow_html=True
             )
 
-        linhas.append(_linha_ranking(
-            posicao,
-            pessoa["nome"],
-            pessoa["foto"],
-            subtitulo,
-            [chip],
-            banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id)
-        ))
-
-    st.markdown("".join(linhas), unsafe_allow_html=True)
+        st.caption(
+            "🔒 Você vê o pódio e a sua própria posição. A lista completa "
+            "fica disponível só para a Gestão e o Fundador."
+        )
 
 
 # ==================================================
@@ -425,7 +479,32 @@ def calcular_ranking_auditoria(armazem_id, periodo, funcao):
     return list(zip(posicoes, ordenados))
 
 
-def _render_auditoria(armazem_id, usuario):
+def _linha_auditoria(posicao, pessoa, e_voce, detalhado):
+    """
+    detalhado=True (Gestão/Fundador, ou a própria pessoa): mostra
+    acertos, erros, aproveitamento e pontos. Para os demais, só
+    acertos e pontos — os erros dos colegas não aparecem.
+    """
+
+    chips = [_chip(f'✅ {pessoa["acertos"]}', "#22c55e")]
+
+    if detalhado:
+        chips.append(_chip(f'❌ {pessoa["erros"]}', "#ef4444"))
+        chips.append(_chip(f'{pessoa["aproveitamento"]:.0f}%', "#3b82f6"))
+
+    chips.append(_chip(f'⭐ {pessoa["pontuacao"]} pts', "#f59e0b"))
+
+    return _linha_ranking(
+        posicao,
+        pessoa["nome"],
+        pessoa["foto"],
+        pessoa["funcao"],
+        chips,
+        e_voce
+    )
+
+
+def _render_auditoria(armazem_id, usuario, ve_tudo):
 
     st.caption(
         "Pontuação = acertos − erros. Quem acerta mais e erra menos fica "
@@ -460,31 +539,57 @@ def _render_auditoria(armazem_id, usuario):
     total_acertos = sum(p["acertos"] for _, p in ranking)
     total_erros = sum(p["erros"] for _, p in ranking)
 
-    _mostrar_kpis([
+    kpis = [
         _kpi("👥", "Colaboradores no ranking", str(len(ranking)), "#3b82f6"),
         _kpi("✅", "Acertos no período", str(total_acertos), "#22c55e"),
-        _kpi("❌", "Erros no período", str(total_erros), "#ef4444"),
-    ])
+    ]
 
-    linhas = []
+    # o total de erros só aparece para quem gerencia
+    if ve_tudo:
+        kpis.append(
+            _kpi("❌", "Erros no período", str(total_erros), "#ef4444")
+        )
 
-    for posicao, pessoa in ranking:
+    _mostrar_kpis(kpis)
 
-        linhas.append(_linha_ranking(
+    itens = [
+        (
             posicao,
-            pessoa["nome"],
-            pessoa["foto"],
-            pessoa["funcao"],
-            [
-                _chip(f'✅ {pessoa["acertos"]}', "#22c55e"),
-                _chip(f'❌ {pessoa["erros"]}', "#ef4444"),
-                _chip(f'{pessoa["aproveitamento"]:.0f}%', "#3b82f6"),
-                _chip(f'⭐ {pessoa["pontuacao"]} pts', "#f59e0b"),
-            ],
+            pessoa,
             banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id)
-        ))
+        )
+        for posicao, pessoa in ranking
+    ]
 
-    st.markdown("".join(linhas), unsafe_allow_html=True)
+    # Colaboradores veem só o pódio (posições 1 a 3); Gestão e
+    # Fundador veem a lista completa.
+    visiveis = itens if ve_tudo else [i for i in itens if i[0] <= 3]
+
+    st.markdown(
+        "".join(
+            _linha_auditoria(posicao, pessoa, e_voce, detalhado=(ve_tudo or e_voce))
+            for posicao, pessoa, e_voce in visiveis
+        ),
+        unsafe_allow_html=True
+    )
+
+    if not ve_tudo:
+
+        minha = next((i for i in itens if i[2] and i[0] > 3), None)
+
+        if minha:
+
+            st.markdown("##### 📍 Sua posição")
+
+            st.markdown(
+                _linha_auditoria(minha[0], minha[1], True, detalhado=True),
+                unsafe_allow_html=True
+            )
+
+        st.caption(
+            "🔒 Você vê o pódio e a sua própria posição. A lista completa "
+            "fica disponível só para a Gestão e o Fundador."
+        )
 
 
 # ==================================================
@@ -659,6 +764,15 @@ def render():
     )
 
     usuario = st.session_state.get("usuario", "")
+    tipo_usuario = st.session_state.get("tipo_usuario", "usuario")
+
+    # Só Gestão e Fundador veem a lista completa dos rankings; os
+    # colaboradores veem o pódio e a própria posição (evita que
+    # alguém seja exposto/zoado pelos números dos colegas).
+    ve_tudo = (
+        tipo_usuario in ("fundador", "gestao")
+        or usuario.startswith(("Fundador.", "Gestao."))
+    )
 
     st.subheader("🏆 Recordes")
 
@@ -673,10 +787,10 @@ def render():
     ])
 
     with aba_sac:
-        _render_sac(armazem_id, usuario)
+        _render_sac(armazem_id, usuario, ve_tudo)
 
     with aba_auditoria:
-        _render_auditoria(armazem_id, usuario)
+        _render_auditoria(armazem_id, usuario, ve_tudo)
 
     with aba_dashboard:
         _render_dashboard(armazem_id)
