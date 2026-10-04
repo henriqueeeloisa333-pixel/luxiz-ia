@@ -455,7 +455,7 @@ Registra as entradas de mercadoria e as retiradas para uso, mostrando o saldo de
 
 ## 🏆 Recordes
 
-Mostra os destaques da operação em três rankings: o SAC (quem tem menos chamados vinculados ao nome fica na frente), a Auditoria (mais acertos e menos erros) e o Top 3 de ruas do Dashboard, sempre do último mês, com busca para ver os meses anteriores.
+Mostra os destaques da operação em três rankings: o SAC (quem tem menos chamados vinculados ao nome fica na frente), a Auditoria (mais acertos e menos erros) e o Top 3 de ruas do Dashboard, sempre do último mês, com busca para ver os meses anteriores. No fechamento de cada mês, quem fica entre os 3 primeiros ganha medalhas de ouro, prata e bronze, que ficam guardadas no quadro de medalhas.
 
 ---
 
@@ -1133,7 +1133,7 @@ def render_cabecalho_inicio():
 - 📈 Nova aba **Histórico Produtivo**: gráficos do seu empenho no SAC, Dashboard, Checklist, Auditoria e Controle de EPI's, mostrando o que precisa melhorar.
 - 📦 Nova aba **Controle de Estoque**: entrada de mercadoria e retirada para uso, com saldo em tempo real e registro de quem deu a entrada e de quem retirou.
 - 📨 Nova aba **Solicitações**: Separador, Conferente e Recebimento pedem folga, saída antecipada e outros pedidos ao supervisor (Gestão ou Fundador), que aceita ou recusa — na recusa, o motivo fica visível para quem pediu.
-- 🏆 Nova aba **Recordes**: ranking do SAC (menos chamados no nome, melhor), ranking da Auditoria (mais acertos e menos erros) e o Top 3 do Dashboard do último mês, com busca para ver os meses anteriores.
+- 🏆 Nova aba **Recordes**: ranking do SAC (menos chamados no nome, melhor), ranking da Auditoria (mais acertos e menos erros) e o Top 3 do Dashboard do último mês, com busca para ver os meses anteriores. Cada colaborador acompanha a quantidade de medalhas 🥇🥈🥉 que conquistou nos fechamentos mensais.
         """
     )
 
@@ -2144,7 +2144,8 @@ def render_conteudo_inicio():
             "Abra a aba e escolha SAC, Auditoria ou Dashboard. No SAC, quem "
             "tem menos chamados no nome fica na frente; na Auditoria, ganha "
             "quem acerta mais e erra menos; no Dashboard aparece o Top 3 de "
-            "ruas do último mês (use a busca para ver meses anteriores).",
+            "ruas do último mês (use a busca para ver meses anteriores). Na sub-aba "
+            "Medalhas você vê quantas 🥇🥈🥉 já conquistou nos fechamentos mensais.",
             "Reconhecer quem mais se empenha e motivar todos a subir de posição."
         ),
         (
