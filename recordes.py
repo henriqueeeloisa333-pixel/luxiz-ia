@@ -1,7 +1,7 @@
 import base64
 import html
 import re
-from datetime import datetime
+from datetime import date, datetime
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
@@ -983,6 +983,522 @@ def _render_dashboard(armazem_id):
 
 
 # ==================================================
+# QUADRO DE MEDALHAS
+# ==================================================
+# Regra: no FECHAMENTO de cada mês, quem fica em 1º, 2º e 3º lugar
+# recebe 🥇, 🥈 e 🥉 em cada ranking:
+#   - SAC: posições do ranking de chamados daquele mês (só conta se o
+#     mês teve pelo menos um chamado — mês sem nenhum chamado não é
+#     competição);
+#   - Auditoria: posições do ranking (função "Todas") daquele mês;
+#   - Dashboard: as 3 ruas do pódio do mês; a medalha vai para cada
+#     pessoa da dupla da rua.
+# Empatados no mesmo lugar recebem a mesma medalha.
+#
+# As medalhas são GRAVADAS no banco quando o mês fecha (tabelas
+# criadas sozinhas abaixo), então ficam fixas: uma medalha conquistada
+# não some se um registro antigo for editado ou apagado depois. O
+# mês em andamento ainda não vale — só os meses fechados.
+#
+# Visão: cada colaborador vê só as suas medalhas; Gestão e Fundador
+# veem o quadro completo.
+
+CATEGORIAS_MEDALHA = {
+    "sac": ("😊", "SAC"),
+    "auditoria": ("🎯", "Auditoria"),
+    "dashboard": ("📊", "Dashboard"),
+}
+
+NOMES_MEDALHA = {1: "Ouro", 2: "Prata", 3: "Bronze"}
+
+
+@st.cache_resource(show_spinner=False)
+def _garantir_tabelas_recordes():
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recordes_medalhas (
+            id BIGSERIAL PRIMARY KEY,
+            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
+            mes_ref DATE NOT NULL,
+            categoria TEXT NOT NULL
+                CHECK (categoria IN ('sac', 'auditoria', 'dashboard')),
+            chave TEXT NOT NULL,
+            nome TEXT NOT NULL,
+            posicao INTEGER NOT NULL CHECK (posicao BETWEEN 1 AND 3),
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (armazem_id, mes_ref, categoria, chave)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recordes_fechamentos (
+            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
+            categoria TEXT NOT NULL,
+            mes_ref DATE NOT NULL,
+            fechado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (armazem_id, categoria, mes_ref)
+        )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_recordes_medalhas_armazem ON recordes_medalhas (armazem_id)")
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+        banco.liberar(conn)
+
+    return True
+
+
+def _meses_entre(primeiro, ultimo):
+
+    meses = []
+
+    ano, mes = primeiro
+
+    while (ano, mes) <= ultimo:
+
+        meses.append((ano, mes))
+
+        mes += 1
+
+        if mes == 13:
+            mes = 1
+            ano += 1
+
+    return meses
+
+
+def _primeiro_mes(datas):
+
+    datas = [d for d in datas if d]
+
+    if not datas:
+        return None
+
+    primeira = min(datas)
+
+    return (primeira.year, primeira.month)
+
+
+def _calcular_medalhas_do_mes(armazem_id, categoria, ano, mes):
+    """Devolve [(chave, nome, posicao 1..3), ...] do mês (já fechado)."""
+
+    entradas = []
+
+    if categoria == "sac":
+
+        ranking, total_chamados = calcular_ranking_sac(armazem_id, (ano, mes))
+
+        if total_chamados > 0:
+            entradas = [
+                (_chave(p["nome"]), p["nome"], posicao)
+                for posicao, p in ranking
+                if posicao <= 3
+            ]
+
+    elif categoria == "auditoria":
+
+        ranking = calcular_ranking_auditoria(armazem_id, (ano, mes), "Todas")
+
+        entradas = [
+            (_chave(p["nome"]), p["nome"], posicao)
+            for posicao, p in ranking
+            if posicao <= 3
+        ]
+
+    else:
+
+        top3, _ = ler_top3_do_mes(armazem_id, ano, mes)
+
+        for indice, item in enumerate(top3):
+
+            for nome, _foto in _pessoas_da_dupla(item["dupla"], armazem_id):
+                entradas.append((_chave(nome), nome, indice + 1))
+
+    return entradas
+
+
+def _fechar_meses_pendentes(armazem_id):
+    """
+    Concede e grava as medalhas dos meses já fechados que ainda não
+    foram processados. Na primeira vez, processa todo o histórico
+    existente; depois, só o mês que acabou de fechar.
+    """
+
+    _garantir_tabelas_recordes()
+
+    fechado = banco._mes_fechado_mais_recente()
+    ultimo = (fechado.year, fechado.month)
+
+    primeiros = {
+        "sac": _primeiro_mes(
+            c["data_erro"] for c in banco.ler_analise_tecnica(armazem_id)
+        ),
+        "auditoria": _primeiro_mes(
+            r["data_atividade"] for r in banco.ler_auditoria(armazem_id)
+        ),
+        "dashboard": _primeiro_mes_com_historico(armazem_id),
+    }
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT categoria, mes_ref
+        FROM recordes_fechamentos
+        WHERE armazem_id = %s
+        """, (armazem_id,))
+
+        feitos = {(cat, (mes.year, mes.month)) for cat, mes in cursor.fetchall()}
+
+    finally:
+        banco.liberar(conn)
+
+    pendentes = [
+        (categoria, mes)
+        for categoria, primeiro in primeiros.items()
+        if primeiro
+        for mes in _meses_entre(primeiro, ultimo)
+        if (categoria, mes) not in feitos
+    ]
+
+    if not pendentes:
+        return 0
+
+    # calcula tudo ANTES de abrir a conexão de escrita
+    resultados = [
+        (
+            categoria,
+            mes,
+            _calcular_medalhas_do_mes(armazem_id, categoria, *mes)
+        )
+        for categoria, mes in pendentes
+    ]
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        for categoria, (ano, mes), entradas in resultados:
+
+            mes_ref = date(ano, mes, 1)
+
+            for chave, nome, posicao in entradas:
+
+                cursor.execute("""
+                INSERT INTO recordes_medalhas
+                    (armazem_id, mes_ref, categoria, chave, nome, posicao)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (armazem_id, mes_ref, categoria, chave) DO NOTHING
+                """, (armazem_id, mes_ref, categoria, chave, nome, posicao))
+
+            cursor.execute("""
+            INSERT INTO recordes_fechamentos (armazem_id, categoria, mes_ref)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (armazem_id, categoria, mes_ref) DO NOTHING
+            """, (armazem_id, categoria, mes_ref))
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+        banco.liberar(conn)
+
+    ler_medalhas.clear()
+
+    return len(pendentes)
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _verificar_fechamentos(armazem_id):
+
+    try:
+        return _fechar_meses_pendentes(armazem_id)
+    except Exception as erro:
+        print(f"⚠️ Recordes: falha ao fechar meses: {erro}", flush=True)
+        return -1
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def ler_medalhas(armazem_id):
+
+    _garantir_tabelas_recordes()
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT categoria, mes_ref, chave, nome, posicao
+        FROM recordes_medalhas
+        WHERE armazem_id = %s
+        ORDER BY mes_ref DESC, categoria ASC, posicao ASC
+        """, (armazem_id,))
+
+        eventos = [
+            {
+                "categoria": linha[0],
+                "mes_ref": linha[1],
+                "chave": linha[2],
+                "nome": linha[3],
+                "posicao": linha[4],
+            }
+            for linha in cursor.fetchall()
+        ]
+
+    finally:
+        banco.liberar(conn)
+
+    return eventos
+
+
+def _novo_acumulador(nome):
+
+    return {
+        "nome": nome,
+        "total": {1: 0, 2: 0, 3: 0},
+        "por_categoria": {c: {1: 0, 2: 0, 3: 0} for c in CATEGORIAS_MEDALHA},
+        "eventos": [],
+    }
+
+
+def _somar_evento(acumulador, evento):
+
+    acumulador["total"][evento["posicao"]] += 1
+    acumulador["por_categoria"][evento["categoria"]][evento["posicao"]] += 1
+    acumulador["eventos"].append(evento)
+
+
+def _agregar_por_pessoa(eventos):
+
+    pessoas = {}
+
+    for evento in eventos:
+
+        acumulador = pessoas.setdefault(
+            evento["chave"],
+            _novo_acumulador(evento["nome"])
+        )
+
+        _somar_evento(acumulador, evento)
+
+    return pessoas
+
+
+def _chip_medalha(posicao, quantidade):
+
+    cor = CORES_POSICAO[posicao]
+
+    return (
+        f'<span style="display:inline-flex;align-items:center;gap:.3rem;'
+        f'background:{cor}1f;border:1px solid {cor}55;border-radius:999px;'
+        f'padding:.1rem .65rem .1rem .4rem;font-weight:800;font-size:.82rem;'
+        f'color:{cor};white-space:nowrap;">'
+        f'{_medalha_html(posicao, 26)}×{quantidade}</span>'
+    )
+
+
+def _render_minhas_medalhas(pessoas, usuario, armazem_id):
+
+    minha = _novo_acumulador("")
+
+    for pessoa in pessoas.values():
+
+        if banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id):
+
+            for evento in pessoa["eventos"]:
+                _somar_evento(minha, evento)
+
+    total_medalhas = sum(minha["total"].values())
+
+    blocos = "".join(
+        '<div style="text-align:center;min-width:92px;">'
+        f'{_medalha_html(posicao, 84)}'
+        f'<div style="font-size:1.9rem;font-weight:800;color:{CORES_POSICAO[posicao]};'
+        f'line-height:1.1;margin-top:.2rem;">×{minha["total"][posicao]}</div>'
+        f'<div style="font-size:.75rem;opacity:.7;font-weight:700;">{NOMES_MEDALHA[posicao]}</div>'
+        '</div>'
+        for posicao in (1, 2, 3)
+    )
+
+    st.markdown(
+        '<div style="background:#f59e0b12;border:1px solid #f59e0b45;'
+        'border-radius:1.2rem;padding:1.4rem 1.6rem;margin-top:.4rem;">'
+        '<div style="font-size:.72rem;font-weight:800;letter-spacing:.5px;'
+        'text-transform:uppercase;opacity:.65;text-align:center;">Suas medalhas</div>'
+        '<div style="display:flex;justify-content:center;gap:2.2rem;flex-wrap:wrap;'
+        f'margin-top:.8rem;">{blocos}</div>'
+        '<div style="text-align:center;margin-top:.9rem;font-size:.95rem;font-weight:700;">'
+        f'Total: {_plural(total_medalhas, "medalha", "medalhas")}</div>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    if total_medalhas == 0:
+
+        st.info(
+            "Você ainda não tem medalhas. Elas são concedidas no fechamento "
+            "de cada mês, para quem fica entre os 3 primeiros."
+        )
+
+    else:
+
+        st.markdown("##### Por categoria")
+
+        linhas = []
+
+        for categoria, (icone, rotulo) in CATEGORIAS_MEDALHA.items():
+
+            contagem = minha["por_categoria"][categoria]
+
+            chips = "".join(
+                _chip_medalha(posicao, contagem[posicao])
+                for posicao in (1, 2, 3)
+                if contagem[posicao] > 0
+            ) or '<span style="opacity:.5;font-size:.8rem;">—</span>'
+
+            linhas.append(
+                '<div style="display:flex;align-items:center;justify-content:space-between;'
+                'gap:1rem;flex-wrap:wrap;padding:.55rem .2rem;'
+                'border-bottom:1px solid rgba(148,163,184,.18);">'
+                f'<div style="font-weight:700;">{icone} {rotulo}</div>'
+                f'<div style="display:flex;gap:.4rem;flex-wrap:wrap;">{chips}</div>'
+                '</div>'
+            )
+
+        st.markdown("".join(linhas), unsafe_allow_html=True)
+
+        st.markdown("##### Últimas conquistas")
+
+        recentes = sorted(
+            minha["eventos"],
+            key=lambda e: (e["mes_ref"], -e["posicao"]),
+            reverse=True
+        )[:10]
+
+        st.markdown(
+            "".join(
+                '<div style="display:flex;align-items:center;gap:.7rem;padding:.3rem .2rem;">'
+                f'{_medalha_html(e["posicao"], 30)}'
+                f'<div style="font-size:.88rem;">'
+                f'<b>{NOMES_MEDALHA[e["posicao"]]}</b> · '
+                f'{CATEGORIAS_MEDALHA[e["categoria"]][0]} {CATEGORIAS_MEDALHA[e["categoria"]][1]}'
+                f' · {_rotulo_mes(e["mes_ref"].year, e["mes_ref"].month)}</div>'
+                '</div>'
+                for e in recentes
+            ),
+            unsafe_allow_html=True
+        )
+
+    st.caption(
+        "🔒 Por privacidade, você vê apenas as suas próprias medalhas. O "
+        "quadro completo fica disponível só para a Gestão e o Fundador."
+    )
+
+
+def _render_quadro_completo(pessoas, usuario, armazem_id):
+
+    if not pessoas:
+
+        st.info(
+            "Nenhuma medalha concedida ainda. Elas são concedidas no "
+            "fechamento de cada mês."
+        )
+        return
+
+    totais = {
+        posicao: sum(p["total"][posicao] for p in pessoas.values())
+        for posicao in (1, 2, 3)
+    }
+
+    _mostrar_kpis([
+        _kpi("🏅", "Pessoas com medalhas", str(len(pessoas)), "#3b82f6"),
+        _kpi("🥇", "Ouro concedidas", str(totais[1]), CORES_POSICAO[1]),
+        _kpi("🥈", "Prata concedidas", str(totais[2]), CORES_POSICAO[2]),
+        _kpi("🥉", "Bronze concedidas", str(totais[3]), CORES_POSICAO[3]),
+    ])
+
+    ordenadas = sorted(
+        pessoas.values(),
+        key=lambda p: (-p["total"][1], -p["total"][2], -p["total"][3], p["nome"].lower())
+    )
+
+    posicoes = _atribuir_posicoes(
+        ordenadas,
+        lambda p: (p["total"][1], p["total"][2], p["total"][3])
+    )
+
+    # fotos dos Perfis, quando houver
+    fotos = {}
+
+    for perfil in banco.ler_perfis(armazem_id):
+
+        if perfil.get("foto"):
+            fotos[_chave(banco.nome_completo_perfil(perfil))] = perfil["foto"]
+
+    linhas = []
+
+    for posicao, pessoa in zip(posicoes, ordenadas):
+
+        por_categoria = " · ".join(
+            f'{icone} {rotulo} {sum(pessoa["por_categoria"][categoria].values())}'
+            for categoria, (icone, rotulo) in CATEGORIAS_MEDALHA.items()
+        )
+
+        linhas.append(_linha_ranking(
+            posicao,
+            pessoa["nome"],
+            fotos.get(_chave(pessoa["nome"])),
+            por_categoria,
+            [
+                _chip_medalha(p, pessoa["total"][p])
+                for p in (1, 2, 3)
+                if pessoa["total"][p] > 0
+            ],
+            banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id)
+        ))
+
+    st.markdown("".join(linhas), unsafe_allow_html=True)
+
+
+def _render_medalhas(armazem_id, usuario, ve_tudo):
+
+    st.caption(
+        "No fechamento de cada mês, quem fica em 1º, 2º e 3º lugar no SAC, "
+        "na Auditoria e no Top 3 do Dashboard (para a dupla da rua) ganha "
+        "🥇, 🥈 e 🥉. O mês em andamento só vale quando fechar."
+    )
+
+    _verificar_fechamentos(armazem_id)
+
+    pessoas = _agregar_por_pessoa(ler_medalhas(armazem_id))
+
+    if ve_tudo:
+        _render_quadro_completo(pessoas, usuario, armazem_id)
+    else:
+        _render_minhas_medalhas(pessoas, usuario, armazem_id)
+
+
+# ==================================================
 # TELA
 # ==================================================
 
@@ -1010,10 +1526,11 @@ def render():
         "Os destaques da operação: quem mais se empenha aparece no topo."
     )
 
-    aba_sac, aba_auditoria, aba_dashboard = st.tabs([
+    aba_sac, aba_auditoria, aba_dashboard, aba_medalhas = st.tabs([
         "😊 SAC",
         "🎯 Auditoria",
         "📊 Dashboard",
+        "🏅 Medalhas",
     ])
 
     with aba_sac:
@@ -1024,3 +1541,6 @@ def render():
 
     with aba_dashboard:
         _render_dashboard(armazem_id)
+
+    with aba_medalhas:
+        _render_medalhas(armazem_id, usuario, ve_tudo)
