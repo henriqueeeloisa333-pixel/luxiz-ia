@@ -351,6 +351,81 @@ def _atribuir_posicoes(itens, chave_empate):
     return posicoes
 
 
+def _plural(quantidade, singular, plural):
+
+    return f"{quantidade} {singular if quantidade == 1 else plural}"
+
+
+def _render_minha_posicao(ranking, usuario, armazem_id, mensagem_sem_posicao):
+    """
+    Visão do colaborador (Separador, Conferente, Recebimento...): só a
+    posição dele e quantas pessoas estão acima e abaixo. Nenhum nome,
+    número de chamados, acerto ou erro de colega aparece.
+    """
+
+    minha = next(
+        (
+            posicao
+            for posicao, pessoa in ranking
+            if banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id)
+        ),
+        None
+    )
+
+    if minha is None:
+
+        st.info(mensagem_sem_posicao)
+        return
+
+    acima = sum(1 for posicao, _ in ranking if posicao < minha)
+    abaixo = sum(1 for posicao, _ in ranking if posicao > minha)
+    empatados = sum(1 for posicao, _ in ranking if posicao == minha) - 1
+
+    cor = CORES_POSICAO.get(minha, "#00c8ff")
+
+    if minha in MEDALHAS:
+        selo = _medalha_html(minha, 92)
+    else:
+        selo = (
+            f'<div style="width:84px;height:84px;border-radius:50%;flex-shrink:0;'
+            f'background:{cor}22;border:3px solid {cor};display:flex;'
+            f'align-items:center;justify-content:center;font-weight:800;'
+            f'font-size:1.9rem;color:{cor};">{minha}º</div>'
+        )
+
+    linha_empate = (
+        f'<div style="font-size:.78rem;opacity:.65;margin-top:.45rem;">'
+        f'Você divide essa posição com {_plural(empatados, "colega", "colegas")}.</div>'
+        if empatados > 0 else ""
+    )
+
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;'
+        f'background:{cor}12;border:1px solid {cor}55;border-radius:1.2rem;'
+        f'padding:1.5rem 1.8rem;margin-top:.5rem;">'
+        f'{selo}'
+        '<div>'
+        '<div style="font-size:.72rem;font-weight:800;letter-spacing:.5px;'
+        'text-transform:uppercase;opacity:.65;">Sua posição</div>'
+        f'<div style="font-size:2.2rem;font-weight:800;color:{cor};line-height:1.15;">'
+        f'{minha}º lugar</div>'
+        '<div style="font-size:1rem;margin-top:.45rem;">'
+        f'👆 <b>{_plural(acima, "colaborador", "colaboradores")}</b> acima de você'
+        ' &nbsp;·&nbsp; '
+        f'👇 <b>{_plural(abaixo, "colaborador", "colaboradores")}</b> abaixo'
+        '</div>'
+        f'{linha_empate}'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.caption(
+        "🔒 Por privacidade, você vê apenas a sua própria posição. A lista "
+        "completa fica disponível só para a Gestão e o Fundador."
+    )
+
+
 # ==================================================
 # RANKING DO SAC
 # ==================================================
@@ -462,8 +537,9 @@ def _linha_sac(posicao, pessoa, e_voce, detalhado):
 def _render_sac(armazem_id, usuario, ve_tudo):
 
     st.caption(
-        "Pontuação = Análise Técnica **Quanto menos, melhor.** Quem não tem nenhum fica em 1º "
-        "lugar e assim por diante."
+        "Pontuação = chamados da Análise Técnica vinculados ao nome da "
+        "pessoa. **Quanto menos, melhor.** Quem não tem nenhum fica em 1º "
+        "lugar e vai descendo conforme chamados entram no nome."
     )
 
     chamados = banco.ler_analise_tecnica(armazem_id)
@@ -479,62 +555,39 @@ def _render_sac(armazem_id, usuario, ve_tudo):
         st.info("Nenhum colaborador (Separador ou Conferente) cadastrado ainda.")
         return
 
+    # Colaboradores: só a própria posição.
+    if not ve_tudo:
+
+        _render_minha_posicao(
+            ranking,
+            usuario,
+            armazem_id,
+            "O ranking do SAC considera os Separadores e Conferentes — "
+            "você não participa dele."
+        )
+        return
+
+    # Gestão e Fundador: lista completa.
     sem_chamados = sum(1 for _, p in ranking if p["chamados"] == 0)
 
-    kpis = [
+    _mostrar_kpis([
         _kpi("👥", "Colaboradores no ranking", str(len(ranking)), "#3b82f6"),
-    ]
-
-    # números de chamados (inclusive "quantos estão sem chamado") só
-    # aparecem para quem gerencia
-    if ve_tudo:
-        kpis.append(
-            _kpi("✅", "Sem nenhum chamado", str(sem_chamados), "#22c55e")
-        )
-        kpis.append(
-            _kpi("📋", "Chamados no período", str(total_chamados), "#f59e0b")
-        )
-
-    _mostrar_kpis(kpis)
-
-    itens = [
-        (
-            posicao,
-            pessoa,
-            banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id)
-        )
-        for posicao, pessoa in ranking
-    ]
-
-    # Colaboradores veem só o pódio (posições 1 a 3); Gestão e
-    # Fundador veem a lista completa.
-    visiveis = itens if ve_tudo else [i for i in itens if i[0] <= 3]
+        _kpi("✅", "Sem nenhum chamado", str(sem_chamados), "#22c55e"),
+        _kpi("📋", "Chamados no período", str(total_chamados), "#f59e0b"),
+    ])
 
     st.markdown(
         "".join(
-            _linha_sac(posicao, pessoa, e_voce, detalhado=(ve_tudo or e_voce))
-            for posicao, pessoa, e_voce in visiveis
+            _linha_sac(
+                posicao,
+                pessoa,
+                banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id),
+                detalhado=True
+            )
+            for posicao, pessoa in ranking
         ),
         unsafe_allow_html=True
     )
-
-    if not ve_tudo:
-
-        minha = next((i for i in itens if i[2] and i[0] > 3), None)
-
-        if minha:
-
-            st.markdown("##### 📍 Sua posição")
-
-            st.markdown(
-                _linha_sac(minha[0], minha[1], True, detalhado=True),
-                unsafe_allow_html=True
-            )
-
-        st.caption(
-            "🔒 Você vê o pódio e a sua própria posição. A lista completa "
-            "fica disponível só para a Gestão e o Fundador."
-        )
 
 
 # ==================================================
@@ -660,60 +713,40 @@ def _render_auditoria(armazem_id, usuario, ve_tudo):
         st.info("Nenhum registro de auditoria para esse filtro.")
         return
 
+    # Colaboradores: só a própria posição.
+    if not ve_tudo:
+
+        _render_minha_posicao(
+            ranking,
+            usuario,
+            armazem_id,
+            "Você ainda não tem registros de auditoria para esse filtro, "
+            "então não aparece neste ranking."
+        )
+        return
+
+    # Gestão e Fundador: lista completa.
     total_acertos = sum(p["acertos"] for _, p in ranking)
     total_erros = sum(p["erros"] for _, p in ranking)
 
-    kpis = [
+    _mostrar_kpis([
         _kpi("👥", "Colaboradores no ranking", str(len(ranking)), "#3b82f6"),
         _kpi("✅", "Acertos no período", str(total_acertos), "#22c55e"),
-    ]
-
-    # o total de erros só aparece para quem gerencia
-    if ve_tudo:
-        kpis.append(
-            _kpi("❌", "Erros no período", str(total_erros), "#ef4444")
-        )
-
-    _mostrar_kpis(kpis)
-
-    itens = [
-        (
-            posicao,
-            pessoa,
-            banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id)
-        )
-        for posicao, pessoa in ranking
-    ]
-
-    # Colaboradores veem só o pódio (posições 1 a 3); Gestão e
-    # Fundador veem a lista completa.
-    visiveis = itens if ve_tudo else [i for i in itens if i[0] <= 3]
+        _kpi("❌", "Erros no período", str(total_erros), "#ef4444"),
+    ])
 
     st.markdown(
         "".join(
-            _linha_auditoria(posicao, pessoa, e_voce, detalhado=(ve_tudo or e_voce))
-            for posicao, pessoa, e_voce in visiveis
+            _linha_auditoria(
+                posicao,
+                pessoa,
+                banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id),
+                detalhado=True
+            )
+            for posicao, pessoa in ranking
         ),
         unsafe_allow_html=True
     )
-
-    if not ve_tudo:
-
-        minha = next((i for i in itens if i[2] and i[0] > 3), None)
-
-        if minha:
-
-            st.markdown("##### 📍 Sua posição")
-
-            st.markdown(
-                _linha_auditoria(minha[0], minha[1], True, detalhado=True),
-                unsafe_allow_html=True
-            )
-
-        st.caption(
-            "🔒 Você vê o pódio e a sua própria posição. A lista completa "
-            "fica disponível só para a Gestão e o Fundador."
-        )
 
 
 # ==================================================
@@ -963,9 +996,9 @@ def render():
     usuario = st.session_state.get("usuario", "")
     tipo_usuario = st.session_state.get("tipo_usuario", "usuario")
 
-    # Só Gestão e Fundador veem a lista completa dos rankings; os
-    # colaboradores veem o pódio e a própria posição (evita que
-    # alguém seja exposto/zoado pelos números dos colegas).
+    # Só Gestão e Fundador veem a lista completa dos rankings do SAC e
+    # da Auditoria; os colaboradores veem apenas a própria posição e
+    # quantas pessoas estão acima/abaixo (evita exposição e zoação).
     ve_tudo = (
         tipo_usuario in ("fundador", "gestao")
         or usuario.startswith(("Fundador.", "Gestao."))
