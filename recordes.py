@@ -1,4 +1,6 @@
 import html
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 
@@ -57,14 +59,39 @@ def _meses_dos_dados(datas):
     )
 
 
+def _mes_atual():
+
+    agora = datetime.now(ZoneInfo("America/Campo_Grande"))
+
+    return (agora.year, agora.month)
+
+
 def _seletor_periodo(meses, chave_widget):
+    """
+    O mês atual vem selecionado por padrão (mesmo que ainda não tenha
+    nenhum registro), então as posições se ajustam sozinhas conforme
+    chamados/auditorias entram no mês. Depois vêm os meses anteriores
+    com dados e, por último, "Todo o período".
+    """
+
+    atual = _mes_atual()
+
+    anteriores = [m for m in meses if m != atual]
+
+    def _rotulo(m):
+
+        if m is None:
+            return "Todo o período"
+
+        if m == atual:
+            return f"{_rotulo_mes(*m)} (mês atual)"
+
+        return _rotulo_mes(*m)
 
     return st.selectbox(
         "Período",
-        [None] + list(meses),
-        format_func=lambda m: (
-            "Todo o período" if m is None else _rotulo_mes(*m)
-        ),
+        [atual] + anteriores + [None],
+        format_func=_rotulo,
         key=chave_widget
     )
 
@@ -304,28 +331,30 @@ def calcular_ranking_sac(armazem_id, periodo):
 
 def _linha_sac(posicao, pessoa, e_voce, detalhado):
     """
-    detalhado=True (Gestão/Fundador, ou a própria pessoa): mostra o
-    número de chamados. Para os demais, só aparece o selo positivo
-    "Sem chamados" — ninguém vê quantos chamados os colegas têm.
+    detalhado=True (Gestão/Fundador, ou a própria pessoa): mostra a
+    situação de chamados. Para os demais, aparece SÓ a posição e o
+    nome — ninguém vê se um colega tem chamados nem quantos.
     """
 
     chips = []
     subtitulo = pessoa["funcao"]
 
-    if pessoa["chamados"] == 0:
+    if detalhado:
 
-        chips.append(_chip("✅ Sem chamados", "#22c55e"))
+        if pessoa["chamados"] == 0:
 
-    elif detalhado:
+            chips.append(_chip("✅ Sem chamados", "#22c55e"))
 
-        plural = "chamado" if pessoa["chamados"] == 1 else "chamados"
-        chips.append(_chip(f'{pessoa["chamados"]} {plural}', "#f59e0b"))
+        else:
 
-        if pessoa["ultimo"]:
-            subtitulo = (
-                f'{pessoa["funcao"]} · último chamado em '
-                f'{pessoa["ultimo"].strftime("%d/%m/%Y")}'
-            )
+            plural = "chamado" if pessoa["chamados"] == 1 else "chamados"
+            chips.append(_chip(f'{pessoa["chamados"]} {plural}', "#f59e0b"))
+
+            if pessoa["ultimo"]:
+                subtitulo = (
+                    f'{pessoa["funcao"]} · último chamado em '
+                    f'{pessoa["ultimo"].strftime("%d/%m/%Y")}'
+                )
 
     return _linha_ranking(
         posicao,
@@ -362,11 +391,14 @@ def _render_sac(armazem_id, usuario, ve_tudo):
 
     kpis = [
         _kpi("👥", "Colaboradores no ranking", str(len(ranking)), "#3b82f6"),
-        _kpi("✅", "Sem nenhum chamado", str(sem_chamados), "#22c55e"),
     ]
 
-    # o total de chamados só aparece para quem gerencia
+    # números de chamados (inclusive "quantos estão sem chamado") só
+    # aparecem para quem gerencia
     if ve_tudo:
+        kpis.append(
+            _kpi("✅", "Sem nenhum chamado", str(sem_chamados), "#22c55e")
+        )
         kpis.append(
             _kpi("📋", "Chamados no período", str(total_chamados), "#f59e0b")
         )
