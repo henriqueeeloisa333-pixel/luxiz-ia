@@ -1,4 +1,5 @@
 import base64
+import math
 import random
 from functools import lru_cache
 
@@ -13,18 +14,20 @@ import streamlit as st
 # o Luxiz IA, dividida em três faixas:
 #
 #   EM CIMA    -> o avião cruza o céu;
-#   NO MEIO    -> caminhões e o trem passam pela estrada;
-#   EMBAIXO    -> o navio cargueiro navega sobre as ondas.
+#   NO MEIO    -> o trem passa pela estrada;
+#   EMBAIXO    -> um operador de capacete anda carregando uma caixa.
 #
-# Cada veículo atravessa a tela de um lado ao outro, some, e depois
-# volta a aparecer — cada um no seu próprio ritmo, sem sincronia com
-# os outros. Os da estrada (caminhões e trem) saem da direita para a
-# esquerda, na direção em que estão virados, e passam um de cada vez
-# (cada um tem a sua "janela" de tempo), então nunca se sobrepõem.
+# Cada um atravessa a tela de um lado ao outro, some, e depois volta
+# a aparecer — cada um no seu próprio ritmo, sem sincronia com os
+# outros. O avião e o personagem vão da esquerda para a direita; o
+# trem (desenhado virado para a esquerda) vai da direita para a
+# esquerda.
 #
 # Animações (dentro do próprio SVG, sem JavaScript):
-#   - o avião, o navio, os caminhões e o trem atravessam a tela;
-#   - as rodas giram, o navio balança e as ondas correm;
+#   - o avião, o trem e o personagem atravessam a tela;
+#   - as rodas do trem giram; o personagem balança as pernas e o
+#     corpo sobe e desce a cada passo, na mesma velocidade em que
+#     avança (para não parecer que escorrega);
 #   - pontinhos de luz cintilam no céu.
 #
 # Como se encaixa no estilos.py: o gradiente do login está em
@@ -38,21 +41,22 @@ import streamlit as st
 
 LARGURA, ALTURA, CHAO = 1600, 760, 478
 
-# CHAO = linha do chão desenhada DENTRO de cada veículo (coordenadas
-# locais). Abaixo, onde cada faixa fica na cena (coordenadas da tela).
+# CHAO = linha do chão desenhada DENTRO do trem (coordenadas locais).
+# Abaixo, onde cada faixa fica na cena (coordenadas da tela).
 FAIXA_AVIAO = 120     # topo do avião (céu)
-FAIXA_ESTRADA = 500   # chão da estrada (caminhões e trem)
-FAIXA_MAR = 740       # linha d'água do navio
+FAIXA_ESTRADA = 500   # trilho do trem
+FAIXA_PISO = 740      # chão onde o personagem anda
 
 MARGEM = 60           # folga para o veículo nascer/sumir fora da tela
 
-# Estrada: um ciclo compartilhado; cada veículo usa uma fatia (janela)
-# diferente do ciclo, então passam um de cada vez.
-CICLO_ESTRADA = 200   # segundos
-FASE_ESTRADA = 25     # começa já com o primeiro caminhão a meio caminho
-JANELA_CAMINHAO_A = (0.02, 0.27)
-JANELA_TREM = (0.36, 0.64)
-JANELA_CAMINHAO_B = (0.70, 0.95)
+# Trem: passa, some por um tempo e volta.
+CICLO_TREM = 90       # segundos
+FASE_TREM = 25        # já começa a meio caminho quando a tela abre
+JANELA_TREM = (0.02, 0.63)
+
+# Personagem: passa, some por um tempo e volta.
+CICLO_PERSONAGEM = 60  # segundos
+FASE_PERSONAGEM = 15
 
 
 def _costelas(x0, x1, passo, y0, y1):
@@ -72,9 +76,9 @@ def _no_chao(escala, chao, conteudo, x=0):
 def _travessia(x_ini, x_fim, dur, fase=0, janela=None):
     """Animação de ir de x_ini até x_fim e recomeçar.
 
-    Sem `janela`, o veículo atravessa o ciclo inteiro (e reaparece logo
-    em seguida). Com `janela=(a, b)`, ele só se move entre as frações
-    a e b do ciclo e fica fora da tela no resto do tempo.
+    Sem `janela`, atravessa o ciclo inteiro (e reaparece logo em
+    seguida). Com `janela=(a, b)`, só se move entre as frações a e b
+    do ciclo e fica fora da tela no resto do tempo.
     """
     if janela is None:
         valores, tempos = f"{x_ini} 0;{x_fim} 0", ""
@@ -111,47 +115,8 @@ def _roda(x):
 
 
 # -----------------------------------------------------
-# MEIO: estrada (caminhões e trem, virados para a esquerda)
+# MEIO: trem (virado para a esquerda)
 # -----------------------------------------------------
-def _caminhao_a(animado):
-    c = (
-        '<path class="d" d="M0 440H336"/>'
-        '<path class="v" d="M0 440V398Q0 388 12 386L62 380L84 330Q88 322 98 322H160V440Z"/>'
-        '<path class="v" d="M90 334H150V374H76Z"/>'
-        '<path class="d" d="M10 396V432M20 392V432M30 390V432M40 388V432"/>'
-        '<path class="d" d="M2 404h10v10h-10z"/>'
-        '<path class="d" d="M168 322V266M176 322V266M165 266H179"/>'
-        '<path class="v" d="M176 290H336V432H176Z"/>'
-        f'<path class="d" d="{_costelas(192, 336, 16, 290, 432)}"/>'
-        + _roda(46) + _roda(200) + _roda(238) + _roda(288) + _roda(322)
-    )
-    escala = .88
-    peca = _no_chao(escala, FAIXA_ESTRADA, c)
-    return _viajar(
-        animado, peca, 0, 336 * escala, -1,
-        CICLO_ESTRADA, FASE_ESTRADA, JANELA_CAMINHAO_A, x_parado=20,
-    )
-
-
-def _caminhao_b(animado):
-    c = (
-        '<path class="d" d="M0 440H350"/>'
-        '<path class="v" d="M0 440V340Q0 326 14 324H78Q90 324 94 334L106 372V440Z"/>'
-        '<path class="v" d="M12 336H78L90 366H12Z"/>'
-        '<path class="d" d="M50 366V436M56 394H70"/>'
-        '<path class="d" d="M2 410h10v10h-10z"/>'
-        '<path class="v" d="M116 296H350V436H116Z"/>'
-        f'<path class="d" d="{_costelas(134, 350, 18, 296, 436)}M116 366H350"/>'
-        + _roda(36) + _roda(150) + _roda(188) + _roda(304) + _roda(340)
-    )
-    escala = .88
-    peca = _no_chao(escala, FAIXA_ESTRADA, c)
-    return _viajar(
-        animado, peca, 0, 350 * escala, -1,
-        CICLO_ESTRADA, FASE_ESTRADA, JANELA_CAMINHAO_B, x_parado=790,
-    )
-
-
 def _trem(animado):
     c = (
         '<path class="d" d="M0 440H452"/>'
@@ -173,56 +138,107 @@ def _trem(animado):
     peca = _no_chao(escala, FAIXA_ESTRADA, c)
     return _viajar(
         animado, peca, 0, 452 * escala, -1,
-        CICLO_ESTRADA, FASE_ESTRADA, JANELA_TREM, x_parado=360,
+        CICLO_TREM, FASE_TREM, JANELA_TREM, x_parado=360,
     )
 
 
 # -----------------------------------------------------
-# EMBAIXO: mar e navio (virado para a direita)
+# EMBAIXO: personagem andando com uma caixa (virado para a direita)
 # -----------------------------------------------------
-def _mar(animado):
-    # ondas ocupam a largura toda e correm sem parar; o deslocamento é
-    # de um período inteiro (60), então o laço não dá "pulo"
-    y = FAIXA_MAR
-    onda = f"M-60 {y}Q-45 {y - 8} -30 {y}" + "".join(
-        f"T{x} {y}" for x in range(0, LARGURA + 120, 30)
-    )
-    corre = _anim(
-        animado,
-        '<animateTransform attributeName="transform" type="translate" '
-        'values="0 0;60 0" dur="8s" repeatCount="indefinite"/>'
-    )
-    return f'<g class="onda"><g>{corre}<path class="d" d="{onda}"/></g></g>'
+def _personagem(animado):
+    escala = 1.3
+    amplitude = 20      # graus que cada perna balança para frente/para trás
+    volta = 2.4         # segundos de uma passada completa (as duas pernas)
+    meia = volta / 2
+    comp_perna = 66     # comprimento da perna (coordenadas locais)
 
+    # velocidade em que os pés "andam" no chão, para o corpo avançar
+    # no mesmo ritmo das pernas (sem patinar)
+    passo = 2 * comp_perna * escala * math.sin(math.radians(amplitude))
+    velocidade = passo / meia
+    queda = round(comp_perna * (1 - math.cos(math.radians(amplitude))), 1)
 
-def _navio(animado):
-    cont = ""
-    for i, altura in enumerate([3, 3, 4, 4, 4, 3, 3, 2, 2]):
-        x = 156 + 36 * i
-        for r in range(altura):
-            y = 428 - 26 * (r + 1)
-            cont += f"M{x} {y}h32v26h-32z"
-    janelas = "".join(
-        f"M{x} {y}h7v6h-7z"
-        for y in (360, 374, 388, 402) for x in range(34, 106, 12)
-    )
-    casco = (
-        '<path class="v" d="M10 428H504L532 402L490 476H44Z"/>'
-        '<path class="v" d="M26 428V350H112V428Z"/>'
-        f'<path class="d" d="{janelas}"/>'
-        '<path class="v" d="M36 350V322H102V350Z"/>'
-        '<path class="d" d="M44 334H94M70 322V288M58 300H82M64 288H76"/>'
-        '<path class="v" d="M118 428V382H140V428Z"/>'
-        '<path class="d" d="M118 394H140"/>'
-        f'<path class="c" d="{cont}"/>'
-    )
+    suave = 'calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1" keyTimes="0;.5;1"'
+
+    def perna(fase, angulo_parado):
+        giro = _anim(
+            animado,
+            f'<animateTransform attributeName="transform" type="rotate" '
+            f'values="-{amplitude};{amplitude};-{amplitude}" {suave} '
+            f'dur="{volta}s" begin="-{fase}s" repeatCount="indefinite"/>'
+        )
+        # parado (movimento reduzido): uma perna à frente e outra atrás
+        return (
+            f'<g transform="translate(0,-{comp_perna})">'
+            f'<g transform="rotate({angulo_parado})">{giro}'
+            f'<path class="v" d="M-5 0H5L4 60H15Q16 66 12 66H-4Z"/></g></g>'
+        )
+
+    # o corpo desce um pouquinho quando as pernas abrem e sobe quando
+    # elas se cruzam (duas vezes por passada)
     balanco = _anim(
         animado,
-        '<animateTransform attributeName="transform" type="translate" '
-        'values="0 0;0 4;0 0" dur="5s" repeatCount="indefinite"/>'
+        f'<animateTransform attributeName="transform" type="translate" '
+        f'values="0 {queda};0 0;0 {queda}" {suave} '
+        f'dur="{meia}s" repeatCount="indefinite"/>'
     )
-    peca = _no_chao(1, FAIXA_MAR, f"<g>{balanco}{casco}</g>")
-    return _viajar(animado, peca, 0, 532, 1, 110, 40, x_parado=1000)
+
+    cabeca = (
+        '<circle class="v" cx="1" cy="-134" r="12"/>'
+        '<path class="d" d="M1 -122V-118"/>'
+        '<path class="v" d="M-12 -137Q-12 -153 1 -153Q14 -153 14 -137Z"/>'
+        '<path class="d" d="M-12 -137H20"/>'
+        '<circle class="f" cx="7" cy="-132" r="1.6"/>'
+    )
+
+    tronco = (
+        '<path class="v" d="M-14 -118H14L11 -64H-11Z"/>'
+        '<path class="d" d="M-12 -102H12M-11.5 -92H11.5"/>'
+    )
+
+    caixa = (
+        '<path class="v" d="M16 -108h44v42h-44z"/>'
+        '<path class="v" d="M16 -108l6 -7h44l-6 7z"/>'
+        '<path class="v" d="M60 -108l6 -7v42l-6 7z"/>'
+        '<path class="d" d="M34 -108V-66M42 -108V-66M34 -108l6 -7M42 -108l6 -7"/>'
+        '<path class="d" d="M47 -90h9v9h-9z"/>'
+    )
+
+    braco = (
+        '<path class="v" d="M5.6 -115.7L15.6 -93.7L8.4 -90.4L-1.6 -112.4Z"/>'
+        '<path class="v" d="M14.3 -94.7L42.3 -70.7L37.7 -65.3L9.7 -89.3Z"/>'
+        '<circle class="v" cx="12" cy="-92" r="4"/>'
+        '<circle class="v" cx="40" cy="-68" r="4.5"/>'
+    )
+
+    corpo = (
+        perna(meia, 18)      # perna de trás
+        + tronco
+        + perna(0, -18)      # perna da frente
+        + cabeca
+        + caixa
+        + braco
+    )
+
+    # parado, o corpo já fica na altura de "pernas abertas" (pés no chão)
+    ajuste = "" if animado else f' transform="translate(0,{queda})"'
+    peca = (
+        f'<g transform="translate(0,{FAIXA_PISO}) scale({escala})">'
+        f'<g{ajuste}>{balanco}{corpo}</g></g>'
+    )
+
+    # extensão do desenho (com as pernas abertas e a caixa na frente)
+    x_min, x_max = -30 * escala, 70 * escala
+
+    # janela de tempo calculada pela velocidade do passo: quanto mais
+    # rápido o passo, mais cedo ele chega ao outro lado
+    distancia = LARGURA - x_min + x_max + 2 * MARGEM
+    fim = min(0.98, 0.02 + distancia / velocidade / CICLO_PERSONAGEM)
+
+    return _viajar(
+        animado, peca, x_min, x_max, 1,
+        CICLO_PERSONAGEM, FASE_PERSONAGEM, (0.02, round(fim, 3)), x_parado=700,
+    )
 
 
 # -----------------------------------------------------
@@ -280,21 +296,15 @@ def montar_cena(tema="escuro", animado=True):
         linha, detalhe, preenche, ponto = "#22d3ee", "#a5f3fc", "rgba(34,211,238,.06)", "#bae6fd"
         opacidade_geral, halo, halo_largura = "1", ".16", 8
 
-    # as rodas giram para trás (anti-horário) porque caminhões e trem
-    # andam para a esquerda; 2,4 s por volta acompanha a velocidade
+    # as rodas giram para trás (anti-horário) porque o trem anda para
+    # a esquerda; 2,4 s por volta acompanha a velocidade dele
     roda_giro = _anim(
         animado,
         '<animateTransform attributeName="transform" type="rotate" '
         'from="360" to="0" dur="2.4s" repeatCount="indefinite"/>'
     )
 
-    veiculos = (
-        _caminhao_a(animado)
-        + _trem(animado)
-        + _caminhao_b(animado)
-        + _navio(animado)
-        + _mar(animado)
-    )
+    veiculos = _trem(animado) + _personagem(animado)
 
     return f"""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {LARGURA} {ALTURA}" preserveAspectRatio="xMidYMax meet">
 <defs>
@@ -310,12 +320,13 @@ def montar_cena(tema="escuro", animado=True):
 <g id="veic" stroke-width="2">{veiculos}</g>
 </defs>
 <g opacity="{opacidade_geral}">
-<ellipse cx="800" cy="{FAIXA_MAR + 8}" rx="790" ry="30" fill="url(#chao)"/>
+<ellipse cx="800" cy="{FAIXA_PISO + 8}" rx="790" ry="30" fill="url(#chao)"/>
 {_brilhos(animado)}
 {_aviao(animado)}
 <use xlink:href="#veic" stroke-width="{halo_largura}" opacity="{halo}"/>
 <use xlink:href="#veic"/>
 <path d="M0 {FAIXA_ESTRADA}H{LARGURA}" stroke="{linha}" stroke-opacity=".35" stroke-width="1"/>
+<path d="M0 {FAIXA_PISO}H{LARGURA}" stroke="{linha}" stroke-opacity=".35" stroke-width="1"/>
 </g>
 </svg>"""
 
