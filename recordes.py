@@ -19,7 +19,11 @@ import banco
 #      (empatado) e vai descendo conforme chamados entram no nome.
 #
 # Auditoria: pontuação = acertos - erros (maior é melhor). Em caso de
-#      empate, quem tem menos erros fica na frente.
+#      empate, quem tem menos erros fica na frente. A auditoria funciona
+#      em TRIMESTRES (jan-mar, abr-jun, jul-set, out-dez): o gestor
+#      lança durante o trimestre e, no começo do seguinte, exporta e
+#      apaga os registros. Por isso o ranking padrão é o trimestre
+#      atual — e as medalhas do trimestre ficam gravadas à parte.
 #
 # Dashboard: as 3 ruas com maior nota no fechamento do mês escolhido
 #      (o mês fechado mais recente aparece por padrão).
@@ -177,6 +181,61 @@ def _seletor_periodo(meses, chave_widget):
             return f"{_rotulo_mes(*m)} (mês atual)"
 
         return _rotulo_mes(*m)
+
+    return st.selectbox(
+        "Período",
+        [atual] + anteriores + [None],
+        format_func=_rotulo,
+        key=chave_widget
+    )
+
+
+def _trimestre_da_data(data):
+    """(ano, trimestre 1..4) de uma data."""
+
+    return (data.year, (data.month - 1) // 3 + 1)
+
+
+def _trimestre_atual():
+
+    agora = datetime.now(ZoneInfo("America/Campo_Grande"))
+
+    return (agora.year, (agora.month - 1) // 3 + 1)
+
+
+def _rotulo_trimestre(ano, trimestre):
+
+    return f"{trimestre}º Trimestre de {ano}"
+
+
+def _trimestres_dos_dados(datas):
+
+    return sorted(
+        {_trimestre_da_data(d) for d in datas if d},
+        reverse=True
+    )
+
+
+def _seletor_trimestre(trimestres, chave_widget):
+    """
+    O trimestre atual vem selecionado por padrão (mesmo que ainda não
+    tenha registros). Depois vêm os trimestres anteriores que ainda
+    tenham registros e, por último, "Todo o período".
+    """
+
+    atual = _trimestre_atual()
+
+    anteriores = [t for t in trimestres if t != atual]
+
+    def _rotulo(t):
+
+        if t is None:
+            return "Todo o período"
+
+        if t == atual:
+            return f"{_rotulo_trimestre(*t)} (atual)"
+
+        return _rotulo_trimestre(*t)
 
     return st.selectbox(
         "Período",
@@ -595,6 +654,7 @@ def _render_sac(armazem_id, usuario, ve_tudo):
 # ==================================================
 
 def calcular_ranking_auditoria(armazem_id, periodo, funcao):
+    """`periodo` é (ano, trimestre 1..4) ou None para todo o período."""
 
     registros = banco.ler_auditoria(armazem_id)
 
@@ -602,7 +662,7 @@ def calcular_ranking_auditoria(armazem_id, periodo, funcao):
         registros = [
             r for r in registros
             if r["data_atividade"]
-            and (r["data_atividade"].year, r["data_atividade"].month) == periodo
+            and _trimestre_da_data(r["data_atividade"]) == periodo
         ]
 
     if funcao != "Todas":
@@ -685,19 +745,21 @@ def _render_auditoria(armazem_id, usuario, ve_tudo):
 
     st.caption(
         "Pontuação = acertos − erros. Quem acerta mais e erra menos fica "
-        "na frente; em caso de empate, vence quem tem menos erros."
+        "na frente; em caso de empate, vence quem tem menos erros. A "
+        "auditoria é por **trimestre** — as medalhas de cada trimestre "
+        "ficam guardadas mesmo depois que os registros são apagados."
     )
 
     registros = banco.ler_auditoria(armazem_id)
 
-    meses = _meses_dos_dados(r["data_atividade"] for r in registros)
+    trimestres = _trimestres_dos_dados(r["data_atividade"] for r in registros)
 
     funcoes = sorted({r["funcao"] for r in registros if r["funcao"]})
 
     col_periodo, col_funcao = st.columns(2)
 
     with col_periodo:
-        periodo = _seletor_periodo(meses, "rec_aud_periodo")
+        periodo = _seletor_trimestre(trimestres, "rec_aud_periodo")
 
     with col_funcao:
         funcao = st.selectbox(
@@ -985,20 +1047,30 @@ def _render_dashboard(armazem_id):
 # ==================================================
 # QUADRO DE MEDALHAS
 # ==================================================
-# Regra: no FECHAMENTO de cada mês, quem fica em 1º, 2º e 3º lugar
+# Regra: no FECHAMENTO de cada período, quem fica em 1º, 2º e 3º lugar
 # recebe 🥇, 🥈 e 🥉 em cada ranking:
 #   - SAC: posições do ranking de chamados daquele mês (só conta se o
 #     mês teve pelo menos um chamado — mês sem nenhum chamado não é
 #     competição);
-#   - Auditoria: posições do ranking (função "Todas") daquele mês;
+#   - Auditoria: posições do ranking (função "Todas") do TRIMESTRE
+#     (jan-mar, abr-jun, jul-set, out-dez) — e não do mês, porque o
+#     gestor lança os registros durante o trimestre e os apaga no começo
+#     do seguinte;
 #   - Dashboard: as 3 ruas do pódio do mês; a medalha vai para cada
 #     pessoa da dupla da rua.
 # Empatados no mesmo lugar recebem a mesma medalha.
 #
-# As medalhas são GRAVADAS no banco quando o mês fecha (tabelas
+# As medalhas são GRAVADAS no banco quando o período fecha (tabelas
 # criadas sozinhas abaixo), então ficam fixas: uma medalha conquistada
 # não some se um registro antigo for editado ou apagado depois. O
-# mês em andamento ainda não vale — só os meses fechados.
+# período em andamento ainda não vale — só os períodos fechados.
+#
+# PROTEÇÃO CONTRA A EXCLUSÃO: antes de qualquer exclusão de registros
+# de Auditoria (item, vários ou todos), as medalhas dos períodos já
+# fechados são gravadas primeiro (veja proteger_medalhas_na_exclusao
+# no fim deste bloco). Assim, mesmo que o gestor apague tudo no 1º dia
+# do novo trimestre sem que ninguém tenha aberto a aba Recordes, o
+# histórico de medalhas não se perde.
 #
 # Visão: cada colaborador vê só as suas medalhas; Gestão e Fundador
 # veem o quadro completo.
@@ -1091,8 +1163,84 @@ def _primeiro_mes(datas):
     return (primeira.year, primeira.month)
 
 
-def _calcular_medalhas_do_mes(armazem_id, categoria, ano, mes):
-    """Devolve [(chave, nome, posicao 1..3), ...] do mês (já fechado)."""
+def _primeiro_trimestre(datas):
+
+    datas = [d for d in datas if d]
+
+    if not datas:
+        return None
+
+    return _trimestre_da_data(min(datas))
+
+
+def _trimestres_entre(primeiro, ultimo):
+
+    trimestres = []
+
+    ano, trimestre = primeiro
+
+    while (ano, trimestre) <= ultimo:
+
+        trimestres.append((ano, trimestre))
+
+        trimestre += 1
+
+        if trimestre == 5:
+            trimestre = 1
+            ano += 1
+
+    return trimestres
+
+
+def _ultimo_trimestre_fechado(fechado):
+    """
+    `fechado` é o último dia do mês fechado mais recente. Um trimestre
+    só conta como fechado quando seu último mês (3, 6, 9 ou 12) fechou.
+    """
+
+    completos = fechado.month // 3
+
+    if completos == 0:
+        return (fechado.year - 1, 4)
+
+    return (fechado.year, completos)
+
+
+def _inicio_do_periodo(categoria, ano, numero):
+    """Primeiro dia do período (mês, ou trimestre para a auditoria)."""
+
+    if categoria == "auditoria":
+        return date(ano, 3 * (numero - 1) + 1, 1)
+
+    return date(ano, numero, 1)
+
+
+def _periodo_do_inicio(categoria, inicio):
+    """Inverso de _inicio_do_periodo: (ano, mês) ou (ano, trimestre)."""
+
+    if categoria == "auditoria":
+        return _trimestre_da_data(inicio)
+
+    return (inicio.year, inicio.month)
+
+
+def _rotulo_periodo_evento(evento):
+
+    inicio = evento["mes_ref"]
+
+    if evento["categoria"] == "auditoria":
+        return _rotulo_trimestre(*_trimestre_da_data(inicio))
+
+    return _rotulo_mes(inicio.year, inicio.month)
+
+
+def _calcular_medalhas_do_periodo(armazem_id, categoria, ano, numero):
+    """
+    Devolve [(chave, nome, posicao 1..3), ...] de um período já
+    fechado. `numero` é o mês (SAC e Dashboard) ou o trimestre (Auditoria).
+    """
+
+    mes = numero
 
     entradas = []
 
@@ -1109,7 +1257,7 @@ def _calcular_medalhas_do_mes(armazem_id, categoria, ano, mes):
 
     elif categoria == "auditoria":
 
-        ranking = calcular_ranking_auditoria(armazem_id, (ano, mes), "Todas")
+        ranking = calcular_ranking_auditoria(armazem_id, (ano, numero), "Todas")
 
         entradas = [
             (_chave(p["nome"]), p["nome"], posicao)
@@ -1129,27 +1277,81 @@ def _calcular_medalhas_do_mes(armazem_id, categoria, ano, mes):
     return entradas
 
 
-def _fechar_meses_pendentes(armazem_id):
+def _migrar_auditoria_para_trimestre(armazem_id):
     """
-    Concede e grava as medalhas dos meses já fechados que ainda não
-    foram processados. Na primeira vez, processa todo o histórico
-    existente; depois, só o mês que acabou de fechar.
+    A primeira versão do quadro concedia medalhas de Auditoria por MÊS.
+    Como a auditoria é trimestral, essas linhas antigas são descartadas
+    uma única vez por armazém (marcado em recordes_fechamentos) e o
+    trimestre é concedido do jeito certo.
+    """
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT 1
+        FROM recordes_fechamentos
+        WHERE armazem_id = %s AND categoria = '_auditoria_trimestral'
+        """, (armazem_id,))
+
+        if cursor.fetchone():
+            conn.rollback()
+            return
+
+        cursor.execute(
+            "DELETE FROM recordes_medalhas WHERE armazem_id = %s AND categoria = 'auditoria'",
+            (armazem_id,)
+        )
+
+        cursor.execute(
+            "DELETE FROM recordes_fechamentos WHERE armazem_id = %s AND categoria = 'auditoria'",
+            (armazem_id,)
+        )
+
+        cursor.execute("""
+        INSERT INTO recordes_fechamentos (armazem_id, categoria, mes_ref)
+        VALUES (%s, '_auditoria_trimestral', DATE '2000-01-01')
+        ON CONFLICT (armazem_id, categoria, mes_ref) DO NOTHING
+        """, (armazem_id,))
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+        banco.liberar(conn)
+
+
+def _fechar_periodos_pendentes(armazem_id):
+    """
+    Concede e grava as medalhas dos períodos já fechados que ainda não
+    foram processados: meses (SAC e Dashboard) e trimestres (Auditoria).
+    Na primeira vez, processa todo o histórico existente; depois, só o
+    período que acabou de fechar.
     """
 
     _garantir_tabelas_recordes()
+    _migrar_auditoria_para_trimestre(armazem_id)
 
     fechado = banco._mes_fechado_mais_recente()
-    ultimo = (fechado.year, fechado.month)
 
-    primeiros = {
-        "sac": _primeiro_mes(
-            c["data_erro"] for c in banco.ler_analise_tecnica(armazem_id)
-        ),
-        "auditoria": _primeiro_mes(
-            r["data_atividade"] for r in banco.ler_auditoria(armazem_id)
-        ),
-        "dashboard": _primeiro_mes_com_historico(armazem_id),
-    }
+    ultimo_mes = (fechado.year, fechado.month)
+    ultimo_trimestre = _ultimo_trimestre_fechado(fechado)
+
+    primeiro_trimestre_auditoria = _primeiro_trimestre(
+        r["data_atividade"] for r in banco.ler_auditoria(armazem_id)
+    )
+
+    primeiro_mes_sac = _primeiro_mes(
+        c["data_erro"] for c in banco.ler_analise_tecnica(armazem_id)
+    )
+
+    primeiro_mes_dashboard = _primeiro_mes_com_historico(armazem_id)
 
     conn = banco.conectar()
 
@@ -1162,18 +1364,38 @@ def _fechar_meses_pendentes(armazem_id):
         WHERE armazem_id = %s
         """, (armazem_id,))
 
-        feitos = {(cat, (mes.year, mes.month)) for cat, mes in cursor.fetchall()}
+        feitos = {
+            (categoria, _periodo_do_inicio(categoria, inicio))
+            for categoria, inicio in cursor.fetchall()
+            if not categoria.startswith("_")
+        }
 
     finally:
         banco.liberar(conn)
 
-    pendentes = [
-        (categoria, mes)
-        for categoria, primeiro in primeiros.items()
-        if primeiro
-        for mes in _meses_entre(primeiro, ultimo)
-        if (categoria, mes) not in feitos
-    ]
+    candidatos = []
+
+    if primeiro_mes_sac:
+        candidatos += [
+            ("sac", periodo)
+            for periodo in _meses_entre(primeiro_mes_sac, ultimo_mes)
+        ]
+
+    if primeiro_mes_dashboard:
+        candidatos += [
+            ("dashboard", periodo)
+            for periodo in _meses_entre(primeiro_mes_dashboard, ultimo_mes)
+        ]
+
+    if primeiro_trimestre_auditoria:
+        candidatos += [
+            ("auditoria", periodo)
+            for periodo in _trimestres_entre(
+                primeiro_trimestre_auditoria, ultimo_trimestre
+            )
+        ]
+
+    pendentes = [item for item in candidatos if item not in feitos]
 
     if not pendentes:
         return 0
@@ -1182,10 +1404,10 @@ def _fechar_meses_pendentes(armazem_id):
     resultados = [
         (
             categoria,
-            mes,
-            _calcular_medalhas_do_mes(armazem_id, categoria, *mes)
+            periodo,
+            _calcular_medalhas_do_periodo(armazem_id, categoria, *periodo)
         )
-        for categoria, mes in pendentes
+        for categoria, periodo in pendentes
     ]
 
     conn = banco.conectar()
@@ -1193,9 +1415,9 @@ def _fechar_meses_pendentes(armazem_id):
     try:
         cursor = conn.cursor()
 
-        for categoria, (ano, mes), entradas in resultados:
+        for categoria, (ano, numero), entradas in resultados:
 
-            mes_ref = date(ano, mes, 1)
+            inicio = _inicio_do_periodo(categoria, ano, numero)
 
             for chave, nome, posicao in entradas:
 
@@ -1204,13 +1426,13 @@ def _fechar_meses_pendentes(armazem_id):
                     (armazem_id, mes_ref, categoria, chave, nome, posicao)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (armazem_id, mes_ref, categoria, chave) DO NOTHING
-                """, (armazem_id, mes_ref, categoria, chave, nome, posicao))
+                """, (armazem_id, inicio, categoria, chave, nome, posicao))
 
             cursor.execute("""
             INSERT INTO recordes_fechamentos (armazem_id, categoria, mes_ref)
             VALUES (%s, %s, %s)
             ON CONFLICT (armazem_id, categoria, mes_ref) DO NOTHING
-            """, (armazem_id, categoria, mes_ref))
+            """, (armazem_id, categoria, inicio))
 
         conn.commit()
 
@@ -1227,13 +1449,72 @@ def _fechar_meses_pendentes(armazem_id):
     return len(pendentes)
 
 
+def registrar_medalhas_pendentes(armazem_id):
+    """
+    Grava as medalhas dos períodos fechados ANTES de qualquer exclusão
+    de registros. Devolve True se está tudo guardado.
+    """
+
+    try:
+        _fechar_periodos_pendentes(armazem_id)
+        _verificar_fechamentos.clear()
+        return True
+    except Exception as erro:
+        print(f"⚠️ Recordes: não foi possível gravar as medalhas: {erro}", flush=True)
+        return False
+
+
+def proteger_medalhas_na_exclusao():
+    """
+    Envolve as funções que apagam registros de Auditoria (em banco.py)
+    para que, antes de apagar, as medalhas dos períodos fechados sejam
+    gravadas. Se não for possível gravá-las, a exclusão é cancelada
+    (nada é apagado) e uma mensagem clara é mostrada — melhor adiar a
+    limpeza do que perder o histórico. É seguro chamar a cada execução
+    do app: só envolve uma vez.
+    """
+
+    for nome_funcao in (
+        "excluir_auditoria",
+        "excluir_auditoria_lote",
+        "excluir_auditoria_todos",
+    ):
+
+        original = getattr(banco, nome_funcao, None)
+
+        if original is None or getattr(original, "_protege_medalhas", False):
+            continue
+
+        def _criar_protegida(funcao_original):
+
+            def protegida(*args, **kwargs):
+
+                armazem_id = kwargs.get("armazem_id", args[-1] if args else None)
+
+                if armazem_id is not None and not registrar_medalhas_pendentes(armazem_id):
+
+                    raise RuntimeError(
+                        "Não foi possível guardar as medalhas do período antes de "
+                        "apagar os registros. Nada foi apagado — tente novamente "
+                        "em instantes."
+                    )
+
+                return funcao_original(*args, **kwargs)
+
+            protegida._protege_medalhas = True
+
+            return protegida
+
+        setattr(banco, nome_funcao, _criar_protegida(original))
+
+
 @st.cache_data(ttl=120, show_spinner=False)
 def _verificar_fechamentos(armazem_id):
 
     try:
-        return _fechar_meses_pendentes(armazem_id)
+        return _fechar_periodos_pendentes(armazem_id)
     except Exception as erro:
-        print(f"⚠️ Recordes: falha ao fechar meses: {erro}", flush=True)
+        print(f"⚠️ Recordes: falha ao fechar períodos: {erro}", flush=True)
         return -1
 
 
@@ -1402,7 +1683,7 @@ def _render_minhas_medalhas(pessoas, usuario, armazem_id):
                 f'<div style="font-size:.88rem;">'
                 f'<b>{NOMES_MEDALHA[e["posicao"]]}</b> · '
                 f'{CATEGORIAS_MEDALHA[e["categoria"]][0]} {CATEGORIAS_MEDALHA[e["categoria"]][1]}'
-                f' · {_rotulo_mes(e["mes_ref"].year, e["mes_ref"].month)}</div>'
+                f' · {_rotulo_periodo_evento(e)}</div>'
                 '</div>'
                 for e in recentes
             ),
@@ -1413,6 +1694,77 @@ def _render_minhas_medalhas(pessoas, usuario, armazem_id):
         "🔒 Por privacidade, você vê apenas as suas próprias medalhas. O "
         "quadro completo fica disponível só para a Gestão e o Fundador."
     )
+
+
+def _render_historico_por_periodo(pessoas):
+    """
+    Quem subiu ao pódio em cada período já fechado. Fica guardado no
+    banco, então continua aqui mesmo depois que os registros da
+    Auditoria (ou de qualquer outra origem) são apagados.
+    """
+
+    grupos = {}
+
+    for pessoa in pessoas.values():
+
+        for evento in pessoa["eventos"]:
+
+            grupos.setdefault(
+                (evento["mes_ref"], evento["categoria"]),
+                []
+            ).append((evento["posicao"], evento["nome"]))
+
+    if not grupos:
+        return
+
+    ordem_categoria = list(CATEGORIAS_MEDALHA)
+
+    chaves = sorted(
+        grupos,
+        key=lambda k: (k[0], -ordem_categoria.index(k[1])),
+        reverse=True
+    )[:30]
+
+    with st.expander("📜 Histórico por período", expanded=False):
+
+        st.caption(
+            "Quem conquistou as medalhas em cada período fechado. Esses "
+            "dados ficam guardados mesmo depois que os registros "
+            "originais (como os da Auditoria) são exportados e apagados."
+        )
+
+        for inicio, categoria in chaves:
+
+            icone, rotulo = CATEGORIAS_MEDALHA[categoria]
+
+            titulo = _rotulo_periodo_evento({
+                "mes_ref": inicio,
+                "categoria": categoria,
+            })
+
+            por_posicao = {1: [], 2: [], 3: []}
+
+            for posicao, nome in grupos[(inicio, categoria)]:
+                por_posicao[posicao].append(nome)
+
+            linhas_podio = "".join(
+                '<div style="display:flex;align-items:center;gap:.5rem;margin-top:.25rem;">'
+                f'{_medalha_html(posicao, 26)}'
+                f'<span style="font-size:.85rem;">'
+                f'{", ".join(html.escape(n) for n in sorted(por_posicao[posicao]))}</span>'
+                '</div>'
+                for posicao in (1, 2, 3)
+                if por_posicao[posicao]
+            )
+
+            st.markdown(
+                '<div style="border-bottom:1px solid rgba(148,163,184,.18);'
+                'padding:.6rem .2rem;">'
+                f'<div style="font-weight:800;">{icone} {rotulo} · {titulo}</div>'
+                f'{linhas_podio}'
+                '</div>',
+                unsafe_allow_html=True
+            )
 
 
 def _render_quadro_completo(pessoas, usuario, armazem_id):
@@ -1479,13 +1831,16 @@ def _render_quadro_completo(pessoas, usuario, armazem_id):
 
     st.markdown("".join(linhas), unsafe_allow_html=True)
 
+    _render_historico_por_periodo(pessoas)
+
 
 def _render_medalhas(armazem_id, usuario, ve_tudo):
 
     st.caption(
-        "No fechamento de cada mês, quem fica em 1º, 2º e 3º lugar no SAC, "
-        "na Auditoria e no Top 3 do Dashboard (para a dupla da rua) ganha "
-        "🥇, 🥈 e 🥉. O mês em andamento só vale quando fechar."
+        "No fechamento de cada período, quem fica em 1º, 2º e 3º lugar ganha "
+        "🥇, 🥈 e 🥉: por mês no SAC e no Top 3 do Dashboard (para a dupla "
+        "da rua) e por trimestre na Auditoria. O período em andamento só "
+        "vale quando fechar, e as medalhas ficam guardadas para sempre."
     )
 
     _verificar_fechamentos(armazem_id)
