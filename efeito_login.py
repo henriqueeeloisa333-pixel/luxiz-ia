@@ -6,15 +6,17 @@ import streamlit as st
 
 
 # =====================================================
-# EFEITO DE FUNDO DA TELA DE LOGIN: "CÉU NEON"
+# EFEITO DE FUNDO DA TELA DE LOGIN: "CENTRAL LOGÍSTICA NEON"
 # =====================================================
 # Cena em estilo holograma (linhas ciano brilhantes sobre o fundo
 # azul-escuro), toda desenhada em SVG vetorial — original, feita para
-# o Luxiz IA: um avião cruza o céu da esquerda para a direita, some
-# e volta a aparecer, com brilhos cintilando ao fundo.
+# o Luxiz IA: dois caminhões, um trem com contêineres, um navio
+# cargueiro e um avião cruzando o céu, com brilhos cintilando.
 #
 # Animações (dentro do próprio SVG, sem JavaScript):
-#   - o avião atravessa a tela devagar e oscila de leve;
+#   - o avião atravessa a tela devagar;
+#   - os caminhões e o trem deslizam de leve, as rodas giram;
+#   - o navio balança com as ondas;
 #   - pontinhos de luz cintilam no céu.
 #
 # Como se encaixa no estilos.py: o gradiente do login está em
@@ -26,37 +28,121 @@ import streamlit as st
 # sistema ele deixa de ser enviado e o efeito some sozinho. Para quem
 # usa "reduzir movimento" no sistema, a cena aparece parada.
 
-LARGURA, ALTURA = 1600, 760
+import random
 
-FAIXA_AVIAO = 120     # topo do avião (céu)
-MARGEM = 60           # folga para o avião nascer/sumir fora da tela
+LARGURA, ALTURA, CHAO = 1600, 520, 478
 
-DURACAO_AVIAO = 80    # segundos para atravessar a tela
-FASE_AVIAO = 34       # já começa a meio caminho quando a tela abre
+
+def _costelas(x0, x1, passo, y0, y1):
+    return "".join(f"M{x} {y0}V{y1}" for x in range(x0, x1, passo))
 
 
 def _anim(animado, texto):
     return texto if animado else ""
 
 
-def _viajar(animado, peca, x_min, x_max, dur, fase=0, x_parado=0):
-    """Faz a peça atravessar a tela da esquerda para a direita.
+def _no_chao(tx, escala, conteudo):
+    ty = round(CHAO * (1 - escala), 2)
+    return f'<g transform="translate({tx},{ty}) scale({escala})">{conteudo}</g>'
 
-    x_min / x_max: extensão da peça (já na escala final) em relação à
-    sua origem; servem para ela nascer e sumir totalmente fora da tela.
-    x_parado: posição usada quando o movimento está desligado.
-    """
-    if not animado:
-        return f'<g transform="translate({x_parado},0)">{peca}</g>'
 
-    x_ini = round(-x_max - MARGEM)
-    x_fim = round(LARGURA - x_min + MARGEM)
-    voo = (
+def _deriva(animado, dx, dur, atraso=0):
+    return _anim(
+        animado,
         f'<animateTransform attributeName="transform" type="translate" '
-        f'values="{x_ini} 0;{x_fim} 0" dur="{dur}s" begin="-{fase}s" '
-        f'repeatCount="indefinite"/>'
+        f'values="0 0;{dx} 0;0 0" dur="{dur}s" begin="{atraso}s" repeatCount="indefinite"/>'
     )
-    return f'<g>{voo}{peca}</g>'
+
+
+def _roda(x):
+    return f'<use xlink:href="#roda" x="{x}" y="461"/>'
+
+
+def _caminhao_a(animado):
+    c = (
+        '<path class="d" d="M0 440H336"/>'
+        '<path class="v" d="M0 440V398Q0 388 12 386L62 380L84 330Q88 322 98 322H160V440Z"/>'
+        '<path class="v" d="M90 334H150V374H76Z"/>'
+        '<path class="d" d="M10 396V432M20 392V432M30 390V432M40 388V432"/>'
+        '<path class="d" d="M2 404h10v10h-10z"/>'
+        '<path class="d" d="M168 322V266M176 322V266M165 266H179"/>'
+        '<path class="v" d="M176 290H336V432H176Z"/>'
+        f'<path class="d" d="{_costelas(192, 336, 16, 290, 432)}"/>'
+        + _roda(46) + _roda(200) + _roda(238) + _roda(288) + _roda(322)
+    )
+    return f'<g>{_deriva(animado, 9, 12)}{c}</g>'
+
+
+def _caminhao_b(animado):
+    c = (
+        '<path class="d" d="M0 440H350"/>'
+        '<path class="v" d="M0 440V340Q0 326 14 324H78Q90 324 94 334L106 372V440Z"/>'
+        '<path class="v" d="M12 336H78L90 366H12Z"/>'
+        '<path class="d" d="M50 366V436M56 394H70"/>'
+        '<path class="d" d="M2 410h10v10h-10z"/>'
+        '<path class="v" d="M116 296H350V436H116Z"/>'
+        f'<path class="d" d="{_costelas(134, 350, 18, 296, 436)}M116 366H350"/>'
+        + _roda(36) + _roda(150) + _roda(188) + _roda(304) + _roda(340)
+    )
+    return f'<g>{_deriva(animado, -8, 10, 1)}{c}</g>'
+
+
+def _trem(animado):
+    c = (
+        '<path class="d" d="M0 440H452"/>'
+        '<path class="v" d="M0 440V382Q0 368 12 362L40 348V318H150V348H212V440Z"/>'
+        '<path class="v" d="M52 326H92V346H52Z"/>'
+        '<path class="v" d="M104 330H138V346H104Z"/>'
+        '<path class="d" d="M156 318V300M166 318V300M176 318V300M186 318V300M154 300H190"/>'
+        f'<path class="d" d="{_costelas(120, 206, 10, 360, 432)}"/>'
+        '<path class="d" d="M2 384h8v10h-8zM212 436H234"/>'
+        '<path class="v" d="M234 424H452V440H234Z"/>'
+        '<path class="v" d="M240 346H446V422H240Z"/>'
+        f'<path class="d" d="{_costelas(254, 446, 14, 346, 422)}"/>'
+        '<path class="v" d="M240 268H446V344H240Z"/>'
+        f'<path class="d" d="{_costelas(254, 446, 14, 268, 344)}"/>'
+        + _roda(34) + _roda(66) + _roda(150) + _roda(184)
+        + _roda(262) + _roda(292) + _roda(396) + _roda(426)
+    )
+    return f'<g>{_deriva(animado, 12, 14, 2)}{c}</g>'
+
+
+def _navio(animado):
+    onda = "M-30 478" + "".join(
+        f"Q{x + 15} 470 {x + 30} 478" if i == 0 else f"T{x + 30} 478"
+        for i, x in enumerate(range(-30, 620, 30))
+    )
+    cont = ""
+    for i, altura in enumerate([3, 3, 4, 4, 4, 3, 3, 2, 2]):
+        x = 156 + 36 * i
+        for r in range(altura):
+            y = 428 - 26 * (r + 1)
+            cont += f"M{x} {y}h32v26h-32z"
+    janelas = "".join(
+        f"M{x} {y}h7v6h-7z"
+        for y in (360, 374, 388, 402) for x in range(34, 106, 12)
+    )
+    casco = (
+        '<path class="v" d="M10 428H504L532 402L490 476H44Z"/>'
+        '<path class="v" d="M26 428V350H112V428Z"/>'
+        f'<path class="d" d="{janelas}"/>'
+        '<path class="v" d="M36 350V322H102V350Z"/>'
+        '<path class="d" d="M44 334H94M70 322V288M58 300H82M64 288H76"/>'
+        '<path class="v" d="M118 428V382H140V428Z"/>'
+        '<path class="d" d="M118 394H140"/>'
+        f'<path class="c" d="{cont}"/>'
+    )
+    balanco = _anim(
+        animado,
+        '<animateTransform attributeName="transform" type="translate" '
+        'values="0 0;0 4;0 0" dur="5s" repeatCount="indefinite"/>'
+    )
+    mar = _anim(
+        animado,
+        '<animateTransform attributeName="transform" type="translate" '
+        'values="0 0;30 0" dur="4s" repeatCount="indefinite"/>'
+    )
+    return f'<g><g>{balanco}{casco}</g><g class="onda"><g>{mar}<path class="d" d="{onda}"/></g></g></g>'
 
 
 def _aviao(animado):
@@ -71,25 +157,28 @@ def _aviao(animado):
         + "".join(f'<circle class="f" cx="{x}" cy="38" r="2"/>' for x in range(80, 214, 13))
         + '<path d="M-260 40H-6" stroke="url(#rastro)" stroke-width="2" fill="none"/>'
     )
+    voo = _anim(
+        animado,
+        '<animateTransform attributeName="transform" type="translate" '
+        'values="-340 0;1900 0" dur="80s" begin="-34s" repeatCount="indefinite"/>'
+    )
     oscila = _anim(
         animado,
         '<animateTransform attributeName="transform" type="translate" '
         'values="0 0;0 -9;0 0" dur="7s" repeatCount="indefinite"/>'
     )
-    escala = .95
-    peca = f'<g transform="translate(0,{FAIXA_AVIAO}) scale({escala})"><g>{oscila}{c}</g></g>'
-    # o rastro vai até x = -260 e o corpo até x = 252 (coordenadas locais)
-    return _viajar(
-        animado, peca, -260 * escala, 252 * escala,
-        DURACAO_AVIAO, FASE_AVIAO, x_parado=1000,
-    )
+    posicao = f'<g transform="translate(0,120) scale(.95)"><g>{oscila}{c}</g></g>'
+    # sem animação (movimento reduzido) o avião fica parado na região visível
+    if animado:
+        return f'<g>{voo}{posicao}</g>'
+    return f'<g transform="translate(1000,0)">{posicao}</g>'
 
 
 def _brilhos(animado):
     rnd = random.Random(7)
     pontos = []
-    for _ in range(64):
-        x, y = rnd.randint(10, 1590), rnd.randint(10, 520)
+    for _ in range(56):
+        x, y = rnd.randint(10, 1590), rnd.randint(10, 430)
         r = round(rnd.uniform(.9, 2.4), 1)
         cor = rnd.choice(["#e0f7ff", "#7dd3fc", "#38bdf8", "#bae6fd"])
         pulso = _anim(
@@ -105,24 +194,45 @@ def _brilhos(animado):
 def montar_cena(tema="escuro", animado=True):
 
     if tema == "claro":
-        linha, detalhe, preenche = "#0284c7", "#38bdf8", "rgba(2,132,199,.05)"
-        opacidade_geral = ".8"
+        linha, detalhe, preenche, ponto = "#0284c7", "#38bdf8", "rgba(2,132,199,.05)", "#0ea5e9"
+        opacidade_geral, halo, halo_largura = ".8", ".10", 6
     else:
-        linha, detalhe, preenche = "#22d3ee", "#a5f3fc", "rgba(34,211,238,.06)"
-        opacidade_geral = "1"
+        linha, detalhe, preenche, ponto = "#22d3ee", "#a5f3fc", "rgba(34,211,238,.06)", "#bae6fd"
+        opacidade_geral, halo, halo_largura = "1", ".16", 8
+
+    roda_giro = _anim(
+        animado,
+        '<animateTransform attributeName="transform" type="rotate" '
+        'from="0" to="360" dur="6s" repeatCount="indefinite"/>'
+    )
+
+    veiculos = (
+        _no_chao(20, .88, _caminhao_a(animado))
+        + _no_chao(334, .88, _caminhao_b(animado))
+        + _no_chao(652, .85, _trem(animado))
+        + _no_chao(1058, 1, _navio(animado))
+    )
 
     return f"""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {LARGURA} {ALTURA}" preserveAspectRatio="xMidYMax meet">
 <defs>
 <style>
 .v{{fill:{preenche};stroke:{linha};stroke-linejoin:round;stroke-linecap:round}}
+.c{{fill:{preenche};stroke:{linha};stroke-width:1.1;stroke-linejoin:round}}
 .d{{fill:none;stroke:{detalhe};stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round;opacity:.8}}
 .f{{fill:{detalhe}}}
 </style>
 <linearGradient id="rastro" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{linha}" stop-opacity="0"/><stop offset="1" stop-color="{linha}" stop-opacity=".7"/></linearGradient>
+<radialGradient id="chao" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="{linha}" stop-opacity=".30"/><stop offset="1" stop-color="{linha}" stop-opacity="0"/></radialGradient>
+<g id="roda"><g>{roda_giro}<circle class="v" r="17"/><circle class="d" r="9"/><path class="d" d="M0 -9V9M-9 0H9M-6.4 -6.4L6.4 6.4M-6.4 6.4L6.4 -6.4"/></g></g>
+<g id="veic" stroke-width="2">{veiculos}</g>
 </defs>
 <g opacity="{opacidade_geral}">
+<ellipse cx="800" cy="486" rx="790" ry="30" fill="url(#chao)"/>
 {_brilhos(animado)}
 {_aviao(animado)}
+<use xlink:href="#veic" stroke-width="{halo_largura}" opacity="{halo}"/>
+<use xlink:href="#veic"/>
+<path d="M0 478H1600" stroke="{linha}" stroke-opacity=".35" stroke-width="1"/>
 </g>
 </svg>"""
 
@@ -165,7 +275,7 @@ def aplicar(tema):
         z-index: 1;
     }
 
-    /* cena (SVG animado) ancorada na base da tela */
+    /* cena logística (SVG animado) ancorada na base da tela */
     .stApp::before {
         content: "";
         position: fixed;
