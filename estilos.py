@@ -1041,101 +1041,31 @@ def aplicar_fundo(tema="escuro", tela="app"):
         unsafe_allow_html=True
     )
 
-    # Iframes de altura zero (st.components.v1.html(..., height=0)),
-    # usados só para rodar scripts no navegador (aviso de rede e
-    # detecção de tema). O navegador desenha a borda deles como uma
-    # linha fina no topo da página. Escondidos por CSS, os scripts
-    # continuam executando normalmente.
+    # O Chrome desenha um anel de foco (caixa cinza) em volta da área
+    # principal quando ela é rolável e recebe foco/clique. Aparece como
+    # uma linha no topo e outra na lateral direita, cruzando os cards.
     st.markdown(
         """
         <style>
-        iframe[height="0"]{
-            display:none !important;
-            border:none !important;
-        }
-        div[data-testid="stElementContainer"]:has(> iframe[height="0"]),
-        div[data-testid="stElementContainer"]:has(iframe[height="0"]){
-            display:none !important;
+        [data-testid="stApp"],
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"],
+        [data-testid="stMainBlockContainer"],
+        section.main,
+        .block-container,
+        [data-testid="stApp"]:focus,
+        [data-testid="stAppViewContainer"]:focus,
+        [data-testid="stMain"]:focus,
+        [data-testid="stMain"]:focus-visible,
+        [data-testid="stMainBlockContainer"]:focus,
+        section.main:focus,
+        section.main:focus-visible{
+            outline:none !important;
+            box-shadow:none !important;
         }
         </style>
         """,
         unsafe_allow_html=True
-    )
-
-    _limpar_linha_fixa()
-
-
-def _limpar_linha_fixa():
-    """
-    Procura no navegador qualquer elemento FIXO (position:fixed/sticky),
-    bem fino (até 6px de altura) e largo (metade da tela ou mais) —
-    é o que aparecia como uma linha parada cruzando os cards enquanto
-    a página rola — e o esconde. Roda uma vez por sessão do navegador
-    e repete a cada 2s. Quando acha algo, registra no console
-    ([luxiz] elemento fixo ocultado) para diagnóstico.
-    """
-
-    st.components.v1.html(
-        """
-        <script>
-        (function() {
-            try {
-                var win = window.parent;
-                var doc = win.document;
-
-                if (win.__luxizLinhaFixaInit) {
-                    return;
-                }
-                win.__luxizLinhaFixaInit = true;
-
-                function varrer() {
-                    var todos = doc.body.querySelectorAll('*');
-                    var larguraTela = win.innerWidth;
-
-                    for (var i = 0; i < todos.length; i++) {
-                        var el = todos[i];
-
-                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') {
-                            continue;
-                        }
-
-                        var r = el.getBoundingClientRect();
-
-                        if (r.height <= 0 || r.height > 6 || r.width < larguraTela * 0.5) {
-                            continue;
-                        }
-
-                        var cs = win.getComputedStyle(el);
-
-                        if (cs.position !== 'fixed' && cs.position !== 'sticky') {
-                            continue;
-                        }
-
-                        if (cs.display === 'none') {
-                            continue;
-                        }
-
-                        console.log(
-                            '[luxiz] elemento fixo ocultado:',
-                            el.tagName,
-                            el.className,
-                            el.getAttribute('data-testid'),
-                            Math.round(r.width) + 'x' + Math.round(r.height)
-                        );
-
-                        el.style.setProperty('display', 'none', 'important');
-                    }
-                }
-
-                varrer();
-                win.setInterval(varrer, 2000);
-            } catch (erro) {
-                // Sem acesso ao navegador: não faz nada, nunca quebra o app.
-            }
-        })();
-        </script>
-        """,
-        height=0
     )
 
 
