@@ -61,11 +61,16 @@ def render():
     # "Atualizado em" vem do banco em UTC (CURRENT_TIMESTAMP do
     # Postgres). Convertemos para o horário de Campo Grande antes de
     # exibir na tabela — senão o horário aparece com ~4h de diferença.
+    #
+    # Meses que só têm chamados na Análise Técnica (sem meta salva)
+    # chegam com atualizado_em = None, e o pandas converte esse None
+    # em NaT. "if momento" não barra o NaT, por isso usamos
+    # pd.notna() aqui.
 
     df["Atualizado em"] = df["Atualizado em"].apply(
         lambda momento: (
             estilos.horario_local(momento).strftime("%d/%m/%Y %H:%M")
-            if momento else ""
+            if pd.notna(momento) else ""
         )
     )
 
