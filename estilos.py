@@ -1062,6 +1062,82 @@ def aplicar_fundo(tema="escuro", tela="app"):
         unsafe_allow_html=True
     )
 
+    _limpar_linha_fixa()
+
+
+def _limpar_linha_fixa():
+    """
+    Procura no navegador qualquer elemento FIXO (position:fixed/sticky),
+    bem fino (até 6px de altura) e largo (metade da tela ou mais) —
+    é o que aparecia como uma linha parada cruzando os cards enquanto
+    a página rola — e o esconde. Roda uma vez por sessão do navegador
+    e repete a cada 2s. Quando acha algo, registra no console
+    ([luxiz] elemento fixo ocultado) para diagnóstico.
+    """
+
+    st.components.v1.html(
+        """
+        <script>
+        (function() {
+            try {
+                var win = window.parent;
+                var doc = win.document;
+
+                if (win.__luxizLinhaFixaInit) {
+                    return;
+                }
+                win.__luxizLinhaFixaInit = true;
+
+                function varrer() {
+                    var todos = doc.body.querySelectorAll('*');
+                    var larguraTela = win.innerWidth;
+
+                    for (var i = 0; i < todos.length; i++) {
+                        var el = todos[i];
+
+                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') {
+                            continue;
+                        }
+
+                        var r = el.getBoundingClientRect();
+
+                        if (r.height <= 0 || r.height > 6 || r.width < larguraTela * 0.5) {
+                            continue;
+                        }
+
+                        var cs = win.getComputedStyle(el);
+
+                        if (cs.position !== 'fixed' && cs.position !== 'sticky') {
+                            continue;
+                        }
+
+                        if (cs.display === 'none') {
+                            continue;
+                        }
+
+                        console.log(
+                            '[luxiz] elemento fixo ocultado:',
+                            el.tagName,
+                            el.className,
+                            el.getAttribute('data-testid'),
+                            Math.round(r.width) + 'x' + Math.round(r.height)
+                        );
+
+                        el.style.setProperty('display', 'none', 'important');
+                    }
+                }
+
+                varrer();
+                win.setInterval(varrer, 2000);
+            } catch (erro) {
+                // Sem acesso ao navegador: não faz nada, nunca quebra o app.
+            }
+        })();
+        </script>
+        """,
+        height=0
+    )
+
 
 # =====================================================
 # LOGO / CABEÇALHO PADRÃO
