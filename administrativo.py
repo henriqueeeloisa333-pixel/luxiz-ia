@@ -3,6 +3,7 @@ import banco
 import estilos
 import remanejamento
 import perfil
+import sac_automatico
 import pandas as pd
 import io
 import openpyxl
@@ -1126,42 +1127,12 @@ def render():
                 estilos.exibir_notificacao_pendente()
 
 
-                st.subheader(
-                    "Atualização Mensal do SAC"
+                # As reclamações do mês são contadas sozinhas pelos cards
+                # da Análise Técnica; aqui só a META é digitada.
+                sac_automatico.render_formulario_meta(
+                    armazem_id_atual,
+                    usuario_logado
                 )
-
-                with st.form(
-                    "form_sac"
-                ):
-
-                    reclamacoes = st.number_input(
-                        "Reclamações",
-                        min_value=0,
-                        step=1
-                    )
-
-                    meta = st.number_input(
-                        "Meta",
-                        min_value=0,
-                        step=1
-                    )
-
-                    salvar = st.form_submit_button(
-                        "💾 Salvar SAC"
-                    )
-
-                    if salvar:
-
-                        with estilos.mostrar_processando("dados do SAC..."):
-                            banco.atualizar_sac_mensal(
-                                reclamacoes,
-                                meta,
-                                armazem_id_atual,
-                                usuario=usuario_logado
-                            )
-
-                        estilos.notificar_sucesso("SAC atualizado.")
-                        st.rerun(scope="fragment")
 
                 st.divider()
 
