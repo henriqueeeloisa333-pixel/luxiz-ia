@@ -665,14 +665,7 @@ def _css_base(tema):
 # =====================================================
 # CSS DO AVISO CENTRAL "LUXIZ IA" (carregando / sucesso)
 # =====================================================
-# CORREÇÃO: este bloco antes só existia dentro da string do tema
-# ESCURO em _css_base(). Por isso, no tema claro, as classes
-# .luxiz-overlay* (spinner, card, texto) não tinham CSS nenhum —
-# o card ficava sem fundo/posição (por isso "sumia") e a
-# <img class="luxiz-overlay-logo"> aparecia no tamanho original
-# do arquivo (por isso a logo enorme) até a tela recarregar e
-# tirar o aviso de cena. Agora esse CSS é uma função própria,
-# aplicada sempre, nos dois temas — visual igual, independente
+# Aplicado sempre, nos dois temas — visual igual, independente
 # do tema escolhido.
 
 def _css_overlay():
@@ -1044,150 +1037,39 @@ def aplicar_fundo(tema="escuro", tela="app"):
     # O Chrome desenha um anel de foco (caixa cinza) em volta da área
     # principal quando ela é rolável e recebe foco/clique. Aparece como
     # uma linha no topo e outra na lateral direita, cruzando os cards.
+    # Este bloco zera outline/borda/sombra SÓ nos contêineres de página
+    # (não nos inputs, para não perder o foco visível de quem usa teclado).
     st.markdown(
         """
         <style>
+        html, body,
         [data-testid="stApp"],
         [data-testid="stAppViewContainer"],
+        [data-testid="stAppScrollToBottomContainer"],
         [data-testid="stMain"],
         [data-testid="stMainBlockContainer"],
+        [data-testid="stVerticalBlock"],
         section.main,
         .block-container,
         [data-testid="stApp"]:focus,
+        [data-testid="stApp"]:focus-visible,
         [data-testid="stAppViewContainer"]:focus,
+        [data-testid="stAppViewContainer"]:focus-visible,
+        [data-testid="stAppScrollToBottomContainer"]:focus,
+        [data-testid="stAppScrollToBottomContainer"]:focus-visible,
         [data-testid="stMain"]:focus,
         [data-testid="stMain"]:focus-visible,
         [data-testid="stMainBlockContainer"]:focus,
         section.main:focus,
         section.main:focus-visible{
             outline:none !important;
+            border:none !important;
             box-shadow:none !important;
         }
         </style>
         """,
         unsafe_allow_html=True
     )
-
-    _diagnostico_linha()
-
-
-def _diagnostico_linha():
-    """
-    TEMPORÁRIO. Mostra um painel vermelho com: se o app é a página
-    principal ou está dentro de outra, todos os iframes, todos os
-    elementos grandes fixos/absolutos (inclusive os que ignoram clique)
-    e tudo que termina perto da borda direita da tela.
-    """
-
-    codigo = r"""
-        <script>
-        (function() {
-            try {
-                var win = window.parent;
-                var doc = win.document;
-
-                if (win.__luxizDiag2) { return; }
-                win.__luxizDiag2 = true;
-
-                function px(v) { return parseFloat(v) > 0; }
-
-                function descrever(el) {
-                    var cs = win.getComputedStyle(el);
-                    var r = el.getBoundingClientRect();
-                    var b = ['Top', 'Right', 'Bottom', 'Left'].map(function(l) {
-                        return cs['border' + l + 'Style'] !== 'none' ? cs['border' + l + 'Width'] : '0';
-                    }).join('/');
-                    var pseudo = ['::before', '::after'].map(function(p) {
-                        var ps = win.getComputedStyle(el, p);
-                        return (ps.content !== 'none' && ps.content !== 'normal') ? p.slice(2, 3) : '';
-                    }).join('');
-                    return el.tagName.toLowerCase()
-                        + '.' + String(el.className).slice(0, 45)
-                        + (el.id ? '#' + el.id : '')
-                        + ' [t=' + el.getAttribute('data-testid') + ']'
-                        + ' pos=' + cs.position + ' pe=' + cs.pointerEvents + ' z=' + cs.zIndex
-                        + ' x=' + Math.round(r.left) + ',' + Math.round(r.top)
-                        + ' w=' + Math.round(r.width) + ' h=' + Math.round(r.height)
-                        + ' b=' + b
-                        + ' ol=' + (cs.outlineStyle !== 'none' ? cs.outlineWidth : '0')
-                        + ' sh=' + (cs.boxShadow === 'none' ? '-' : 'sim')
-                        + ' pseudo=' + (pseudo || '-');
-                }
-
-                function montar() {
-                    var vw = win.innerWidth, vh = win.innerHeight;
-                    var out = [];
-
-                    out.push('DIAGNOSTICO 2');
-                    out.push('viewport ' + vw + 'x' + vh + ' dpr=' + win.devicePixelRatio
-                        + ' | app e a pagina principal: ' + (win.top === win));
-                    out.push('');
-                    out.push('--- IFRAMES ---');
-
-                    var ifr = doc.querySelectorAll('iframe');
-                    if (!ifr.length) { out.push('(nenhum)'); }
-                    ifr.forEach(function(f) { out.push(descrever(f)); });
-
-                    out.push('');
-                    out.push('--- GRANDES (>=40% da tela) fixos/absolutos/sticky ---');
-
-                    var grandes = [], borda = [];
-                    doc.body.querySelectorAll('*').forEach(function(el) {
-                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.id === 'luxiz-diag2') { return; }
-                        var r = el.getBoundingClientRect();
-                        if (r.height <= 0) { return; }
-                        var cs = win.getComputedStyle(el);
-
-                        if (r.width >= vw * 0.4 && r.height >= vh * 0.4
-                            && (cs.position === 'fixed' || cs.position === 'absolute' || cs.position === 'sticky')) {
-                            grandes.push(descrever(el));
-                        }
-                        if (r.right >= vw - 18 && r.right <= vw - 8 && r.height >= vh * 0.4) {
-                            borda.push(descrever(el));
-                        }
-                    });
-
-                    grandes.slice(0, 40).forEach(function(l) { out.push(l); });
-                    if (!grandes.length) { out.push('(nenhum)'); }
-
-                    out.push('');
-                    out.push('--- TERMINAM A 8-18px DA BORDA DIREITA ---');
-                    borda.slice(0, 30).forEach(function(l) { out.push(l); });
-                    if (!borda.length) { out.push('(nenhum)'); }
-
-                    out.push('');
-                    out.push('--- html / body ---');
-                    out.push(descrever(doc.documentElement));
-                    out.push(descrever(doc.body));
-
-                    return out.join('\n');
-                }
-
-                function mostrar() {
-                    var painel = doc.getElementById('luxiz-diag2');
-                    if (!painel) {
-                        painel = doc.createElement('div');
-                        painel.id = 'luxiz-diag2';
-                        painel.style.cssText =
-                            'position:fixed;left:90px;bottom:60px;width:900px;max-width:calc(100vw - 110px);' +
-                            'max-height:70vh;overflow:auto;background:#7f1d1d;color:#fff;' +
-                            'font:11px/1.35 monospace;padding:10px 12px;border-radius:8px;' +
-                            'z-index:9999999;white-space:pre-wrap;';
-                        doc.body.appendChild(painel);
-                    }
-                    painel.textContent = montar();
-                }
-
-                win.setTimeout(mostrar, 2500);
-                win.setInterval(mostrar, 5000);
-            } catch (erro) {
-                // Sem acesso ao navegador: não faz nada.
-            }
-        })();
-        </script>
-        """
-
-    st.components.v1.html(codigo, height=0)
 
 
 # =====================================================
