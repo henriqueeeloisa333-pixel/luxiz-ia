@@ -1,9 +1,178 @@
+import html
+import io
+from datetime import date, timedelta
+
+import pandas as pd
 import streamlit as st
+
 import banco
 import estilos
-import pandas as pd
-import io
-from datetime import date
+
+
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
+
+# Dia da semana em que o checklist de Hidráulicos e Carrinhos deve ser
+# feito (0=Segunda ... 4=Sexta). Mesma regra do alerta da sexta-feira
+# que já existe em banco.listar_pendentes_checklist_sexta.
+DIA_PREVISTO_CHECKLIST = 4
+
+
+# =====================================================
+# APOIO: MESES E "NÃO PREENCHIDOS"
+# =====================================================
+
+def _chave_mes(data):
+
+    return data.strftime("%Y-%m")
+
+
+def _rotulo_mes(chave_mes):
+
+    ano, mes = chave_mes.split("-")
+
+    return f"{MESES_PT[int(mes) - 1]}/{ano}"
+
+
+def _nomes_compativeis(nome_a, nome_b):
+    """
+    "João" (responsável cadastrado) deve casar com "João Silva"
+    (nome completo salvo no checklist), sem diferenciar acentos ou
+    maiúsculas. O número do equipamento também é conferido, então
+    o risco de casar a pessoa errada é baixo.
+    """
+
+    a = banco._normalizar_texto(nome_a)
+    b = banco._normalizar_texto(nome_b)
+
+    if not a or not b:
+        return False
+
+    return a == b or a.startswith(b + " ") or b.startswith(a + " ")
+
+
+def calcular_nao_preenchidos(responsaveis, registros):
+    """
+    Para cada sexta-feira já encerrada (anterior a hoje), cada
+    responsável cadastrado em Equipamentos que NÃO tem checklist
+    daquele equipamento na data prevista vira um "Não preenchido"
+    (negativo).
+
+    - A sexta-feira de hoje ainda não conta: a pessoa tem o dia todo.
+    - A contagem começa na primeira sexta-feira depois do primeiro
+      checklist já registrado, para não cobrar retroativamente de
+      antes de o sistema ser usado.
+    - Se o responsável tiver "criado_em" (data de cadastro), sextas
+      anteriores a esse cadastro não contam contra ele.
+    """
+
+    if not responsaveis or not registros:
+        return []
+
+    hoje = estilos.agora_local().date()
+
+    primeira_data = min(registro["data_checklist"] for registro in registros)
+
+    dia = primeira_data + timedelta(
+        days=(DIA_PREVISTO_CHECKLIST - primeira_data.weekday()) % 7
+    )
+
+    sextas = []
+
+    while dia < hoje:
+        sextas.append(dia)
+        dia += timedelta(days=7)
+
+    if not sextas:
+        return []
+
+    registros_por_data = {}
+
+    for registro in registros:
+        registros_por_data.setdefault(
+            registro["data_checklist"], []
+        ).append(registro)
+
+    pendentes = []
+
+    for sexta in sextas:
+
+        feitos_no_dia = registros_por_data.get(sexta, [])
+
+        for responsavel in responsaveis:
+
+            cadastrado_em = responsavel.get("criado_em")
+
+            if cadastrado_em:
+
+                data_cadastro = estilos.horario_local(cadastrado_em).date()
+
+                if sexta < data_cadastro:
+                    continue
+
+            numero = str(responsavel["numero"]).strip()
+
+            ja_fez = any(
+                str(registro["numero"]).strip() == numero
+                and _nomes_compativeis(registro["nome"], responsavel["nome"])
+                for registro in feitos_no_dia
+            )
+
+            if not ja_fez:
+
+                pendentes.append({
+                    "data": sexta,
+                    "nome": responsavel["nome"],
+                    "numero": numero
+                })
+
+    pendentes.sort(
+        key=lambda item: (item["data"], item["nome"]),
+        reverse=True
+    )
+
+    return pendentes
+
+
+def _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero):
+
+    st.markdown("##### 🚫 Não preenchidos (negativo)")
+
+    st.caption(
+        "Checklist previsto para toda sexta-feira. Quem não registrou "
+        "na data prevista fica como negativo."
+    )
+
+    linhas_html = "".join(
+        f"""
+        <div style="
+            background:rgba(220,38,38,.14);
+            border-left:4px solid #dc2626;
+            padding:.4rem .7rem;
+            border-radius:.4rem;
+            margin-bottom:.35rem;
+            font-size:.85rem;
+        ">
+        🚫 <strong>{item['data'].strftime('%d/%m/%Y')}</strong> —
+        {html.escape(str(item['nome']))}
+        ({html.escape(rotulo_numero)}: {html.escape(item['numero'])})
+        — não preencheu o checklist
+        </div>
+        """
+        for item in pendentes_mes
+    )
+
+    if len(pendentes_mes) > 8:
+
+        with st.container(height=260):
+
+            st.markdown(linhas_html, unsafe_allow_html=True)
+
+    else:
+
+        st.markdown(linhas_html, unsafe_allow_html=True)
 
 
 def renderizar_checklist(
@@ -19,8 +188,14 @@ def renderizar_checklist(
     funcao_excluir=None,
     funcao_enviar_manutencao=None,
     funcao_retornar_manutencao=None,
-    funcao_concluir_manutencao=None
+    funcao_concluir_manutencao=None,
+    funcao_responsaveis=None
 ):
+    """
+    funcao_responsaveis: se informada (Hidráulicos e Carrinhos), ativa a
+    regra de "não preenchido = negativo" com base nos responsáveis
+    cadastrados em Equipamentos.
+    """
 
     st.subheader(
         f"{icone} {titulo}"
@@ -115,287 +290,364 @@ def renderizar_checklist(
 
         return
 
+    # =====================================================
+    # NÃO PREENCHIDOS (só Hidráulicos e Carrinhos)
+    # =====================================================
+
+    controla_nao_preenchidos = funcao_responsaveis is not None
+
+    nao_preenchidos = []
+
+    if controla_nao_preenchidos:
+
+        nao_preenchidos = calcular_nao_preenchidos(
+            funcao_responsaveis(armazem_id),
+            registros
+        )
+
     conformes = len(
         [r for r in registros if r["status"] == "Conforme"]
     )
 
     nao_conformes = len(registros) - conformes
 
-    c1, c2, c3 = st.columns(3)
+    colunas_metricas = st.columns(4 if controla_nao_preenchidos else 3)
 
-    with c1:
+    with colunas_metricas[0]:
         st.metric("📋 Total", len(registros))
 
-    with c2:
+    with colunas_metricas[1]:
         st.metric("✅ Conformes", conformes)
 
-    with c3:
+    with colunas_metricas[2]:
         st.metric("⚠️ Não Conformes", nao_conformes)
+
+    if controla_nao_preenchidos:
+
+        with colunas_metricas[3]:
+            st.metric(
+                "🚫 Não preenchidos",
+                len(nao_preenchidos),
+                help="Sextas-feiras já encerradas em que o responsável não registrou o checklist."
+            )
 
     st.write("")
 
     # =====================================================
-    # REGISTROS PREENCHIDOS
-    # Tudo que já foi lançado (tabela, manutenção e exportação)
-    # fica guardado dentro deste campo, para a aba não crescer
-    # demais conforme os registros vão se acumulando.
+    # REGISTROS SEPARADOS POR MÊS
+    # O mês mais recente já abre; os anteriores ficam fechados.
     # =====================================================
 
-    with st.expander(
-        f"📋 Ver registros preenchidos ({len(registros)})",
-        expanded=False
-    ):
+    registros_por_mes = {}
 
-        df = pd.DataFrame(registros)
+    for registro in registros:
 
-        ids_registros = df["id"].tolist()
+        registros_por_mes.setdefault(
+            _chave_mes(registro["data_checklist"]),
+            []
+        ).append(registro)
 
-        df_exibir = df.rename(columns={
-            "nome": "Nome",
-            "numero": rotulo_numero,
-            "data_checklist": "Data",
-            "status": "Situação",
-            "descricao": "Descrição"
-        })[["Nome", rotulo_numero, "Data", "Situação", "Descrição"]]
+    pendentes_por_mes = {}
 
-        legenda_edicao = "✏️ Clique em uma célula para editar."
+    for pendente in nao_preenchidos:
 
-        if funcao_editar:
+        pendentes_por_mes.setdefault(
+            _chave_mes(pendente["data"]),
+            []
+        ).append(pendente)
 
-            legenda_edicao += " Depois de ajustar, clique em **Salvar alterações**."
+    meses_ordenados = sorted(
+        set(registros_por_mes) | set(pendentes_por_mes),
+        reverse=True
+    )
 
-            st.caption(legenda_edicao)
+    for indice_mes, chave_mes in enumerate(meses_ordenados):
 
-            column_config = {
-                "Situação": st.column_config.SelectboxColumn(
-                    options=["Conforme", "Não Conforme"],
-                    required=True
-                ),
-                "Data": st.column_config.DateColumn(
-                    format="DD/MM/YYYY"
-                )
-            }
+        registros_mes = registros_por_mes.get(chave_mes, [])
+        pendentes_mes = pendentes_por_mes.get(chave_mes, [])
 
-            df_editado = st.data_editor(
-                df_exibir,
-                width='stretch',
-                hide_index=True,
-                key=f"editor_{prefixo_key}",
-                column_config=column_config
-            )
-
-            if st.button(
-                "💾 Salvar alterações",
-                key=f"salvar_{prefixo_key}"
-            ):
-
-                houve_alteracao = False
-
-                for posicao, id_registro in enumerate(ids_registros):
-
-                    linha_editada = df_editado.iloc[posicao]
-                    linha_original = df_exibir.iloc[posicao]
-
-                    if not linha_original.equals(linha_editada):
-
-                        # Mesma normalização aplicada também na edição
-                        # direta pela tabela — assim um nome corrigido
-                        # manualmente aqui também casa com o Perfil.
-                        nome_editado_normalizado = banco.normalizar_nome_pessoa(
-                            linha_editada["Nome"], armazem_id
-                        )
-
-                        with estilos.mostrar_processando("salvando alterações..."):
-                            funcao_editar(
-                                id_registro,
-                                nome_editado_normalizado,
-                                linha_editada[rotulo_numero],
-                                linha_editada["Data"],
-                                linha_editada["Situação"],
-                                linha_editada["Descrição"],
-                                armazem_id
-                            )
-
-                        houve_alteracao = True
-
-                if houve_alteracao:
-
-                    estilos.notificar_sucesso("alterações salvas com sucesso.")
-                    st.rerun(scope="fragment")
-
-                else:
-
-                    st.info("Nenhuma alteração encontrada para salvar.")
-
-        else:
-
-            st.dataframe(
-                df_exibir,
-                width='stretch',
-                hide_index=True
-            )
-
-        # =====================================================
-        # EXCLUIR REGISTROS
-        # Usa um multiselect nativo (em vez de checkbox dentro da
-        # tabela) porque o grid da tabela (data_editor) sempre
-        # renderiza no tema escuro internamente, e ficava invisível
-        # com o app no modo claro. O multiselect é um componente
-        # normal do Streamlit e já segue o tema claro/escuro do app.
-        # =====================================================
-
-        if funcao_excluir:
-
-            st.write("")
-
-            rotulos_registros = {
-                id_registro: (
-                    f"{df_exibir.iloc[posicao]['Nome']} — "
-                    f"{rotulo_numero}: {df_exibir.iloc[posicao][rotulo_numero]} "
-                    f"({pd.to_datetime(df_exibir.iloc[posicao]['Data']).strftime('%d/%m/%Y')})"
-                )
-                for posicao, id_registro in enumerate(ids_registros)
-            }
-
-            selecionados_excluir = st.multiselect(
-                "🗑️ Selecionar registro(s) para excluir",
-                options=ids_registros,
-                format_func=lambda id_registro: rotulos_registros.get(id_registro, str(id_registro)),
-                key=f"excluir_sel_{prefixo_key}"
-            )
-
-            if st.button(
-                "🗑️ Excluir selecionado(s)",
-                key=f"excluir_btn_{prefixo_key}",
-                disabled=not selecionados_excluir
-            ):
-
-                with estilos.mostrar_processando("excluindo registro(s)..."):
-                    for id_excluir in selecionados_excluir:
-                        funcao_excluir(id_excluir, armazem_id)
-
-                estilos.notificar_sucesso(
-                    f"{len(selecionados_excluir)} registro(s) excluído(s)."
-                )
-                st.rerun(scope="fragment")
-
-        # =====================================================
-        # MANUTENÇÃO
-        # =====================================================
-        # A visibilidade de "quais itens estão em manutenção" é liberada
-        # para todos que têm acesso ao checklist. Só os comandos que
-        # alteram o estado (enviar para manutenção / concluir / retornar)
-        # continuam restritos ao Fundador e à Gestão.
-
-        usuario_atual = st.session_state.get("usuario", "")
-
-        admin_master = (
-            usuario_atual.startswith("Fundador.")
-            or usuario_atual.startswith("Gestao.")
+        rotulo_expander = (
+            f"🗓️ {_rotulo_mes(chave_mes)} "
+            f"({len(registros_mes)} registro(s))"
         )
 
-        if funcao_enviar_manutencao and funcao_retornar_manutencao:
+        if pendentes_mes:
 
-            itens_em_manutencao = [
-                r for r in registros
-                if r.get("em_manutencao")
-            ]
+            rotulo_expander += f" • 🚫 {len(pendentes_mes)} não preenchido(s)"
 
-            if itens_em_manutencao:
+        with st.expander(
+            rotulo_expander,
+            expanded=(indice_mes == 0)
+        ):
+
+            if pendentes_mes:
+
+                _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero)
 
                 st.write("")
 
-                st.markdown("##### 🚧 Em Manutenção")
+            if not registros_mes:
 
-                for item in itens_em_manutencao:
+                st.caption("Nenhum checklist registrado neste mês.")
 
-                    with st.container(border=True):
+                continue
 
-                        if admin_master:
-                            col_texto, col_botoes = st.columns([5, 2])
-                        else:
-                            col_texto = st.container()
+            df_mes = pd.DataFrame(registros_mes)
 
-                        with col_texto:
+            ids_registros = df_mes["id"].tolist()
 
-                            st.markdown(
-                                f"**{item['nome']}** — {rotulo_numero}: {item['numero']}"
+            df_exibir = df_mes.rename(columns={
+                "nome": "Nome",
+                "numero": rotulo_numero,
+                "data_checklist": "Data",
+                "status": "Situação",
+                "descricao": "Descrição"
+            })[["Nome", rotulo_numero, "Data", "Situação", "Descrição"]]
+
+            if funcao_editar:
+
+                st.caption(
+                    "✏️ Clique em uma célula para editar. Depois de ajustar, "
+                    "clique em **Salvar alterações**."
+                )
+
+                column_config = {
+                    "Situação": st.column_config.SelectboxColumn(
+                        options=["Conforme", "Não Conforme"],
+                        required=True
+                    ),
+                    "Data": st.column_config.DateColumn(
+                        format="DD/MM/YYYY"
+                    )
+                }
+
+                df_editado = st.data_editor(
+                    df_exibir,
+                    width='stretch',
+                    hide_index=True,
+                    key=f"editor_{prefixo_key}_{chave_mes}",
+                    column_config=column_config
+                )
+
+                if st.button(
+                    "💾 Salvar alterações",
+                    key=f"salvar_{prefixo_key}_{chave_mes}"
+                ):
+
+                    houve_alteracao = False
+
+                    for posicao, id_registro in enumerate(ids_registros):
+
+                        linha_editada = df_editado.iloc[posicao]
+                        linha_original = df_exibir.iloc[posicao]
+
+                        if not linha_original.equals(linha_editada):
+
+                            # Mesma normalização aplicada também na edição
+                            # direta pela tabela — assim um nome corrigido
+                            # manualmente aqui também casa com o Perfil.
+                            nome_editado_normalizado = banco.normalizar_nome_pessoa(
+                                linha_editada["Nome"], armazem_id
                             )
 
-                            if item.get("manutencao_motivo"):
-
-                                st.caption(f"Motivo: {item['manutencao_motivo']}")
-
-                            if item.get("manutencao_enviado_em"):
-
-                                enviado_em_local = estilos.horario_local(
-                                    item["manutencao_enviado_em"]
+                            with estilos.mostrar_processando("salvando alterações..."):
+                                funcao_editar(
+                                    id_registro,
+                                    nome_editado_normalizado,
+                                    linha_editada[rotulo_numero],
+                                    linha_editada["Data"],
+                                    linha_editada["Situação"],
+                                    linha_editada["Descrição"],
+                                    armazem_id
                                 )
 
-                                st.caption(
-                                    f"Enviado por {item.get('manutencao_enviado_por') or '—'} "
-                                    f"em {enviado_em_local.strftime('%d/%m/%Y %H:%M')}"
+                            houve_alteracao = True
+
+                    if houve_alteracao:
+
+                        estilos.notificar_sucesso("alterações salvas com sucesso.")
+                        st.rerun(scope="fragment")
+
+                    else:
+
+                        st.info("Nenhuma alteração encontrada para salvar.")
+
+            else:
+
+                st.dataframe(
+                    df_exibir,
+                    width='stretch',
+                    hide_index=True
+                )
+
+            # =====================================================
+            # EXCLUIR REGISTROS
+            # Usa um multiselect nativo (em vez de checkbox dentro da
+            # tabela) porque o grid da tabela (data_editor) sempre
+            # renderiza no tema escuro internamente, e ficava invisível
+            # com o app no modo claro. O multiselect é um componente
+            # normal do Streamlit e já segue o tema claro/escuro do app.
+            # =====================================================
+
+            if funcao_excluir:
+
+                st.write("")
+
+                rotulos_registros = {
+                    id_registro: (
+                        f"{df_exibir.iloc[posicao]['Nome']} — "
+                        f"{rotulo_numero}: {df_exibir.iloc[posicao][rotulo_numero]} "
+                        f"({pd.to_datetime(df_exibir.iloc[posicao]['Data']).strftime('%d/%m/%Y')})"
+                    )
+                    for posicao, id_registro in enumerate(ids_registros)
+                }
+
+                selecionados_excluir = st.multiselect(
+                    "🗑️ Selecionar registro(s) para excluir",
+                    options=ids_registros,
+                    format_func=lambda id_registro, rotulos=rotulos_registros: rotulos.get(id_registro, str(id_registro)),
+                    key=f"excluir_sel_{prefixo_key}_{chave_mes}"
+                )
+
+                if st.button(
+                    "🗑️ Excluir selecionado(s)",
+                    key=f"excluir_btn_{prefixo_key}_{chave_mes}",
+                    disabled=not selecionados_excluir
+                ):
+
+                    with estilos.mostrar_processando("excluindo registro(s)..."):
+                        for id_excluir in selecionados_excluir:
+                            funcao_excluir(id_excluir, armazem_id)
+
+                    estilos.notificar_sucesso(
+                        f"{len(selecionados_excluir)} registro(s) excluído(s)."
+                    )
+                    st.rerun(scope="fragment")
+
+    # =====================================================
+    # MANUTENÇÃO
+    # =====================================================
+    # A visibilidade de "quais itens estão em manutenção" é liberada
+    # para todos que têm acesso ao checklist. Só os comandos que
+    # alteram o estado (enviar para manutenção / concluir / retornar)
+    # continuam restritos ao Fundador e à Gestão.
+
+    usuario_atual = st.session_state.get("usuario", "")
+
+    admin_master = (
+        usuario_atual.startswith("Fundador.")
+        or usuario_atual.startswith("Gestao.")
+    )
+
+    if funcao_enviar_manutencao and funcao_retornar_manutencao:
+
+        itens_em_manutencao = [
+            r for r in registros
+            if r.get("em_manutencao")
+        ]
+
+        itens_nao_conformes = [
+            r for r in registros
+            if r["status"] == "Não Conforme" and not r.get("em_manutencao")
+        ]
+
+        mostrar_envio = admin_master and bool(itens_nao_conformes)
+
+        if itens_em_manutencao or mostrar_envio:
+
+            st.write("")
+
+            with st.expander(
+                f"🚧 Manutenção ({len(itens_em_manutencao)} em andamento)",
+                expanded=False
+            ):
+
+                if itens_em_manutencao:
+
+                    st.markdown("##### 🚧 Em Manutenção")
+
+                    for item in itens_em_manutencao:
+
+                        with st.container(border=True):
+
+                            if admin_master:
+                                col_texto, col_botoes = st.columns([5, 2])
+                            else:
+                                col_texto = st.container()
+
+                            with col_texto:
+
+                                st.markdown(
+                                    f"**{item['nome']}** — {rotulo_numero}: {item['numero']}"
                                 )
 
-                        if admin_master:
+                                if item.get("manutencao_motivo"):
 
-                            with col_botoes:
+                                    st.caption(f"Motivo: {item['manutencao_motivo']}")
 
-                                sub_col1, sub_col2 = st.columns(2)
+                                if item.get("manutencao_enviado_em"):
 
-                                with sub_col1:
+                                    enviado_em_local = estilos.horario_local(
+                                        item["manutencao_enviado_em"]
+                                    )
 
-                                    if funcao_concluir_manutencao and st.button(
-                                        "✅",
-                                        key=f"concluir_manut_{prefixo_key}_{item['id']}",
-                                        help=(
-                                            f"Marcar manutenção de {item['nome']} "
-                                            f"({rotulo_numero} {item['numero']}) como concluída"
-                                        )
-                                    ):
+                                    st.caption(
+                                        f"Enviado por {item.get('manutencao_enviado_por') or '—'} "
+                                        f"em {enviado_em_local.strftime('%d/%m/%Y %H:%M')}"
+                                    )
 
-                                        with estilos.mostrar_processando("registrando manutenção concluída..."):
-                                            funcao_concluir_manutencao(
-                                                item["id"],
-                                                usuario_atual,
-                                                armazem_id
+                            if admin_master:
+
+                                with col_botoes:
+
+                                    sub_col1, sub_col2 = st.columns(2)
+
+                                    with sub_col1:
+
+                                        if funcao_concluir_manutencao and st.button(
+                                            "✅",
+                                            key=f"concluir_manut_{prefixo_key}_{item['id']}",
+                                            help=(
+                                                f"Marcar manutenção de {item['nome']} "
+                                                f"({rotulo_numero} {item['numero']}) como concluída"
                                             )
+                                        ):
 
-                                        estilos.notificar_sucesso(
-                                            f"✅ Manutenção de {item['nome']} concluída."
-                                        )
-                                        st.rerun(scope="fragment")
+                                            with estilos.mostrar_processando("registrando manutenção concluída..."):
+                                                funcao_concluir_manutencao(
+                                                    item["id"],
+                                                    usuario_atual,
+                                                    armazem_id
+                                                )
 
-                                with sub_col2:
-
-                                    if st.button(
-                                        "↩️",
-                                        key=f"retornar_manut_{prefixo_key}_{item['id']}",
-                                        help=(
-                                            f"Marcar {item['nome']} ({rotulo_numero} "
-                                            f"{item['numero']}) como retornado da manutenção, "
-                                            f"sem alterar a situação registrada"
-                                        )
-                                    ):
-
-                                        with estilos.mostrar_processando("registrando retorno..."):
-                                            funcao_retornar_manutencao(
-                                                item["id"],
-                                                usuario_atual,
-                                                armazem_id
+                                            estilos.notificar_sucesso(
+                                                f"✅ Manutenção de {item['nome']} concluída."
                                             )
+                                            st.rerun(scope="fragment")
 
-                                        estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
-                                        st.rerun(scope="fragment")
+                                    with sub_col2:
 
-            if admin_master:
+                                        if st.button(
+                                            "↩️",
+                                            key=f"retornar_manut_{prefixo_key}_{item['id']}",
+                                            help=(
+                                                f"Marcar {item['nome']} ({rotulo_numero} "
+                                                f"{item['numero']}) como retornado da manutenção, "
+                                                f"sem alterar a situação registrada"
+                                            )
+                                        ):
 
-                itens_nao_conformes = [
-                    r for r in registros
-                    if r["status"] == "Não Conforme" and not r.get("em_manutencao")
-                ]
+                                            with estilos.mostrar_processando("registrando retorno..."):
+                                                funcao_retornar_manutencao(
+                                                    item["id"],
+                                                    usuario_atual,
+                                                    armazem_id
+                                                )
 
-                if itens_nao_conformes:
+                                            estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
+                                            st.rerun(scope="fragment")
+
+                if mostrar_envio:
 
                     st.write("")
 
@@ -434,58 +686,87 @@ def renderizar_checklist(
                                 estilos.notificar_sucesso(f"🔧 {item['nome']} enviado para manutenção.")
                                 st.rerun(scope="fragment")
 
-        st.write("")
+    st.write("")
 
-        def _formatar_evento_manutencao(pessoa, momento):
+    # =====================================================
+    # EXPORTAÇÃO (todos os meses)
+    # =====================================================
 
-            if not momento:
-                return ""
+    def _formatar_evento_manutencao(pessoa, momento):
 
-            momento_local = estilos.horario_local(momento)
+        if not momento:
+            return ""
 
-            texto = momento_local.strftime("%d/%m/%Y %H:%M")
+        momento_local = estilos.horario_local(momento)
 
-            if pessoa:
-                texto += f" ({pessoa})"
+        texto = momento_local.strftime("%d/%m/%Y %H:%M")
 
-            return texto
+        if pessoa:
+            texto += f" ({pessoa})"
 
-        df_exportar = df_exibir.copy()
+        return texto
 
-        if funcao_enviar_manutencao:
+    df_total = pd.DataFrame(registros)
 
-            df_exportar["Enviado p/ Manutenção"] = [
-                _formatar_evento_manutencao(
-                    registro.get("manutencao_enviado_por"),
-                    registro.get("manutencao_enviado_em")
-                )
-                for registro in registros
-            ]
+    df_exportar = df_total.rename(columns={
+        "nome": "Nome",
+        "numero": rotulo_numero,
+        "data_checklist": "Data",
+        "status": "Situação",
+        "descricao": "Descrição"
+    })[["Nome", rotulo_numero, "Data", "Situação", "Descrição"]]
 
-            df_exportar["Retornado da Manutenção"] = [
-                _formatar_evento_manutencao(
-                    registro.get("manutencao_retornado_por"),
-                    registro.get("manutencao_retornado_em")
-                )
-                for registro in registros
-            ]
+    if funcao_enviar_manutencao:
 
-        buffer_excel = io.BytesIO()
+        df_exportar["Enviado p/ Manutenção"] = [
+            _formatar_evento_manutencao(
+                registro.get("manutencao_enviado_por"),
+                registro.get("manutencao_enviado_em")
+            )
+            for registro in registros
+        ]
 
-        with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
-            df_exportar.to_excel(
+        df_exportar["Retornado da Manutenção"] = [
+            _formatar_evento_manutencao(
+                registro.get("manutencao_retornado_por"),
+                registro.get("manutencao_retornado_em")
+            )
+            for registro in registros
+        ]
+
+    buffer_excel = io.BytesIO()
+
+    with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
+
+        df_exportar.to_excel(
+            writer,
+            index=False,
+            sheet_name=titulo[:31]
+        )
+
+        if nao_preenchidos:
+
+            pd.DataFrame([
+                {
+                    "Data prevista": item["data"],
+                    "Responsável": item["nome"],
+                    rotulo_numero: item["numero"],
+                    "Situação": "Não preenchido"
+                }
+                for item in nao_preenchidos
+            ]).to_excel(
                 writer,
                 index=False,
-                sheet_name=titulo[:31]
+                sheet_name="Não preenchidos"
             )
 
-        st.download_button(
-            "📥 Exportar para Excel",
-            data=buffer_excel.getvalue(),
-            file_name=nome_arquivo_excel,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"exportar_{prefixo_key}"
-        )
+    st.download_button(
+        "📥 Exportar para Excel",
+        data=buffer_excel.getvalue(),
+        file_name=nome_arquivo_excel,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"exportar_{prefixo_key}"
+    )
 
 
 def renderizar_checklist_pigmentacao(
@@ -600,153 +881,171 @@ def renderizar_checklist_pigmentacao(
     st.write("")
 
     # =====================================================
-    # REGISTROS PREENCHIDOS
-    # Guardados dentro deste campo para a aba não crescer
-    # demais conforme os registros vão se acumulando.
+    # REGISTROS SEPARADOS POR MÊS
     # =====================================================
 
-    with st.expander(
-        f"📋 Ver registros preenchidos ({len(registros)})",
-        expanded=False
-    ):
+    registros_por_mes = {}
 
-        df = pd.DataFrame(registros)
+    for registro in registros:
 
-        ids_registros = df["id"].tolist()
+        registros_por_mes.setdefault(
+            _chave_mes(registro["data_checklist"]),
+            []
+        ).append(registro)
 
-        df_exibir = df.rename(columns={
-            "nome": "Nome",
-            "data_checklist": "Data",
-            "status": "Situação",
-            "descricao": "Descrição"
-        })[["Nome", "Data", "Situação", "Descrição"]]
+    meses_ordenados = sorted(registros_por_mes.keys(), reverse=True)
 
-        if funcao_editar:
+    for indice_mes, chave_mes in enumerate(meses_ordenados):
 
-            legenda_edicao = (
-                "✏️ Clique em uma célula para editar."
-                " Depois de ajustar, clique em **Salvar alterações**."
-            )
+        registros_mes = registros_por_mes[chave_mes]
 
-            st.caption(legenda_edicao)
+        with st.expander(
+            f"🗓️ {_rotulo_mes(chave_mes)} ({len(registros_mes)} registro(s))",
+            expanded=(indice_mes == 0)
+        ):
 
-            column_config = {
-                "Situação": st.column_config.SelectboxColumn(
-                    options=["Conforme", "Não Conforme"],
-                    required=True
-                ),
-                "Data": st.column_config.DateColumn(
-                    format="DD/MM/YYYY"
+            df_mes = pd.DataFrame(registros_mes)
+
+            ids_registros = df_mes["id"].tolist()
+
+            df_exibir = df_mes.rename(columns={
+                "nome": "Nome",
+                "data_checklist": "Data",
+                "status": "Situação",
+                "descricao": "Descrição"
+            })[["Nome", "Data", "Situação", "Descrição"]]
+
+            if funcao_editar:
+
+                st.caption(
+                    "✏️ Clique em uma célula para editar. Depois de ajustar, "
+                    "clique em **Salvar alterações**."
                 )
-            }
 
-            df_editado = st.data_editor(
-                df_exibir,
-                width='stretch',
-                hide_index=True,
-                key=f"editor_{prefixo_key}",
-                column_config=column_config
-            )
+                column_config = {
+                    "Situação": st.column_config.SelectboxColumn(
+                        options=["Conforme", "Não Conforme"],
+                        required=True
+                    ),
+                    "Data": st.column_config.DateColumn(
+                        format="DD/MM/YYYY"
+                    )
+                }
 
-            if st.button(
-                "💾 Salvar alterações",
-                key=f"salvar_{prefixo_key}"
-            ):
+                df_editado = st.data_editor(
+                    df_exibir,
+                    width='stretch',
+                    hide_index=True,
+                    key=f"editor_{prefixo_key}_{chave_mes}",
+                    column_config=column_config
+                )
 
-                houve_alteracao = False
+                if st.button(
+                    "💾 Salvar alterações",
+                    key=f"salvar_{prefixo_key}_{chave_mes}"
+                ):
 
-                for posicao, id_registro in enumerate(ids_registros):
+                    houve_alteracao = False
 
-                    linha_editada = df_editado.iloc[posicao]
-                    linha_original = df_exibir.iloc[posicao]
+                    for posicao, id_registro in enumerate(ids_registros):
 
-                    if not linha_original.equals(linha_editada):
+                        linha_editada = df_editado.iloc[posicao]
+                        linha_original = df_exibir.iloc[posicao]
 
-                        nome_editado_normalizado = banco.normalizar_nome_pessoa(
-                            linha_editada["Nome"], armazem_id
-                        )
+                        if not linha_original.equals(linha_editada):
 
-                        with estilos.mostrar_processando("salvando alterações..."):
-                            funcao_editar(
-                                id_registro,
-                                nome_editado_normalizado,
-                                linha_editada["Data"],
-                                linha_editada["Situação"],
-                                linha_editada["Descrição"],
-                                armazem_id
+                            nome_editado_normalizado = banco.normalizar_nome_pessoa(
+                                linha_editada["Nome"], armazem_id
                             )
 
-                        houve_alteracao = True
+                            with estilos.mostrar_processando("salvando alterações..."):
+                                funcao_editar(
+                                    id_registro,
+                                    nome_editado_normalizado,
+                                    linha_editada["Data"],
+                                    linha_editada["Situação"],
+                                    linha_editada["Descrição"],
+                                    armazem_id
+                                )
 
-                if houve_alteracao:
+                            houve_alteracao = True
 
-                    estilos.notificar_sucesso("alterações salvas com sucesso.")
+                    if houve_alteracao:
+
+                        estilos.notificar_sucesso("alterações salvas com sucesso.")
+                        st.rerun(scope="fragment")
+
+                    else:
+
+                        st.info("Nenhuma alteração encontrada para salvar.")
+
+            else:
+
+                st.dataframe(
+                    df_exibir,
+                    width='stretch',
+                    hide_index=True
+                )
+
+            if funcao_excluir:
+
+                st.write("")
+
+                rotulos_registros = {
+                    id_registro: (
+                        f"{df_exibir.iloc[posicao]['Nome']} — "
+                        f"({pd.to_datetime(df_exibir.iloc[posicao]['Data']).strftime('%d/%m/%Y')})"
+                    )
+                    for posicao, id_registro in enumerate(ids_registros)
+                }
+
+                selecionados_excluir = st.multiselect(
+                    "🗑️ Selecionar registro(s) para excluir",
+                    options=ids_registros,
+                    format_func=lambda id_registro, rotulos=rotulos_registros: rotulos.get(id_registro, str(id_registro)),
+                    key=f"excluir_sel_{prefixo_key}_{chave_mes}"
+                )
+
+                if st.button(
+                    "🗑️ Excluir selecionado(s)",
+                    key=f"excluir_btn_{prefixo_key}_{chave_mes}",
+                    disabled=not selecionados_excluir
+                ):
+
+                    with estilos.mostrar_processando("excluindo registro(s)..."):
+                        for id_excluir in selecionados_excluir:
+                            funcao_excluir(id_excluir, armazem_id)
+
+                    estilos.notificar_sucesso(
+                        f"{len(selecionados_excluir)} registro(s) excluído(s)."
+                    )
                     st.rerun(scope="fragment")
 
-                else:
+    st.write("")
 
-                    st.info("Nenhuma alteração encontrada para salvar.")
+    df_total = pd.DataFrame(registros).rename(columns={
+        "nome": "Nome",
+        "data_checklist": "Data",
+        "status": "Situação",
+        "descricao": "Descrição"
+    })[["Nome", "Data", "Situação", "Descrição"]]
 
-        else:
+    buffer_excel = io.BytesIO()
 
-            st.dataframe(
-                df_exibir,
-                width='stretch',
-                hide_index=True
-            )
-
-        if funcao_excluir:
-
-            st.write("")
-
-            rotulos_registros = {
-                id_registro: (
-                    f"{df_exibir.iloc[posicao]['Nome']} — "
-                    f"({pd.to_datetime(df_exibir.iloc[posicao]['Data']).strftime('%d/%m/%Y')})"
-                )
-                for posicao, id_registro in enumerate(ids_registros)
-            }
-
-            selecionados_excluir = st.multiselect(
-                "🗑️ Selecionar registro(s) para excluir",
-                options=ids_registros,
-                format_func=lambda id_registro: rotulos_registros.get(id_registro, str(id_registro)),
-                key=f"excluir_sel_{prefixo_key}"
-            )
-
-            if st.button(
-                "🗑️ Excluir selecionado(s)",
-                key=f"excluir_btn_{prefixo_key}",
-                disabled=not selecionados_excluir
-            ):
-
-                with estilos.mostrar_processando("excluindo registro(s)..."):
-                    for id_excluir in selecionados_excluir:
-                        funcao_excluir(id_excluir, armazem_id)
-
-                estilos.notificar_sucesso(
-                    f"{len(selecionados_excluir)} registro(s) excluído(s)."
-                )
-                st.rerun(scope="fragment")
-
-        st.write("")
-
-        buffer_excel = io.BytesIO()
-
-        with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
-            df_exibir.to_excel(
-                writer,
-                index=False,
-                sheet_name=titulo[:31]
-            )
-
-        st.download_button(
-            "📥 Exportar para Excel",
-            data=buffer_excel.getvalue(),
-            file_name=nome_arquivo_excel,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"exportar_{prefixo_key}"
+    with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
+        df_total.to_excel(
+            writer,
+            index=False,
+            sheet_name=titulo[:31]
         )
+
+    st.download_button(
+        "📥 Exportar para Excel",
+        data=buffer_excel.getvalue(),
+        file_name=nome_arquivo_excel,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"exportar_{prefixo_key}"
+    )
 
 
 def render():
@@ -789,7 +1088,8 @@ def render():
             funcao_excluir=banco.excluir_checklist_hidraulico,
             funcao_enviar_manutencao=banco.enviar_manutencao_hidraulico,
             funcao_retornar_manutencao=banco.retornar_manutencao_hidraulico,
-            funcao_concluir_manutencao=banco.concluir_manutencao_hidraulico
+            funcao_concluir_manutencao=banco.concluir_manutencao_hidraulico,
+            funcao_responsaveis=banco.ler_responsaveis_hidraulicos
         )
 
     with aba_carrinhos:
@@ -807,7 +1107,8 @@ def render():
             funcao_excluir=banco.excluir_checklist_carrinho,
             funcao_enviar_manutencao=banco.enviar_manutencao_carrinho,
             funcao_retornar_manutencao=banco.retornar_manutencao_carrinho,
-            funcao_concluir_manutencao=banco.concluir_manutencao_carrinho
+            funcao_concluir_manutencao=banco.concluir_manutencao_carrinho,
+            funcao_responsaveis=banco.ler_responsaveis_carrinhos
         )
 
     with aba_empilhadeira:
