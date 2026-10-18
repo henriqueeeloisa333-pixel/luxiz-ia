@@ -1035,121 +1035,30 @@ def aplicar_fundo(tema="escuro", tela="app"):
     )
 
     # O Chrome desenha um anel de foco (caixa cinza) em volta da área
-    # principal quando ela é rolável e recebe foco/clique. Aparece como
-    # uma linha no topo e outra na lateral direita, cruzando os cards.
-    # Este bloco zera outline/borda/sombra SÓ nos contêineres de página
-    # (não nos inputs, para não perder o foco visível de quem usa teclado).
+    # principal quando ela é rolável e recebe foco/clique.
     st.markdown(
         """
         <style>
-        html, body,
         [data-testid="stApp"],
         [data-testid="stAppViewContainer"],
-        [data-testid="stAppScrollToBottomContainer"],
         [data-testid="stMain"],
         [data-testid="stMainBlockContainer"],
-        [data-testid="stVerticalBlock"],
         section.main,
         .block-container,
         [data-testid="stApp"]:focus,
-        [data-testid="stApp"]:focus-visible,
         [data-testid="stAppViewContainer"]:focus,
-        [data-testid="stAppViewContainer"]:focus-visible,
-        [data-testid="stAppScrollToBottomContainer"]:focus,
-        [data-testid="stAppScrollToBottomContainer"]:focus-visible,
         [data-testid="stMain"]:focus,
         [data-testid="stMain"]:focus-visible,
         [data-testid="stMainBlockContainer"]:focus,
         section.main:focus,
         section.main:focus-visible{
             outline:none !important;
-            border:none !important;
             box-shadow:none !important;
         }
         </style>
         """,
         unsafe_allow_html=True
     )
-
-    _diagnostico_linha()
-
-
-def _diagnostico_linha():
-    """
-    TEMPORÁRIO. Mostra um painel vermelho no canto inferior com os
-    elementos que podem estar desenhando a linha: elementos largos que
-    começam a ~60px do topo e terminam perto da borda direita, o
-    elemento com foco e as áreas com rolagem. Apagar depois de achar.
-    """
-
-    codigo = r"""
-    <script>
-    (function() {
-        try {
-            var win = window.parent, doc = win.document;
-            if (win.__luxizDiag4) { return; }
-            win.__luxizDiag4 = true;
-
-            function d(el) {
-                var r = el.getBoundingClientRect(), cs = win.getComputedStyle(el);
-                return el.tagName.toLowerCase()
-                    + ' [t=' + el.getAttribute('data-testid') + '] .'
-                    + String(el.className).slice(0, 40)
-                    + ' L' + Math.round(r.left) + ' T' + Math.round(r.top)
-                    + ' R' + Math.round(r.right) + ' B' + Math.round(r.bottom)
-                    + ' ol=' + (cs.outlineStyle !== 'none' ? cs.outlineWidth + ' ' + cs.outlineColor : '0')
-                    + ' bd=' + (cs.borderTopStyle !== 'none' ? cs.borderTopWidth + ' ' + cs.borderTopColor : '0')
-                    + ' sh=' + (cs.boxShadow === 'none' ? '-' : cs.boxShadow.slice(0, 50))
-                    + ' ov=' + cs.overflowY;
-            }
-
-            function montar() {
-                var vw = win.innerWidth, vh = win.innerHeight, o = [];
-                o.push('DIAGNOSTICO 4  vp=' + vw + 'x' + vh);
-                o.push('foco: ' + (doc.activeElement ? d(doc.activeElement) : '-'));
-
-                o.push('');
-                o.push('--- largos, comecam a 45-80px do topo, terminam perto da borda direita ---');
-                var achou = 0;
-                doc.body.querySelectorAll('*').forEach(function(el) {
-                    if (el.closest('#luxiz-diag4')) { return; }
-                    var r = el.getBoundingClientRect();
-                    if (r.top >= 45 && r.top <= 80 && r.right >= vw - 25
-                        && r.right <= vw && r.width > vw * 0.5 && achou < 25) {
-                        o.push(d(el)); achou++;
-                    }
-                });
-                if (!achou) { o.push('(nenhum)'); }
-
-                o.push('');
-                o.push('--- areas com rolagem ---');
-                var rol = 0;
-                doc.body.querySelectorAll('*').forEach(function(el) {
-                    if (el.closest('#luxiz-diag4')) { return; }
-                    var cs = win.getComputedStyle(el);
-                    if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll')
-                        && el.scrollHeight > el.clientHeight + 2 && rol < 12) {
-                        o.push(d(el)); rol++;
-                    }
-                });
-                if (!rol) { o.push('(nenhuma)'); }
-
-                return o.join('\n');
-            }
-
-            win.setTimeout(function() {
-                var p = doc.createElement('div');
-                p.id = 'luxiz-diag4';
-                p.style.cssText = 'position:fixed;left:230px;bottom:60px;width:900px;max-width:calc(100vw - 250px);max-height:60vh;overflow:auto;background:#7f1d1d;color:#fff;font:11px/1.35 monospace;padding:10px 12px;border-radius:8px;z-index:9999999;white-space:pre-wrap;';
-                p.textContent = montar();
-                doc.body.appendChild(p);
-            }, 3000);
-        } catch (e) {}
-    })();
-    </script>
-    """
-
-    st.components.v1.html(codigo, height=0)
 
 
 # =====================================================
