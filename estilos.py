@@ -1068,6 +1068,161 @@ def aplicar_fundo(tema="escuro", tela="app"):
         unsafe_allow_html=True
     )
 
+    _remover_caixa_fantasma()
+
+
+def _remover_caixa_fantasma():
+    """
+    Procura no navegador uma caixa grande (largura >= 50% da tela,
+    altura >= 150px, topo entre 30 e 100px) que esteja FORA do
+    conteúdo da página e tenha borda, contorno ou sombra — é a "linha"
+    que ficava parada na tela enquanto o conteúdo rolava. Quando acha,
+    zera borda/contorno/sombra (inclusive dos pseudo-elementos).
+
+    Diagnóstico: abra o app com &debug=linha no fim da URL e um painel
+    vermelho mostra, no canto da tela, todos os elementos suspeitos
+    (tag, classe, data-testid, posição e qual propriedade desenha a linha).
+    """
+
+    debug = "true" if st.query_params.get("debug") == "linha" else "false"
+
+    codigo = r"""
+        <script>
+        (function() {
+            try {
+                var win = window.parent;
+                var doc = win.document;
+                var DEBUG = __DEBUG__;
+
+                if (win.__luxizCaixaInit) {
+                    return;
+                }
+                win.__luxizCaixaInit = true;
+
+                var estilo = doc.createElement('style');
+                estilo.textContent =
+                    '.luxiz-sem-linha, .luxiz-sem-linha::before, .luxiz-sem-linha::after {' +
+                    'border:none !important; outline:none !important; box-shadow:none !important; }';
+                doc.head.appendChild(estilo);
+
+                function propsDaLinha(el) {
+                    var cs = win.getComputedStyle(el);
+                    var props = [];
+
+                    if (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) {
+                        props.push('outline ' + cs.outlineWidth + ' ' + cs.outlineColor);
+                    }
+
+                    ['Top', 'Right', 'Bottom', 'Left'].forEach(function(lado) {
+                        if (cs['border' + lado + 'Style'] !== 'none'
+                            && parseFloat(cs['border' + lado + 'Width']) > 0) {
+                            props.push('border-' + lado.toLowerCase() + ' ' + cs['border' + lado + 'Width']);
+                        }
+                    });
+
+                    if (cs.boxShadow !== 'none') {
+                        props.push('box-shadow ' + cs.boxShadow);
+                    }
+
+                    ['::before', '::after'].forEach(function(p) {
+                        var ps = win.getComputedStyle(el, p);
+                        if (ps.content !== 'none' && ps.content !== 'normal') {
+                            if (parseFloat(ps.borderTopWidth) > 0
+                                || parseFloat(ps.borderRightWidth) > 0
+                                || (ps.outlineStyle !== 'none' && parseFloat(ps.outlineWidth) > 0)) {
+                                props.push(p + ' com borda/contorno');
+                            }
+                        }
+                    });
+
+                    return props;
+                }
+
+                function mostrarPainel(achados) {
+                    var painel = doc.getElementById('luxiz-debug-linha');
+
+                    if (!painel) {
+                        painel = doc.createElement('div');
+                        painel.id = 'luxiz-debug-linha';
+                        painel.style.cssText =
+                            'position:fixed;right:16px;bottom:56px;max-width:520px;max-height:60vh;' +
+                            'overflow:auto;background:#7f1d1d;color:#fff;font:12px/1.4 monospace;' +
+                            'padding:10px 12px;border-radius:8px;z-index:9999999;white-space:pre-wrap;';
+                        doc.body.appendChild(painel);
+                    }
+
+                    var texto = 'DEBUG LINHA - ' + achados.length + ' suspeito(s)\n';
+
+                    achados.forEach(function(a) {
+                        texto += '\n' + a.el.tagName.toLowerCase()
+                            + ' .' + String(a.el.className).replace('luxiz-sem-linha', '').trim().slice(0, 80)
+                            + ' [testid=' + a.el.getAttribute('data-testid') + ']'
+                            + '\n  top=' + Math.round(a.r.top)
+                            + ' w=' + Math.round(a.r.width)
+                            + ' h=' + Math.round(a.r.height)
+                            + (a.dentro ? ' (dentro do conteudo: NAO mexi)' : ' (fora: limpei)')
+                            + '\n  ' + a.props.join(' | ').slice(0, 200) + '\n';
+                    });
+
+                    painel.textContent = texto;
+                }
+
+                function varrer() {
+                    var vw = win.innerWidth;
+                    var achados = [];
+                    var todos = doc.body.querySelectorAll('*');
+
+                    for (var i = 0; i < todos.length; i++) {
+                        var el = todos[i];
+
+                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE'
+                            || el.id === 'luxiz-debug-linha'
+                            || el.classList.contains('luxiz-sem-linha')) {
+                            continue;
+                        }
+
+                        var r = el.getBoundingClientRect();
+
+                        if (r.width < vw * 0.5 || r.height < 150 || r.top < 30 || r.top > 100) {
+                            continue;
+                        }
+
+                        var props = propsDaLinha(el);
+
+                        if (!props.length) {
+                            continue;
+                        }
+
+                        var dentro = !!el.closest(
+                            '.block-container, [data-testid="stMainBlockContainer"], [data-testid="stSidebar"]'
+                        );
+
+                        achados.push({ el: el, r: r, props: props, dentro: dentro });
+
+                        if (!dentro) {
+                            el.classList.add('luxiz-sem-linha');
+                        }
+                    }
+
+                    if (DEBUG) {
+                        mostrarPainel(achados);
+                    }
+                }
+
+                varrer();
+                win.setInterval(varrer, 1500);
+            } catch (erro) {
+                // Sem acesso ao navegador: não faz nada, nunca quebra o app.
+            }
+        })();
+        </script>
+        """
+
+    st.components.v1.html(
+        codigo.replace("__DEBUG__", debug),
+        height=0
+    )
+
 
 # =====================================================
 # LOGO / CABEÇALHO PADRÃO
