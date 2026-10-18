@@ -19,6 +19,10 @@ MESES_PT = [
 # que já existe em banco.listar_pendentes_checklist_sexta.
 DIA_PREVISTO_CHECKLIST = 4
 
+# O controle de "não preenchido" só vale a partir de outubro/2026.
+# Sextas-feiras anteriores a esta data nunca contam como negativo.
+DATA_INICIO_CONTROLE = date(2026, 10, 1)
+
 
 # =====================================================
 # APOIO: MESES E "NÃO PREENCHIDOS"
@@ -58,25 +62,22 @@ def calcular_nao_preenchidos(responsaveis, registros):
     Para cada sexta-feira já encerrada (anterior a hoje), cada
     responsável cadastrado em Equipamentos que NÃO tem checklist
     daquele equipamento na data prevista vira um "Não preenchido"
-    (negativo).
+    (ficará negativo em seu PDL).
 
     - A sexta-feira de hoje ainda não conta: a pessoa tem o dia todo.
-    - A contagem começa na primeira sexta-feira depois do primeiro
-      checklist já registrado, para não cobrar retroativamente de
-      antes de o sistema ser usado.
+    - Só valem sextas-feiras a partir de DATA_INICIO_CONTROLE
+      (outubro/2026); nada anterior a isso conta.
     - Se o responsável tiver "criado_em" (data de cadastro), sextas
       anteriores a esse cadastro não contam contra ele.
     """
 
-    if not responsaveis or not registros:
+    if not responsaveis:
         return []
 
     hoje = estilos.agora_local().date()
 
-    primeira_data = min(registro["data_checklist"] for registro in registros)
-
-    dia = primeira_data + timedelta(
-        days=(DIA_PREVISTO_CHECKLIST - primeira_data.weekday()) % 7
+    dia = DATA_INICIO_CONTROLE + timedelta(
+        days=(DIA_PREVISTO_CHECKLIST - DATA_INICIO_CONTROLE.weekday()) % 7
     )
 
     sextas = []
@@ -138,11 +139,12 @@ def calcular_nao_preenchidos(responsaveis, registros):
 
 def _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero):
 
-    st.markdown("##### 🚫 Não preenchidos (negativo)")
+    st.markdown("##### 🚫 Não preenchidos — ficará negativo em seu PDL")
 
     st.caption(
         "Checklist previsto para toda sexta-feira. Quem não registrou "
-        "na data prevista fica como negativo."
+        "na data prevista ficará negativo em seu PDL. Vale a partir de "
+        "outubro/2026."
     )
 
     linhas_html = "".join(
@@ -158,7 +160,7 @@ def _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero):
         🚫 <strong>{item['data'].strftime('%d/%m/%Y')}</strong> —
         {html.escape(str(item['nome']))}
         ({html.escape(rotulo_numero)}: {html.escape(item['numero'])})
-        — não preencheu o checklist
+        — não preencheu o checklist e ficará negativo em seu PDL
         </div>
         """
         for item in pendentes_mes
@@ -193,8 +195,8 @@ def renderizar_checklist(
 ):
     """
     funcao_responsaveis: se informada (Hidráulicos e Carrinhos), ativa a
-    regra de "não preenchido = negativo" com base nos responsáveis
-    cadastrados em Equipamentos.
+    regra de "não preenchido = ficará negativo em seu PDL" com base nos
+    responsáveis cadastrados em Equipamentos (a partir de outubro/2026).
     """
 
     st.subheader(
@@ -291,7 +293,8 @@ def renderizar_checklist(
         return
 
     # =====================================================
-    # NÃO PREENCHIDOS (só Hidráulicos e Carrinhos)
+    # NÃO PREENCHIDOS — ficará negativo em seu PDL
+    # (só Hidráulicos e Carrinhos, a partir de outubro/2026)
     # =====================================================
 
     controla_nao_preenchidos = funcao_responsaveis is not None
@@ -328,7 +331,11 @@ def renderizar_checklist(
             st.metric(
                 "🚫 Não preenchidos",
                 len(nao_preenchidos),
-                help="Sextas-feiras já encerradas em que o responsável não registrou o checklist."
+                help=(
+                    "Sextas-feiras já encerradas (a partir de outubro/2026) em "
+                    "que o responsável não registrou o checklist e ficará "
+                    "negativo em seu PDL."
+                )
             )
 
     st.write("")
@@ -751,7 +758,7 @@ def renderizar_checklist(
                     "Data prevista": item["data"],
                     "Responsável": item["nome"],
                     rotulo_numero: item["numero"],
-                    "Situação": "Não preenchido"
+                    "Situação": "Não preenchido — ficará negativo em seu PDL"
                 }
                 for item in nao_preenchidos
             ]).to_excel(
