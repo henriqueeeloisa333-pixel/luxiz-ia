@@ -1068,23 +1068,16 @@ def aplicar_fundo(tema="escuro", tela="app"):
         unsafe_allow_html=True
     )
 
-    _remover_caixa_fantasma()
+    _diagnostico_linha()
 
 
-def _remover_caixa_fantasma():
+def _diagnostico_linha():
     """
-    Procura no navegador uma caixa grande (largura >= 50% da tela,
-    altura >= 150px, topo entre 30 e 100px) que esteja FORA do
-    conteúdo da página e tenha borda, contorno ou sombra — é a "linha"
-    que ficava parada na tela enquanto o conteúdo rolava. Quando acha,
-    zera borda/contorno/sombra (inclusive dos pseudo-elementos).
-
-    Diagnóstico: abra o app com &debug=linha no fim da URL e um painel
-    vermelho mostra, no canto da tela, todos os elementos suspeitos
-    (tag, classe, data-testid, posição e qual propriedade desenha a linha).
+    TEMPORÁRIO. Mostra um painel vermelho com: se o app é a página
+    principal ou está dentro de outra, todos os iframes, todos os
+    elementos grandes fixos/absolutos (inclusive os que ignoram clique)
+    e tudo que termina perto da borda direita da tela.
     """
-
-    debug = "false" if st.query_params.get("debug") == "off" else "true"
 
     codigo = r"""
         <script>
@@ -1092,174 +1085,109 @@ def _remover_caixa_fantasma():
             try {
                 var win = window.parent;
                 var doc = win.document;
-                var DEBUG = __DEBUG__;
 
-                if (win.__luxizCaixaInit) {
-                    return;
-                }
-                win.__luxizCaixaInit = true;
+                if (win.__luxizDiag2) { return; }
+                win.__luxizDiag2 = true;
 
-                var estilo = doc.createElement('style');
-                estilo.textContent =
-                    '.luxiz-sem-linha, .luxiz-sem-linha::before, .luxiz-sem-linha::after {' +
-                    'border:none !important; outline:none !important; box-shadow:none !important; }';
-                doc.head.appendChild(estilo);
-
-                function propsDaLinha(el) {
-                    var cs = win.getComputedStyle(el);
-                    var props = [];
-
-                    if (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) {
-                        props.push('outline ' + cs.outlineWidth + ' ' + cs.outlineColor);
-                    }
-
-                    ['Top', 'Right', 'Bottom', 'Left'].forEach(function(lado) {
-                        if (cs['border' + lado + 'Style'] !== 'none'
-                            && parseFloat(cs['border' + lado + 'Width']) > 0) {
-                            props.push('border-' + lado.toLowerCase() + ' ' + cs['border' + lado + 'Width']);
-                        }
-                    });
-
-                    if (cs.boxShadow !== 'none') {
-                        props.push('box-shadow ' + cs.boxShadow);
-                    }
-
-                    ['::before', '::after'].forEach(function(p) {
-                        var ps = win.getComputedStyle(el, p);
-                        if (ps.content !== 'none' && ps.content !== 'normal') {
-                            if (parseFloat(ps.borderTopWidth) > 0
-                                || parseFloat(ps.borderRightWidth) > 0
-                                || (ps.outlineStyle !== 'none' && parseFloat(ps.outlineWidth) > 0)) {
-                                props.push(p + ' com borda/contorno');
-                            }
-                        }
-                    });
-
-                    return props;
-                }
+                function px(v) { return parseFloat(v) > 0; }
 
                 function descrever(el) {
                     var cs = win.getComputedStyle(el);
                     var r = el.getBoundingClientRect();
+                    var b = ['Top', 'Right', 'Bottom', 'Left'].map(function(l) {
+                        return cs['border' + l + 'Style'] !== 'none' ? cs['border' + l + 'Width'] : '0';
+                    }).join('/');
+                    var pseudo = ['::before', '::after'].map(function(p) {
+                        var ps = win.getComputedStyle(el, p);
+                        return (ps.content !== 'none' && ps.content !== 'normal') ? p.slice(2, 3) : '';
+                    }).join('');
                     return el.tagName.toLowerCase()
-                        + '.' + String(el.className).replace('luxiz-sem-linha', '').trim().slice(0, 50)
+                        + '.' + String(el.className).slice(0, 45)
+                        + (el.id ? '#' + el.id : '')
                         + ' [t=' + el.getAttribute('data-testid') + ']'
-                        + ' pos=' + cs.position
-                        + ' top=' + Math.round(r.top) + ' left=' + Math.round(r.left)
+                        + ' pos=' + cs.position + ' pe=' + cs.pointerEvents + ' z=' + cs.zIndex
+                        + ' x=' + Math.round(r.left) + ',' + Math.round(r.top)
                         + ' w=' + Math.round(r.width) + ' h=' + Math.round(r.height)
-                        + ' bt=' + cs.borderTopWidth + '/' + cs.borderTopStyle
-                        + ' ol=' + cs.outlineWidth + '/' + cs.outlineStyle
+                        + ' b=' + b
+                        + ' ol=' + (cs.outlineStyle !== 'none' ? cs.outlineWidth : '0')
                         + ' sh=' + (cs.boxShadow === 'none' ? '-' : 'sim')
-                        + ' bg=' + (cs.backgroundImage === 'none' ? '-' : 'img');
+                        + ' pseudo=' + (pseudo || '-');
                 }
 
-                function amostrar() {
+                function montar() {
                     var vw = win.innerWidth, vh = win.innerHeight;
-                    var vistos = new Set();
-                    var linhas = [];
+                    var out = [];
 
-                    function add(x, y) {
-                        doc.elementsFromPoint(x, y).forEach(function(el) {
-                            if (el.id === 'luxiz-debug-linha' || vistos.has(el)) { return; }
-                            vistos.add(el);
-                            linhas.push(descrever(el));
-                        });
-                    }
+                    out.push('DIAGNOSTICO 2');
+                    out.push('viewport ' + vw + 'x' + vh + ' dpr=' + win.devicePixelRatio
+                        + ' | app e a pagina principal: ' + (win.top === win));
+                    out.push('');
+                    out.push('--- IFRAMES ---');
 
-                    for (var y = 30; y <= 100; y += 2) { add(Math.round(vw / 2), y); }
-                    for (var x = vw - 40; x <= vw - 6; x += 2) { add(x, Math.round(vh / 2)); }
+                    var ifr = doc.querySelectorAll('iframe');
+                    if (!ifr.length) { out.push('(nenhum)'); }
+                    ifr.forEach(function(f) { out.push(descrever(f)); });
 
-                    return linhas;
-                }
+                    out.push('');
+                    out.push('--- GRANDES (>=40% da tela) fixos/absolutos/sticky ---');
 
-                function mostrarPainel(achados) {
-                    var painel = doc.getElementById('luxiz-debug-linha');
+                    var grandes = [], borda = [];
+                    doc.body.querySelectorAll('*').forEach(function(el) {
+                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.id === 'luxiz-diag2') { return; }
+                        var r = el.getBoundingClientRect();
+                        if (r.height <= 0) { return; }
+                        var cs = win.getComputedStyle(el);
 
-                    if (!painel) {
-                        painel = doc.createElement('div');
-                        painel.id = 'luxiz-debug-linha';
-                        painel.style.cssText =
-                            'position:fixed;left:90px;bottom:60px;max-width:760px;max-height:70vh;' +
-                            'overflow:auto;background:#7f1d1d;color:#fff;font:12px/1.4 monospace;' +
-                            'padding:10px 12px;border-radius:8px;z-index:9999999;white-space:pre-wrap;';
-                        doc.body.appendChild(painel);
-                    }
-
-                    var texto = 'DEBUG LINHA - ' + achados.length + ' suspeito(s)\n';
-
-                    achados.forEach(function(a) {
-                        texto += '\n' + a.el.tagName.toLowerCase()
-                            + ' .' + String(a.el.className).replace('luxiz-sem-linha', '').trim().slice(0, 80)
-                            + ' [testid=' + a.el.getAttribute('data-testid') + ']'
-                            + '\n  top=' + Math.round(a.r.top)
-                            + ' w=' + Math.round(a.r.width)
-                            + ' h=' + Math.round(a.r.height)
-                            + (a.dentro ? ' (dentro do conteudo: NAO mexi)' : ' (fora: limpei)')
-                            + '\n  ' + a.props.join(' | ').slice(0, 200) + '\n';
+                        if (r.width >= vw * 0.4 && r.height >= vh * 0.4
+                            && (cs.position === 'fixed' || cs.position === 'absolute' || cs.position === 'sticky')) {
+                            grandes.push(descrever(el));
+                        }
+                        if (r.right >= vw - 18 && r.right <= vw - 8 && r.height >= vh * 0.4) {
+                            borda.push(descrever(el));
+                        }
                     });
 
-                    texto += '\n--- ELEMENTOS NOS PONTOS DA LINHA (topo e borda direita) ---\n';
-                    texto += 'viewport ' + win.innerWidth + 'x' + win.innerHeight + ' dpr=' + win.devicePixelRatio + '\n';
-                    amostrar().slice(0, 70).forEach(function(l) { texto += '\n' + l; });
+                    grandes.slice(0, 40).forEach(function(l) { out.push(l); });
+                    if (!grandes.length) { out.push('(nenhum)'); }
 
-                    painel.textContent = texto;
+                    out.push('');
+                    out.push('--- TERMINAM A 8-18px DA BORDA DIREITA ---');
+                    borda.slice(0, 30).forEach(function(l) { out.push(l); });
+                    if (!borda.length) { out.push('(nenhum)'); }
+
+                    out.push('');
+                    out.push('--- html / body ---');
+                    out.push(descrever(doc.documentElement));
+                    out.push(descrever(doc.body));
+
+                    return out.join('\n');
                 }
 
-                function varrer() {
-                    var vw = win.innerWidth;
-                    var achados = [];
-                    var todos = doc.body.querySelectorAll('*');
-
-                    for (var i = 0; i < todos.length; i++) {
-                        var el = todos[i];
-
-                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE'
-                            || el.id === 'luxiz-debug-linha'
-                            || el.classList.contains('luxiz-sem-linha')) {
-                            continue;
-                        }
-
-                        var r = el.getBoundingClientRect();
-
-                        if (r.width < vw * 0.5 || r.height < 150 || r.top < 30 || r.top > 100) {
-                            continue;
-                        }
-
-                        var props = propsDaLinha(el);
-
-                        if (!props.length) {
-                            continue;
-                        }
-
-                        var dentro = !!el.closest(
-                            '.block-container, [data-testid="stMainBlockContainer"], [data-testid="stSidebar"]'
-                        );
-
-                        achados.push({ el: el, r: r, props: props, dentro: dentro });
-
-                        if (!dentro) {
-                            el.classList.add('luxiz-sem-linha');
-                        }
+                function mostrar() {
+                    var painel = doc.getElementById('luxiz-diag2');
+                    if (!painel) {
+                        painel = doc.createElement('div');
+                        painel.id = 'luxiz-diag2';
+                        painel.style.cssText =
+                            'position:fixed;left:90px;bottom:60px;width:900px;max-width:calc(100vw - 110px);' +
+                            'max-height:70vh;overflow:auto;background:#7f1d1d;color:#fff;' +
+                            'font:11px/1.35 monospace;padding:10px 12px;border-radius:8px;' +
+                            'z-index:9999999;white-space:pre-wrap;';
+                        doc.body.appendChild(painel);
                     }
-
-                    if (DEBUG) {
-                        mostrarPainel(achados);
-                    }
+                    painel.textContent = montar();
                 }
 
-                varrer();
-                win.setInterval(varrer, 1500);
+                win.setTimeout(mostrar, 2500);
+                win.setInterval(mostrar, 5000);
             } catch (erro) {
-                // Sem acesso ao navegador: não faz nada, nunca quebra o app.
+                // Sem acesso ao navegador: não faz nada.
             }
         })();
         </script>
         """
 
-    st.components.v1.html(
-        codigo.replace("__DEBUG__", debug),
-        height=0
-    )
+    st.components.v1.html(codigo, height=0)
 
 
 # =====================================================
