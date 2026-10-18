@@ -17,6 +17,7 @@ import epi
 import estoque
 import solicitacoes
 import recordes
+import sac_automatico
 import efeito_login
 import notificacoes
 import perfil
@@ -192,6 +193,10 @@ banco.inicializar_banco()
 # medalhas dos períodos já fechados (o gestor exporta e apaga os
 # registros no começo de cada trimestre — o histórico não pode se perder).
 recordes.proteger_medalhas_na_exclusao()
+
+# SAC automático: as reclamações do mês passam a ser contadas sozinhas
+# pelos cards da Análise Técnica (só a meta continua manual).
+sac_automatico.ativar()
 
 # =====================================================
 # RESTAURA SESSÃO PELO TOKEN DA URL
@@ -2096,8 +2101,9 @@ def render_conteudo_inicio():
         ),
         (
             "😊", "SAC", "#22c55e",
-            "Registre o número de reclamações do mês e a meta estabelecida, e "
-            "acompanhe as ocorrências por pessoa na Análise Técnica.",
+            "As reclamações do mês são contadas sozinhas, conforme os chamados "
+            "são registrados na Análise Técnica. No Administrativo você define "
+            "apenas a meta do mês; acompanhe as ocorrências por pessoa nos cards.",
             "Medir a qualidade operacional, identificar gargalos e agir antes que "
             "as reclamações aumentem."
         ),
