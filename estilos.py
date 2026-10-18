@@ -74,14 +74,23 @@ def _css_base(tema):
         <style>
 
         header{visibility:hidden;}
-        [data-testid="stHeader"],
-        [data-testid="stToolbar"]{
+        [data-testid="stHeader"]{
+            height:0 !important;
+            min-height:0 !important;
             background:transparent !important;
             border:none !important;
             box-shadow:none !important;
+            pointer-events:none !important;
         }
+        [data-testid="stToolbar"],
         [data-testid="stDecoration"]{
             display:none !important;
+        }
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="collapsedControl"],
+        [data-testid="stExpandSidebarButton"]{
+            visibility:visible !important;
+            pointer-events:auto !important;
         }
         header [data-testid="collapsedControl"]{
             visibility:visible !important;
@@ -366,14 +375,23 @@ def _css_base(tema):
     <style>
 
     header{visibility:hidden;}
-        [data-testid="stHeader"],
-        [data-testid="stToolbar"]{
+        [data-testid="stHeader"]{
+            height:0 !important;
+            min-height:0 !important;
             background:transparent !important;
             border:none !important;
             box-shadow:none !important;
+            pointer-events:none !important;
         }
+        [data-testid="stToolbar"],
         [data-testid="stDecoration"]{
             display:none !important;
+        }
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="collapsedControl"],
+        [data-testid="stExpandSidebarButton"]{
+            visibility:visible !important;
+            pointer-events:auto !important;
         }
     header [data-testid="collapsedControl"]{
         visibility:visible !important;
