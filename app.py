@@ -17,7 +17,6 @@ import epi
 import estoque
 import solicitacoes
 import recordes
-import sac_automatico
 import efeito_login
 import notificacoes
 import perfil
