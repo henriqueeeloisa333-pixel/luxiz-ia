@@ -74,6 +74,15 @@ def _css_base(tema):
         <style>
 
         header{visibility:hidden;}
+        [data-testid="stHeader"],
+        [data-testid="stToolbar"]{
+            background:transparent !important;
+            border:none !important;
+            box-shadow:none !important;
+        }
+        [data-testid="stDecoration"]{
+            display:none !important;
+        }
         header [data-testid="collapsedControl"]{
             visibility:visible !important;
         }
@@ -357,6 +366,15 @@ def _css_base(tema):
     <style>
 
     header{visibility:hidden;}
+        [data-testid="stHeader"],
+        [data-testid="stToolbar"]{
+            background:transparent !important;
+            border:none !important;
+            box-shadow:none !important;
+        }
+        [data-testid="stDecoration"]{
+            display:none !important;
+        }
     header [data-testid="collapsedControl"]{
         visibility:visible !important;
     }
