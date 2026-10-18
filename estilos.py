@@ -17,7 +17,9 @@ FUSO_PADRAO = ZoneInfo("America/Campo_Grande")
 
 def horario_local(momento):
 
-    if momento is None:
+    # Tolerante a nulos: None ou NaT (o pandas converte None em NaT,
+    # e NaT != NaT é verdadeiro, por isso a segunda checagem).
+    if momento is None or momento != momento:
         return None
 
     if momento.tzinfo is None:
