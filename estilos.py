@@ -1084,7 +1084,7 @@ def _remover_caixa_fantasma():
     (tag, classe, data-testid, posição e qual propriedade desenha a linha).
     """
 
-    debug = "true" if st.query_params.get("debug") == "linha" else "false"
+    debug = "false" if st.query_params.get("debug") == "off" else "true"
 
     codigo = r"""
         <script>
@@ -1138,6 +1138,40 @@ def _remover_caixa_fantasma():
                     return props;
                 }
 
+                function descrever(el) {
+                    var cs = win.getComputedStyle(el);
+                    var r = el.getBoundingClientRect();
+                    return el.tagName.toLowerCase()
+                        + '.' + String(el.className).replace('luxiz-sem-linha', '').trim().slice(0, 50)
+                        + ' [t=' + el.getAttribute('data-testid') + ']'
+                        + ' pos=' + cs.position
+                        + ' top=' + Math.round(r.top) + ' left=' + Math.round(r.left)
+                        + ' w=' + Math.round(r.width) + ' h=' + Math.round(r.height)
+                        + ' bt=' + cs.borderTopWidth + '/' + cs.borderTopStyle
+                        + ' ol=' + cs.outlineWidth + '/' + cs.outlineStyle
+                        + ' sh=' + (cs.boxShadow === 'none' ? '-' : 'sim')
+                        + ' bg=' + (cs.backgroundImage === 'none' ? '-' : 'img');
+                }
+
+                function amostrar() {
+                    var vw = win.innerWidth, vh = win.innerHeight;
+                    var vistos = new Set();
+                    var linhas = [];
+
+                    function add(x, y) {
+                        doc.elementsFromPoint(x, y).forEach(function(el) {
+                            if (el.id === 'luxiz-debug-linha' || vistos.has(el)) { return; }
+                            vistos.add(el);
+                            linhas.push(descrever(el));
+                        });
+                    }
+
+                    for (var y = 30; y <= 100; y += 2) { add(Math.round(vw / 2), y); }
+                    for (var x = vw - 40; x <= vw - 6; x += 2) { add(x, Math.round(vh / 2)); }
+
+                    return linhas;
+                }
+
                 function mostrarPainel(achados) {
                     var painel = doc.getElementById('luxiz-debug-linha');
 
@@ -1145,7 +1179,7 @@ def _remover_caixa_fantasma():
                         painel = doc.createElement('div');
                         painel.id = 'luxiz-debug-linha';
                         painel.style.cssText =
-                            'position:fixed;right:16px;bottom:56px;max-width:520px;max-height:60vh;' +
+                            'position:fixed;left:90px;bottom:60px;max-width:760px;max-height:70vh;' +
                             'overflow:auto;background:#7f1d1d;color:#fff;font:12px/1.4 monospace;' +
                             'padding:10px 12px;border-radius:8px;z-index:9999999;white-space:pre-wrap;';
                         doc.body.appendChild(painel);
@@ -1163,6 +1197,10 @@ def _remover_caixa_fantasma():
                             + (a.dentro ? ' (dentro do conteudo: NAO mexi)' : ' (fora: limpei)')
                             + '\n  ' + a.props.join(' | ').slice(0, 200) + '\n';
                     });
+
+                    texto += '\n--- ELEMENTOS NOS PONTOS DA LINHA (topo e borda direita) ---\n';
+                    texto += 'viewport ' + win.innerWidth + 'x' + win.innerHeight + ' dpr=' + win.devicePixelRatio + '\n';
+                    amostrar().slice(0, 70).forEach(function(l) { texto += '\n' + l; });
 
                     painel.textContent = texto;
                 }
