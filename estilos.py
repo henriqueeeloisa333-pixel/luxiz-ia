@@ -1041,6 +1041,27 @@ def aplicar_fundo(tema="escuro", tela="app"):
         unsafe_allow_html=True
     )
 
+    # Iframes de altura zero (st.components.v1.html(..., height=0)),
+    # usados só para rodar scripts no navegador (aviso de rede e
+    # detecção de tema). O navegador desenha a borda deles como uma
+    # linha fina no topo da página. Escondidos por CSS, os scripts
+    # continuam executando normalmente.
+    st.markdown(
+        """
+        <style>
+        iframe[height="0"]{
+            display:none !important;
+            border:none !important;
+        }
+        div[data-testid="stElementContainer"]:has(> iframe[height="0"]),
+        div[data-testid="stElementContainer"]:has(iframe[height="0"]){
+            display:none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 # =====================================================
 # LOGO / CABEÇALHO PADRÃO
