@@ -1,3 +1,5 @@
+import html
+
 import streamlit as st
 import banco
 import estilos
@@ -72,6 +74,178 @@ def janela_horario(agendamento):
     return (
         f"⏰ {agendamento['hora_inicio'].strftime('%H:%M')} às "
         f"{agendamento['hora_fim'].strftime('%H:%M')}"
+    )
+
+
+# =====================================================
+# CARDS DO PAINEL (visual profissional)
+# =====================================================
+
+CSS_REMANEJAMENTO = """
+<style>
+@keyframes luxizPulsoSuave {
+    0%   { box-shadow: 0 0 0 0 var(--pulso-cor); }
+    70%  { box-shadow: 0 0 0 14px rgba(0,0,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+}
+.lx-reman-card {
+    border-radius: 1.1rem;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    transition: transform .18s ease;
+}
+.lx-reman-card:hover {
+    transform: translateY(-3px);
+}
+.lx-reman-selo {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+}
+.lx-reman-selo.pulsa {
+    animation: luxizPulsoSuave 2.6s ease-in-out infinite;
+}
+</style>
+"""
+
+CONFIG_PRIORIDADE = {
+    "Alta": {
+        "cor": "#ef4444",
+        "emblema": "🚨",
+        "rotulo": "PRIORIDADE ALTA",
+        "descricao": "Execução imediata recomendada.",
+        "nivel": 3,
+        "pulsa": True,
+    },
+    "Média": {
+        "cor": "#f59e0b",
+        "emblema": "⚠️",
+        "rotulo": "PRIORIDADE MÉDIA",
+        "descricao": "Monitoramento operacional ativo.",
+        "nivel": 2,
+        "pulsa": True,
+    },
+    "Normal": {
+        "cor": "#22c55e",
+        "emblema": "✅",
+        "rotulo": "PRIORIDADE NORMAL",
+        "descricao": "Fluxo operacional dentro do esperado.",
+        "nivel": 1,
+        "pulsa": False,
+    },
+}
+
+ORDEM_PRIORIDADE = {"Alta": 0, "Média": 1, "Normal": 2}
+
+
+def _normalizar_prioridade(item):
+
+    prioridade = (item.get("prioridade") or "Normal").strip().capitalize()
+
+    return prioridade if prioridade in CONFIG_PRIORIDADE else "Normal"
+
+
+def _card_remanejamento_html(item, prioridade):
+
+    config = CONFIG_PRIORIDADE[prioridade]
+
+    cor = config["cor"]
+
+    # medidor de urgência: 3 segmentos, preenchidos conforme o nível
+    segmentos = "".join(
+        f'<div style="flex:1;height:7px;border-radius:999px;'
+        f'background:{cor if posicao < config["nivel"] else cor + "26"};"></div>'
+        for posicao in range(3)
+    )
+
+    agendado_html = ""
+
+    if item.get("agendado"):
+
+        agendado_html = (
+            '<div style="margin-top:.7rem;display:flex;align-items:center;'
+            'gap:.5rem;flex-wrap:wrap;">'
+            '<span style="background:#8b5cf6;color:#fff;padding:.18rem .65rem;'
+            'border-radius:999px;font-size:.7rem;font-weight:800;'
+            'letter-spacing:.3px;">⏰ AGENDADO</span>'
+            f'<span style="font-size:.78rem;opacity:.8;">{html.escape(item["janela"])}</span>'
+            '</div>'
+        )
+
+    criado_html = (
+        f'👤 Criado por {html.escape(str(item["criado_por"]))}'
+        if item.get("criado_por") else "👤 Criado pelo sistema"
+    )
+
+    classe_selo = "lx-reman-selo pulsa" if config["pulsa"] else "lx-reman-selo"
+
+    return (
+        f'<div class="lx-reman-card" style="'
+        f'background:linear-gradient(150deg,{cor}22,{cor}08 70%);'
+        f'border:1px solid {cor}55;box-shadow:0 10px 26px {cor}22;">'
+        f'<div style="height:4px;background:linear-gradient(90deg,{cor},{cor}55);"></div>'
+        '<div style="padding:1.05rem 1.2rem 1rem 1.2rem;">'
+
+        '<div style="display:flex;align-items:center;gap:1rem;">'
+        f'<div class="{classe_selo}" style="background:{cor}22;'
+        f'border:2px solid {cor};--pulso-cor:{cor}77;">{config["emblema"]}</div>'
+        '<div style="min-width:0;flex:1;">'
+        f'<span style="display:inline-block;font-size:.7rem;font-weight:800;'
+        f'letter-spacing:.5px;padding:.22rem .7rem;border-radius:999px;'
+        f'background:{cor}26;color:{cor};border:1px solid {cor}66;">'
+        f'{config["rotulo"]}</span>'
+        f'<div style="font-size:1.4rem;font-weight:800;line-height:1.15;margin-top:.4rem;">'
+        f'⚡ {html.escape(item["nome"])}</div>'
+        f'<div style="font-size:.8rem;opacity:.7;margin-top:.15rem;">{config["descricao"]}</div>'
+        '</div></div>'
+
+        f'{agendado_html}'
+
+        '<div style="margin-top:1rem;">'
+        '<div style="display:flex;justify-content:space-between;'
+        'font-size:.66rem;font-weight:800;letter-spacing:.4px;'
+        'text-transform:uppercase;opacity:.6;margin-bottom:.3rem;">'
+        f'<span>Nível de urgência</span><span style="color:{cor};opacity:1;">'
+        f'{config["nivel"]}/3</span></div>'
+        f'<div style="display:flex;gap:.3rem;">{segmentos}</div>'
+        '</div>'
+
+        f'<div style="height:1px;background:{cor}33;margin:.9rem 0 .6rem 0;"></div>'
+        f'<div style="font-size:.74rem;opacity:.7;">{criado_html}</div>'
+        '</div></div>'
+    )
+
+
+def _kpi(icone, rotulo, valor, cor):
+
+    return (
+        f'<div style="background:{cor}14;border:1px solid {cor}40;'
+        'border-radius:.9rem;padding:.75rem .9rem;text-align:center;">'
+        f'<div style="font-size:1.3rem;">{icone}</div>'
+        f'<div style="font-size:1.5rem;font-weight:800;color:{cor};'
+        f'margin-top:.1rem;">{valor}</div>'
+        f'<div style="font-size:.74rem;opacity:.75;margin-top:.1rem;">{rotulo}</div>'
+        '</div>'
+    )
+
+
+def _banner(cor, icone, titulo, texto):
+
+    return (
+        f'<div style="display:flex;align-items:center;gap:.9rem;'
+        f'background:linear-gradient(120deg,{cor}22,{cor}08);'
+        f'border:1px solid {cor}55;border-left:5px solid {cor};'
+        'border-radius:.9rem;padding:.9rem 1.1rem;">'
+        f'<div style="font-size:1.7rem;">{icone}</div>'
+        '<div>'
+        f'<div style="font-weight:800;color:{cor};">{titulo}</div>'
+        f'<div style="font-size:.88rem;opacity:.85;margin-top:.1rem;">{texto}</div>'
+        '</div></div>'
     )
 
 
@@ -172,18 +346,19 @@ def _fragmento_painel(armazem_id_atual):
 
     itens = itens_manuais + itens_agendados_ativos
 
+    # Alta primeiro, depois Média, depois Normal (a ordem original
+    # entre itens da mesma prioridade é mantida)
+    itens.sort(
+        key=lambda item: ORDEM_PRIORIDADE[_normalizar_prioridade(item)]
+    )
+
     alta = 0
     media = 0
     normal = 0
 
     for item in itens:
 
-        prioridade = item.get(
-            "prioridade",
-            "Normal"
-        )
-
-        prioridade = prioridade.strip().capitalize()
+        prioridade = _normalizar_prioridade(item)
 
         if prioridade == "Alta":
             alta += 1
@@ -194,37 +369,7 @@ def _fragmento_painel(armazem_id_atual):
         else:
             normal += 1
 
-    # =====================================================
-    # SELO DE PRIORIDADE (CSS do efeito suave, injetado 1x)
-    # =====================================================
-    # Um "ping" suave e contínuo no selo do lado direito de
-    # cada card, preenchendo o espaço vago sem chamar atenção
-    # demais — a cor do brilho vem de --pulso-cor, definida
-    # individualmente em cada selo (via style inline).
-
-    st.markdown(
-        """
-        <style>
-        @keyframes luxizPulsoSuave {
-            0%   { box-shadow: 0 0 0 0 var(--pulso-cor); }
-            70%  { box-shadow: 0 0 0 14px rgba(0,0,0,0); }
-            100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
-        }
-        .luxiz-selo-prioridade {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.7rem;
-            margin: 4px auto 0;
-            animation: luxizPulsoSuave 2.6s ease-in-out infinite;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown(CSS_REMANEJAMENTO, unsafe_allow_html=True)
 
     # =====================================================
     # PRIORIDADES
@@ -242,161 +387,33 @@ def _fragmento_painel(armazem_id_atual):
 
         for indice, item in enumerate(itens):
 
-            prioridade = item.get(
-                "prioridade",
-                "Normal"
-            )
-
-            prioridade = prioridade.strip().capitalize()
-
             with cols[indice % 3]:
 
-                if prioridade == "Alta":
-
-                    cor_fundo = estilos.cor_fundo_cartao("rgba(220,38,38,0.16)")
-                    cor_borda = "#dc2626"
-                    rotulo_status = "🚨 PRIORIDADE ALTA"
-                    tipo_alerta = "error"
-                    progresso = 100
-                    descricao = "Execução imediata recomendada."
-                    emblema_selo = "🚨"
-
-                elif prioridade == "Média":
-
-                    cor_fundo = estilos.cor_fundo_cartao("rgba(245,158,11,0.16)")
-                    cor_borda = "#f59e0b"
-                    rotulo_status = "⚠️ PRIORIDADE MÉDIA"
-                    tipo_alerta = "warning"
-                    progresso = 60
-                    descricao = "Monitoramento operacional ativo."
-                    emblema_selo = "⚠️"
-
-                else:
-
-                    cor_fundo = estilos.cor_fundo_cartao("rgba(34,197,94,0.16)")
-                    cor_borda = "#22c55e"
-                    rotulo_status = "✅ PRIORIDADE NORMAL"
-                    tipo_alerta = "success"
-                    progresso = 30
-                    descricao = "Fluxo operacional dentro do esperado."
-                    emblema_selo = "✅"
-
-                chave_card = f"card-reman-{item['id']}-{gerar_chave_css(item['nome'])}"
-
                 st.markdown(
-                    f"""
-                    <style>
-                    .st-key-{chave_card} {{
-                        background-color: {cor_fundo} !important;
-                        border: 2px solid {cor_borda} !important;
-                        border-radius: 0.6rem;
-                    }}
-                    </style>
-                    """,
+                    _card_remanejamento_html(
+                        item,
+                        _normalizar_prioridade(item)
+                    ),
                     unsafe_allow_html=True
                 )
-
-                with st.container(border=True, key=chave_card):
-
-                    col_conteudo, col_selo = st.columns([4, 1])
-
-                    with col_conteudo:
-
-                        if tipo_alerta == "error":
-
-                            st.error(rotulo_status)
-
-                        elif tipo_alerta == "warning":
-
-                            st.warning(rotulo_status)
-
-                        else:
-
-                            st.success(rotulo_status)
-
-                        st.markdown(
-                            f"### ⚡ {item['nome']}"
-                        )
-
-                        st.caption(
-                            descricao
-                        )
-
-                        if item.get("agendado"):
-
-                            st.markdown(
-                                """
-                                <span style="
-                                    background:#8b5cf6;
-                                    color:white;
-                                    padding:.15rem .6rem;
-                                    border-radius:999px;
-                                    font-size:.72rem;
-                                    font-weight:700;
-                                    letter-spacing:.3px;
-                                ">⏰ AGENDADO</span>
-                                """,
-                                unsafe_allow_html=True
-                            )
-
-                            st.caption(
-                                item["janela"]
-                            )
-
-                        if item.get("criado_por"):
-
-                            st.caption(
-                                f"👤 Criado por {item['criado_por']}"
-                            )
-
-                    with col_selo:
-
-                        st.markdown(
-                            f"""
-                            <div class="luxiz-selo-prioridade" style="
-                                background:{cor_borda}22;
-                                border:2px solid {cor_borda};
-                                --pulso-cor:{cor_borda}77;
-                            ">{emblema_selo}</div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-
-                    st.progress(
-                        progresso
-                    )
 
     st.divider()
 
     # =====================================================
-    # TOTAIS (agora logo abaixo dos cards)
+    # TOTAIS (logo abaixo dos cards)
     # =====================================================
 
-    c1, c2, c3, c4 = st.columns(4)
+    kpis = [
+        _kpi("📦", "Total", len(itens), "#3b82f6"),
+        _kpi("🔴", "Alta", alta, "#ef4444"),
+        _kpi("🟠", "Média", media, "#f59e0b"),
+        _kpi("🟢", "Normal", normal, "#22c55e"),
+    ]
 
-    with c1:
-        st.metric(
-            "📦 Total",
-            len(itens)
-        )
+    for coluna, kpi_html in zip(st.columns(4), kpis):
 
-    with c2:
-        st.metric(
-            "🔴 Alta",
-            alta
-        )
-
-    with c3:
-        st.metric(
-            "🟠 Média",
-            media
-        )
-
-    with c4:
-        st.metric(
-            "🟢 Normal",
-            normal
-        )
+        with coluna:
+            st.markdown(kpi_html, unsafe_allow_html=True)
 
     st.divider()
 
@@ -410,24 +427,40 @@ def _fragmento_painel(armazem_id_atual):
 
     if alta > 0:
 
-        st.error(
-            f"Existem {alta} prioridade(s) alta(s) aguardando execução."
+        st.markdown(
+            _banner(
+                "#ef4444", "🚨", "Atenção imediata",
+                f"Existem {alta} prioridade(s) alta(s) aguardando execução."
+            ),
+            unsafe_allow_html=True
         )
 
     elif media > 0:
 
-        st.warning(
-            f"Existem {media} prioridade(s) média(s) em monitoramento."
+        st.markdown(
+            _banner(
+                "#f59e0b", "⚠️", "Em monitoramento",
+                f"Existem {media} prioridade(s) média(s) em monitoramento."
+            ),
+            unsafe_allow_html=True
         )
 
     elif normal > 0:
 
-        st.info(
-            "Operação operando dentro da normalidade."
+        st.markdown(
+            _banner(
+                "#3b82f6", "ℹ️", "Operação normal",
+                "Operação operando dentro da normalidade."
+            ),
+            unsafe_allow_html=True
         )
 
     else:
 
-        st.success(
-            "Nenhuma prioridade pendente."
+        st.markdown(
+            _banner(
+                "#22c55e", "✅", "Tudo em dia",
+                "Nenhuma prioridade pendente."
+            ),
+            unsafe_allow_html=True
         )
