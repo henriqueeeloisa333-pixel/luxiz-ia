@@ -660,6 +660,41 @@ def excluir_produto(produto_id, armazem_id):
     _limpar_caches()
 
 
+def zerar_estoque(armazem_id):
+    """
+    Apaga TODOS os produtos, movimentos e mínimos deste armazém.
+    Os locais (Pulmão e armários) são mantidos. Não tem volta.
+    """
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "DELETE FROM estoque_movimentos WHERE armazem_id = %s",
+            (armazem_id,)
+        )
+
+        # os mínimos vão junto (ON DELETE CASCADE)
+        cursor.execute(
+            "DELETE FROM estoque_produtos WHERE armazem_id = %s",
+            (armazem_id,)
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+        banco.liberar(conn)
+
+    _limpar_caches()
+
+
 def unir_produtos(origem_id, destino_id, local_id, armazem_id):
     """
     Junta dois cadastros do mesmo produto (ex.: "Capa de Chuva (ARMÁRIO)"
@@ -1379,9 +1414,48 @@ def render():
 
             with st.expander("⚙️ Gerenciar estoque"):
 
-                tab_min, tab_prod, tab_loc = st.tabs([
-                    "🎯 Estoque mínimo", "📝 Produtos", "🗄️ Locais"
+                tab_min, tab_prod, tab_loc, tab_zerar = st.tabs([
+                    "🎯 Estoque mínimo", "📝 Produtos", "🗄️ Locais", "🧹 Zerar tudo"
                 ])
+
+                # ---- zerar tudo ----
+
+                with tab_zerar:
+
+                    st.warning(
+                        "Isso apaga **todos os produtos, saldos e o histórico** "
+                        f"de movimentações ({len(produtos)} produto(s) e "
+                        f"{len(movimentos)} movimentação(ões) agora). "
+                        "Os locais (Pulmão e armários) são mantidos. "
+                        "**Não dá para desfazer.**"
+                    )
+
+                    if movimentos:
+
+                        st.download_button(
+                            "📥 Baixar o histórico (CSV) antes de apagar",
+                            data=pd.DataFrame(movimentos).to_csv(index=False).encode("utf-8-sig"),
+                            file_name="historico_estoque.csv",
+                            mime="text/csv",
+                            key="estoque_baixar_historico"
+                        )
+
+                    texto_confirmacao = st.text_input(
+                        "Para confirmar, digite ZERAR",
+                        key="estoque_zerar_texto"
+                    )
+
+                    if st.button(
+                        "🧹 Zerar todo o estoque",
+                        key="estoque_zerar_botao",
+                        disabled=texto_confirmacao.strip().upper() != "ZERAR"
+                    ):
+
+                        with estilos.mostrar_processando("zerando o estoque..."):
+                            zerar_estoque(armazem_id)
+
+                        estilos.notificar_sucesso("estoque zerado.")
+                        st.rerun()
 
                 # ---- mínimo por local ----
 
