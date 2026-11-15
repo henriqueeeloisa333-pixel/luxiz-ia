@@ -1,4 +1,5 @@
 import html
+import re
 
 import pandas as pd
 import streamlit as st
@@ -169,18 +170,57 @@ def ler_supervisores(armazem_id):
     return sorted(supervisores)
 
 
+def _partes_da_dupla(dupla):
+    """Separa "João Carvalho & Alan" ou "Ângelo e Alex" em nomes individuais."""
+
+    partes = re.split(
+        r"\s*(?:&|/|,|;|\+|\be\b|\band\b|\bcom\b)\s*",
+        dupla or "",
+        flags=re.IGNORECASE
+    )
+
+    return [parte.strip() for parte in partes if parte and parte.strip()]
+
+
+def ruas_do_usuario(usuario, armazem_id):
+    """
+    Ruas em que o nome do usuário aparece na dupla cadastrada no
+    Dashboard. A comparação usa o nome do login (ex.: Separador.Felipe)
+    e o Perfil (nome, sobrenome e nome completo), sem diferenciar
+    maiúsculas/minúsculas nem acentos.
+    """
+
+    duplas = banco.ler_duplas(armazem_id)
+
+    ruas = []
+
+    for rua in banco.listar_ruas(armazem_id):
+
+        dupla = duplas.get(rua) or ""
+
+        if any(
+            banco.pessoa_pertence_ao_usuario(parte, usuario, armazem_id)
+            for parte in _partes_da_dupla(dupla)
+        ):
+            ruas.append(rua)
+
+    return ruas
+
+
 def criar_avaliacao(
-    rua, dupla, nota, solicitante, supervisor, observacao, armazem_id
+    rua, nota, solicitante, supervisor, observacao, armazem_id
 ):
 
     rua = (rua or "").strip()
-    dupla = (dupla or "").strip()
 
     if not rua or rua not in banco.listar_ruas(armazem_id):
         return False, "Escolha uma rua válida."
 
-    if not dupla:
-        return False, "Informe quem organizou a rua (a dupla)."
+    # o colaborador só pode avaliar a rua em que o nome dele está na dupla
+    if rua not in ruas_do_usuario(solicitante, armazem_id):
+        return False, "Você só pode avaliar a rua em que o seu nome está na dupla."
+
+    dupla = (banco.ler_duplas(armazem_id).get(rua) or "").strip()
 
     nota = round(float(nota), 1)
 
@@ -514,12 +554,16 @@ def _tela_solicitante(avaliacoes, usuario, armazem_id):
             "supervisor responder — se ele mudar a nota, você vê o motivo."
         )
 
-        ruas = banco.listar_ruas(armazem_id)
+        ruas = ruas_do_usuario(usuario, armazem_id)
         supervisores = ler_supervisores(armazem_id)
 
         if not ruas:
 
-            st.info("Nenhuma rua cadastrada ainda.")
+            st.info(
+                "Nenhuma rua está vinculada ao seu nome. Peça ao seu "
+                "supervisor para colocar o seu nome na dupla da sua rua "
+                "(e confira se o seu Perfil está com nome e sobrenome)."
+            )
 
         elif not supervisores:
 
@@ -530,31 +574,30 @@ def _tela_solicitante(avaliacoes, usuario, armazem_id):
 
         else:
 
-            rua = st.selectbox(
-                "Rua que você organizou",
-                ruas,
-                key="aval_rua"
-            )
+            if len(ruas) == 1:
+
+                rua = ruas[0]
+
+                st.markdown(f"**📍 {rua}**")
+
+            else:
+
+                rua = st.selectbox(
+                    "Rua que você organizou",
+                    ruas,
+                    key="aval_rua"
+                )
 
             nota_painel = banco.ler_notas(armazem_id).get(rua)
 
+            dupla_da_rua = banco.ler_duplas(armazem_id).get(rua) or "—"
+
             st.caption(
-                f"Nota atual da {rua} no painel: "
+                f"👥 Dupla: {dupla_da_rua} • Nota atual no painel: "
                 f"{_fmt_nota(nota_painel) if nota_painel else 'ainda sem nota'}"
             )
 
-            dupla_padrao = (
-                banco.ler_duplas(armazem_id).get(rua)
-                or _nome(usuario)
-            )
-
             with st.form("form_avaliacao_rua", clear_on_submit=True):
-
-                dupla = st.text_input(
-                    "Dupla (quem organizou)",
-                    value=dupla_padrao,
-                    key=f"aval_dupla_{rua}"
-                )
 
                 nota = st.slider(
                     "Nota que você acha justa",
@@ -586,7 +629,7 @@ def _tela_solicitante(avaliacoes, usuario, armazem_id):
                 with estilos.mostrar_processando("enviando avaliação..."):
 
                     ok, erro = criar_avaliacao(
-                        rua, dupla, nota, usuario,
+                        rua, nota, usuario,
                         supervisor, observacao, armazem_id
                     )
 
