@@ -1,6 +1,137 @@
 import streamlit as st
 import banco
 import estilos
+import avaliacoes
+
+from datetime import timedelta
+
+
+# =====================================================
+# AVALIAÇÕES DE RUAS (Dashboard)
+# =====================================================
+# - Supervisor (Gestão/Fundador): uma notificação única lista as
+#   avaliações que estão aguardando a resposta dele. O id muda quando
+#   chega uma avaliação nova, então ela volta a aparecer como não lida.
+# - Colaborador (Separador/Conferente): uma notificação para cada
+#   avaliação que o supervisor respondeu nos últimos 7 dias, dizendo
+#   se foi aprovada ou se a nota foi ajustada (com o motivo).
+
+DIAS_AVISO_RESPOSTA_AVALIACAO = 7
+
+
+def _nome_curto(usuario):
+
+    if not usuario:
+        return "—"
+
+    perfil = banco.ler_perfil(usuario)
+
+    if perfil:
+        return banco.nome_completo_perfil(perfil)
+
+    if "." in usuario:
+        return usuario.split(".", 1)[1].strip().title()
+
+    return usuario
+
+
+def _fmt_nota(valor):
+
+    return f"{float(valor):.1f}".replace(".", ",")
+
+
+def _notificacoes_avaliacoes(usuario_atual, armazem_id):
+
+    tipo_usuario = st.session_state.get("tipo_usuario", "usuario")
+
+    supervisor = avaliacoes.eh_supervisor(usuario_atual, tipo_usuario)
+    solicitante = avaliacoes.eh_solicitante(usuario_atual)
+
+    if not (supervisor or solicitante):
+        return []
+
+    avaliacoes._garantir_tabela_avaliacoes()
+
+    registros = avaliacoes.ler_avaliacoes(armazem_id)
+
+    resultado = []
+
+    if supervisor:
+
+        fundador = avaliacoes.eh_fundador(usuario_atual, tipo_usuario)
+
+        pendentes = [
+            a for a in registros
+            if a["status"] == "pendente"
+            and (fundador or a["supervisor"] == usuario_atual)
+        ]
+
+        if pendentes:
+
+            ids = [a["id"] for a in pendentes]
+
+            resultado.append({
+                "tipo": "avaliacao_pendente",
+                "id": f"aval_pend_{max(ids)}_{len(ids)}",
+                "titulo": "📝 Avaliações de ruas aguardando você",
+                "mensagem": (
+                    f"{len(pendentes)} avaliação(ões) enviada(s) por "
+                    f"colaboradores esperando a sua resposta no Dashboard:"
+                ),
+                "itens": [
+                    f"{_nome_curto(a['solicitante'])} — {a['rua']}: "
+                    f"nota proposta {_fmt_nota(a['nota_proposta'])}"
+                    for a in pendentes
+                ]
+            })
+
+    else:
+
+        limite = estilos.agora_local().date() - timedelta(
+            days=DIAS_AVISO_RESPOSTA_AVALIACAO
+        )
+
+        for a in registros:
+
+            if a["solicitante"] != usuario_atual:
+                continue
+
+            if a["status"] not in ("aprovada", "ajustada"):
+                continue
+
+            if not a["respondido_em"] or a["respondido_em"].date() < limite:
+                continue
+
+            quem = _nome_curto(a["respondido_por"])
+
+            if a["status"] == "aprovada":
+
+                resultado.append({
+                    "tipo": "avaliacao_resposta",
+                    "id": f"aval_resp_{a['id']}",
+                    "titulo": f"✅ Avaliação aprovada — {a['rua']}",
+                    "mensagem": (
+                        f"{quem} aprovou a sua nota "
+                        f"{_fmt_nota(a['nota_final'])} para a {a['rua']}."
+                    ),
+                    "itens": []
+                })
+
+            else:
+
+                resultado.append({
+                    "tipo": "avaliacao_resposta",
+                    "id": f"aval_resp_{a['id']}",
+                    "titulo": f"🔄 Nota ajustada — {a['rua']}",
+                    "mensagem": (
+                        f"{quem} mudou a nota da {a['rua']}: você propôs "
+                        f"{_fmt_nota(a['nota_proposta'])} e ficou "
+                        f"{_fmt_nota(a['nota_final'])}."
+                    ),
+                    "itens": [f"Motivo: {a['motivo'] or '—'}"]
+                })
+
+    return resultado
 
 
 # =====================================================
@@ -33,6 +164,18 @@ def _notificacoes_pendentes(usuario_atual, armazem_id):
                     f"{registro['data'].strftime('%d/%m/%Y')}"
                 )
             })
+
+    # =====================================================
+    # AVALIAÇÕES DE RUAS (pedido novo / resposta do supervisor)
+    # =====================================================
+
+    try:
+        notificacoes.extend(
+            _notificacoes_avaliacoes(usuario_atual, armazem_id)
+        )
+    except Exception:
+        # nunca deixa um problema nessa parte derrubar a central
+        pass
 
     # =====================================================
     # CHECKLIST DA SEXTA-FEIRA NÃO REALIZADO
@@ -300,6 +443,30 @@ def _renderizar_notificacao(notificacao, usuario_atual, armazem_id):
                 st.caption(
                     f"• {item_texto}"
                 )
+
+        elif notificacao["tipo"] in ("avaliacao_pendente", "avaliacao_resposta"):
+
+            for item_texto in notificacao.get("itens", []):
+
+                st.caption(
+                    f"• {item_texto}"
+                )
+
+            if st.button(
+                "📊 Abrir Dashboard",
+                key=f"notif_ir_dashboard_{notificacao['id']}"
+            ):
+                banco.marcar_notificacao_lida(
+                    usuario_atual,
+                    notificacao["id"],
+                    armazem_id
+                )
+
+                # fecha a central (se estiver aberta) e vai para o Dashboard
+                st.session_state["_luxiz_abrir_central_notif"] = False
+                st.session_state.aba_atual = "nav_dashboard"
+                st.query_params["aba"] = "nav_dashboard"
+                st.rerun()
 
 
 def _botao_excluir(notificacao, armazem_id, usuario_atual, sufixo):
