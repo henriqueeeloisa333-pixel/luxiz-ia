@@ -1,8 +1,11 @@
+import html
+import math
+import re
+from collections import Counter
+
 import streamlit as st
 import banco
 import estilos
-import re
-from collections import Counter
 
 
 # =====================================================
@@ -70,6 +73,216 @@ def definir_visual(aproveitamento, total_pessoa):
         estilos.cor_fundo_cartao("rgba(220,38,38,0.16)"),
         "#dc2626",
         "🚨 Crítico"
+    )
+
+
+# =====================================================
+# CARD DA PESSOA (visual profissional)
+# =====================================================
+
+COR_ACERTO = "#22c55e"
+COR_ERRO = "#ef4444"
+
+
+def _visual_card(aproveitamento, total_pessoa):
+
+    if not total_pessoa:
+        return "#64748b", "⏳ Sem dados"
+
+    if aproveitamento >= 90:
+        return "#3b82f6", "🏆 Excelência"
+
+    if aproveitamento >= 75:
+        return "#22c55e", "✅ Bom desempenho"
+
+    if aproveitamento >= 50:
+        return "#f59e0b", "⚠️ Atenção"
+
+    return "#ef4444", "🚨 Crítico"
+
+
+def _anel_svg(proporcao, texto_centro, texto_baixo, cor):
+
+    raio = 42
+    circunferencia = 2 * math.pi * raio
+
+    proporcao = max(0.0, min(proporcao, 1.0))
+
+    deslocamento = circunferencia * (1 - proporcao)
+
+    return (
+        '<svg width="108" height="108" viewBox="0 0 100 100" '
+        'style="flex-shrink:0;">'
+        f'<circle cx="50" cy="50" r="{raio}" fill="none" stroke="{cor}" '
+        'stroke-opacity=".18" stroke-width="9"/>'
+        f'<circle cx="50" cy="50" r="{raio}" fill="none" stroke="{cor}" '
+        'stroke-width="9" stroke-linecap="round" '
+        f'stroke-dasharray="{circunferencia:.1f}" '
+        f'stroke-dashoffset="{deslocamento:.1f}" '
+        'transform="rotate(-90 50 50)"/>'
+        f'<text x="50" y="50" text-anchor="middle" dominant-baseline="middle" '
+        f'font-size="25" font-weight="800" fill="{cor}">{texto_centro}</text>'
+        f'<text x="50" y="71" text-anchor="middle" font-size="8.5" '
+        f'fill="currentColor" fill-opacity=".6">{texto_baixo}</text>'
+        '</svg>'
+    )
+
+
+def _sparkline_svg(valores, cor):
+
+    if len(valores) < 2:
+        return ""
+
+    largura, altura, margem = 130, 40, 6
+
+    minimo, maximo = min(valores), max(valores)
+
+    if maximo - minimo < 0.01:
+        minimo, maximo = minimo - 5, maximo + 5
+
+    pontos = []
+
+    for indice, valor in enumerate(valores):
+
+        x = margem + indice * (largura - 2 * margem) / (len(valores) - 1)
+
+        y = altura - margem - (valor - minimo) / (maximo - minimo) * (altura - 2 * margem)
+
+        pontos.append((x, y))
+
+    linha = " ".join(f"{x:.1f},{y:.1f}" for x, y in pontos)
+
+    area = f"{pontos[0][0]:.1f},{altura} {linha} {pontos[-1][0]:.1f},{altura}"
+
+    bolinhas = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{3.6 if k == len(pontos) - 1 else 2.2}" '
+        f'fill="{cor}"/>'
+        for k, (x, y) in enumerate(pontos)
+    )
+
+    return (
+        f'<svg width="{largura}" height="{altura}" '
+        f'viewBox="0 0 {largura} {altura}" style="display:block;">'
+        f'<polygon points="{area}" fill="{cor}" fill-opacity=".14"/>'
+        f'<polyline points="{linha}" fill="none" stroke="{cor}" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'{bolinhas}</svg>'
+    )
+
+
+def _tile(rotulo, valor, cor):
+
+    return (
+        f'<div style="flex:1;min-width:92px;background:{cor}14;'
+        f'border:1px solid {cor}45;border-radius:.8rem;padding:.5rem .75rem;">'
+        f'<div style="font-size:.66rem;font-weight:800;letter-spacing:.4px;'
+        f'text-transform:uppercase;color:{cor};">{rotulo}</div>'
+        f'<div style="font-size:1.55rem;font-weight:800;line-height:1.15;">{valor}</div>'
+        '</div>'
+    )
+
+
+def _corpo_card_html(
+    nome, funcao, emblema, acertos, erros, aproveitamento,
+    cor, rotulo_status, serie, qtd_registros, ultima_data
+):
+
+    total = acertos + erros
+
+    if total:
+        proporcao = aproveitamento / 100
+        centro = f"{aproveitamento:.0f}%"
+    else:
+        proporcao = 0
+        centro = "—"
+
+    # tendência entre as duas últimas auditorias
+    if len(serie) >= 2:
+
+        delta = serie[-1] - serie[-2]
+
+        if delta >= 2:
+            cor_tend, chip_tend = "#22c55e", f"▲ +{delta:.0f} pts na última"
+        elif delta <= -2:
+            cor_tend, chip_tend = "#ef4444", f"▼ −{abs(delta):.0f} pts na última"
+        else:
+            cor_tend, chip_tend = "#94a3b8", "► estável"
+
+    else:
+
+        cor_tend, chip_tend = "#94a3b8", "🕐 sem tendência ainda"
+
+    sparkline = _sparkline_svg(serie, cor)
+
+    sparkline_html = (
+        '<div style="margin-top:.5rem;">'
+        f'{sparkline}'
+        '<div style="font-size:.66rem;opacity:.55;margin-top:.1rem;">'
+        f'aproveitamento das últimas {len(serie)} auditorias</div></div>'
+        if sparkline else ""
+    )
+
+    if total:
+        barra_html = (
+            '<div style="margin-top:1rem;">'
+            '<div style="display:flex;height:9px;border-radius:999px;'
+            f'overflow:hidden;background:{COR_ERRO};">'
+            f'<div style="width:{aproveitamento:.1f}%;background:{COR_ACERTO};"></div>'
+            '</div>'
+            '<div style="display:flex;justify-content:space-between;'
+            'font-size:.68rem;opacity:.65;margin-top:.25rem;">'
+            f'<span>{acertos} acerto(s)</span><span>{erros} erro(s)</span></div>'
+            '</div>'
+        )
+    else:
+        barra_html = ""
+
+    if ultima_data:
+        rodape = (
+            f'📅 Última auditoria: {ultima_data.strftime("%d/%m/%Y")}'
+            f' · {qtd_registros} registro(s)'
+        )
+    else:
+        rodape = "Nenhuma auditoria registrada"
+
+    return (
+        # cabeçalho
+        '<div style="display:flex;justify-content:space-between;'
+        'align-items:flex-start;gap:.6rem;flex-wrap:wrap;">'
+        '<div style="display:flex;align-items:center;gap:.75rem;min-width:0;">'
+        f'<div style="width:52px;height:52px;border-radius:50%;flex-shrink:0;'
+        f'background:linear-gradient(135deg,{cor},{cor}aa);display:flex;'
+        'align-items:center;justify-content:center;font-size:1.5rem;'
+        f'box-shadow:0 0 16px {cor}66;">{emblema}</div>'
+        '<div style="min-width:0;">'
+        f'<div style="font-size:1.2rem;font-weight:800;line-height:1.2;">{html.escape(nome)}</div>'
+        f'<div style="font-size:.8rem;opacity:.7;margin-top:.1rem;">{html.escape(funcao or "Função não informada")}</div>'
+        '</div></div>'
+        f'<span style="font-size:.74rem;font-weight:800;padding:.25rem .7rem;'
+        f'border-radius:999px;background:{cor}26;color:{cor};border:1px solid {cor}66;'
+        f'white-space:nowrap;">{rotulo_status}</span>'
+        '</div>'
+
+        # anel + acertos/erros
+        '<div style="display:flex;align-items:center;gap:1rem;margin-top:1rem;flex-wrap:wrap;">'
+        f'{_anel_svg(proporcao, centro, "aproveitamento", cor)}'
+        '<div style="flex:1;min-width:150px;">'
+        '<div style="display:flex;gap:.6rem;flex-wrap:wrap;">'
+        f'{_tile("✅ Acertos", acertos, COR_ACERTO)}'
+        f'{_tile("❌ Erros", erros, COR_ERRO)}'
+        '</div>'
+        f'<div style="margin-top:.6rem;"><span style="display:inline-block;font-size:.72rem;'
+        f'font-weight:700;padding:.2rem .6rem;border-radius:999px;'
+        f'background:{cor_tend}1f;color:{cor_tend};border:1px solid {cor_tend}55;">'
+        f'{chip_tend}</span></div>'
+        '</div></div>'
+
+        f'{barra_html}'
+        f'{sparkline_html}'
+
+        # rodapé
+        f'<div style="height:1px;background:{cor}33;margin:.9rem 0 .6rem 0;"></div>'
+        f'<div style="font-size:.74rem;opacity:.7;">{rodape}</div>'
     )
 
 
@@ -214,10 +427,28 @@ def render():
 
         emblema = BADGES_FUNCAO.get(funcao_principal, "🧑")
 
-        cor_fundo, cor_borda, rotulo_status = definir_visual(
+        cor, rotulo_status = _visual_card(
             aproveitamento,
             total_pessoa
         )
+
+        registros_cronologicos = sorted(
+            registros_pessoa,
+            key=lambda r: r["data_atividade"]
+        )
+
+        # aproveitamento de cada auditoria, da mais antiga para a mais nova
+        serie = []
+
+        for r in registros_cronologicos:
+
+            acertos_r = r["qtd_acertos"] or 0
+            erros_r = r["qtd_erros"] or 0
+
+            if acertos_r + erros_r > 0:
+                serie.append(acertos_r / (acertos_r + erros_r) * 100)
+
+        serie = serie[-6:]
 
         chave_card = f"card-audit-{gerar_chave_css(nome)}"
 
@@ -225,9 +456,15 @@ def render():
             f"""
             <style>
             .st-key-{chave_card} {{
-                background-color: {cor_fundo} !important;
-                border: 2px solid {cor_borda} !important;
-                border-radius: 0.8rem;
+                background: linear-gradient(150deg, {cor}22, {cor}08 70%) !important;
+                border: 1px solid {cor}55 !important;
+                border-top: 4px solid {cor} !important;
+                border-radius: 1.1rem !important;
+                box-shadow: 0 10px 26px {cor}22;
+                transition: transform .18s ease;
+            }}
+            .st-key-{chave_card}:hover {{
+                transform: translateY(-3px);
             }}
             </style>
             """,
@@ -239,64 +476,22 @@ def render():
             with st.container(border=True, key=chave_card):
 
                 st.markdown(
-                    f"""
-                    <div style="
-                        width:56px;height:56px;border-radius:50%;
-                        background:{cor_borda};
-                        display:flex;align-items:center;justify-content:center;
-                        font-size:1.6rem;margin-bottom:.4rem;
-                        box-shadow:0 0 14px {cor_borda}88;
-                    ">{emblema}</div>
-                    """,
+                    _corpo_card_html(
+                        nome,
+                        funcao_principal,
+                        emblema,
+                        total_acertos,
+                        total_erros,
+                        aproveitamento,
+                        cor,
+                        rotulo_status,
+                        serie,
+                        len(registros_pessoa),
+                        registros_cronologicos[-1]["data_atividade"]
+                        if registros_cronologicos else None
+                    ),
                     unsafe_allow_html=True
                 )
-
-                st.markdown(
-                    f"### {nome}"
-                )
-
-                st.caption(
-                    funcao_principal or "Função não informada"
-                )
-
-                if total_pessoa:
-
-                    if cor_borda == "#3b82f6":
-                        st.info(rotulo_status)
-                    elif cor_borda == "#22c55e":
-                        st.success(rotulo_status)
-                    elif cor_borda == "#f59e0b":
-                        st.warning(rotulo_status)
-                    else:
-                        st.error(rotulo_status)
-
-                else:
-
-                    st.caption(rotulo_status)
-
-                col_a, col_b = st.columns(2)
-
-                with col_a:
-                    st.metric("✅ Acertos", total_acertos)
-
-                with col_b:
-                    st.metric("❌ Erros", total_erros)
-
-                st.progress(
-                    aproveitamento / 100 if total_pessoa else 0
-                )
-
-                if total_pessoa:
-
-                    st.caption(
-                        f"**{aproveitamento:.0f}%** de aproveitamento"
-                    )
-
-                else:
-
-                    st.caption(
-                        "Sem dados suficientes."
-                    )
 
                 with st.popover("📋 Saber mais"):
 
