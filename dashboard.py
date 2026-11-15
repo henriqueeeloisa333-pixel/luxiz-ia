@@ -1,6 +1,7 @@
 import streamlit as st
 import banco
 import estilos
+import avaliacoes
 import pandas as pd
 import re
 
@@ -43,6 +44,8 @@ def gerar_tendencia(historico):
 # =====================================================
 
 def render():
+
+    estilos.exibir_notificacao_pendente()
 
     armazem_id_atual = st.session_state.get(
         "armazem_visualizado_id",
@@ -92,6 +95,15 @@ def render():
         st.metric("🚨 Alertas", alertas)
 
     st.divider()
+
+    # =====================================================
+    # AVALIAÇÕES DE RUAS (autoavaliação + conferência)
+    # =====================================================
+    # Separador/Conferente: pedem a avaliação da rua que organizaram.
+    # Gestão/Fundador: aprovam ou ajustam a nota (com motivo).
+    # Para os demais perfis, essa seção não aparece.
+
+    avaliacoes.render(armazem_id_atual)
 
     # =====================================================
     # PAINEL OPERACIONAL
