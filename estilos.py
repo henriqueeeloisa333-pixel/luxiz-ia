@@ -795,6 +795,302 @@ def _css_overlay():
 
 
 # =====================================================
+# CSS DA TELA DE LOGIN
+# =====================================================
+
+def _css_login(tema):
+
+    if tema == "claro":
+        v = {
+            "__BG__": "linear-gradient(160deg,#f8fafc 0%,#eef2ff 50%,#e0f2fe 100%)",
+            "__TEXT__": "#0f172a",
+            "__MUTED__": "#64748b",
+            "__CARD_BG__": "rgba(255,255,255,.72)",
+            "__CARD_BORDER__": "rgba(15,23,42,.08)",
+            "__CARD_SHADOW__": "0 30px 70px rgba(30,64,175,.14), 0 0 60px rgba(56,189,248,.10)",
+            "__INPUT_BG__": "rgba(255,255,255,.92)",
+            "__INPUT_BORDER__": "rgba(15,23,42,.14)",
+            "__AUTOFILL__": "#ffffff",
+            "__PILL_BG__": "rgba(255,255,255,.7)",
+            "__PILL_BORDER__": "rgba(2,132,199,.25)",
+            "__PILL_TEXT__": "#0369a1",
+        }
+    else:
+        v = {
+            "__BG__": "linear-gradient(160deg,#050816 0%,#0a1230 45%,#0b0f24 100%)",
+            "__TEXT__": "#e2e8f0",
+            "__MUTED__": "#94a3b8",
+            "__CARD_BG__": "rgba(15,23,42,.55)",
+            "__CARD_BORDER__": "rgba(148,163,184,.18)",
+            "__CARD_SHADOW__": "0 30px 80px rgba(0,0,0,.50), 0 0 60px rgba(56,189,248,.08)",
+            "__INPUT_BG__": "rgba(2,6,23,.55)",
+            "__INPUT_BORDER__": "rgba(148,163,184,.22)",
+            "__AUTOFILL__": "#0b1228",
+            "__PILL_BG__": "rgba(255,255,255,.05)",
+            "__PILL_BORDER__": "rgba(56,189,248,.28)",
+            "__PILL_TEXT__": "#7dd3fc",
+        }
+
+    css = """
+    <style>
+
+    @keyframes lxCardIn{
+        from{ opacity:0; transform:translateY(22px) scale(.98); }
+        to{ opacity:1; transform:translateY(0) scale(1); }
+    }
+    @keyframes lxLinhaLuz{
+        0%{ background-position:0% 50%; }
+        100%{ background-position:200% 50%; }
+    }
+    @keyframes lxVarredura{
+        0%{ left:-70%; }
+        60%,100%{ left:140%; }
+    }
+    @keyframes lxLogoFlutua{
+        0%,100%{ transform:translateY(0); }
+        50%{ transform:translateY(-4px); }
+    }
+    @keyframes lxFadeUp{
+        from{ opacity:0; transform:translateY(14px); }
+        to{ opacity:1; transform:translateY(0); }
+    }
+
+    .stApp{
+        background:__BG__;
+        color:__TEXT__;
+    }
+
+    .block-container{
+        padding-top:1.5rem !important;
+    }
+
+    /* iframes de altura zero (scripts de tema/rede) não ocupam espaço */
+    iframe[height="0"]{
+        display:none !important;
+    }
+    .stElementContainer:has(> iframe[height="0"]){
+        display:none !important;
+    }
+
+    /* ---------- logo ---------- */
+    .luxiz-logo{
+        justify-content:center;
+        margin-bottom:6px;
+        animation:lxFadeUp .7s ease both;
+    }
+    .luxiz-logo-imagem{
+        height:88px;
+        animation:lxLogoFlutua 5s ease-in-out infinite;
+    }
+    .luxiz-logo-texto h1{
+        font-size:2.5rem;
+    }
+    .luxiz-logo-texto p{
+        font-size:.68rem;
+        letter-spacing:2.4px;
+    }
+
+    /* ---------- aviso LX Roteiriza ---------- */
+    .luxiz-teaser{
+        display:inline-block;
+        text-align:center;
+        line-height:1.5;
+        max-width:440px;
+        background:__PILL_BG__;
+        border:1px solid __PILL_BORDER__;
+        border-radius:999px;
+        padding:8px 20px;
+        font-size:.8rem;
+        color:__PILL_TEXT__;
+        font-weight:600;
+        backdrop-filter:blur(10px);
+        animation:lxFadeUp .8s ease .1s both;
+    }
+
+    /* ---------- card ---------- */
+    .st-key-login-card{
+        position:relative;
+        overflow:hidden;
+        background:__CARD_BG__ !important;
+        border:1px solid __CARD_BORDER__ !important;
+        border-radius:26px !important;
+        backdrop-filter:blur(24px) saturate(150%);
+        -webkit-backdrop-filter:blur(24px) saturate(150%);
+        box-shadow:__CARD_SHADOW__;
+        padding:18px 14px 8px 14px;
+        animation:lxCardIn .75s cubic-bezier(.2,.8,.2,1) both;
+    }
+
+    /* linha de luz no topo do card */
+    .st-key-login-card::before{
+        content:"";
+        position:absolute;
+        top:0; left:8%;
+        width:84%;
+        height:2px;
+        border-radius:999px;
+        background:linear-gradient(90deg,transparent,#22d3ee,#6366f1,#a855f7,#22d3ee,transparent);
+        background-size:200% 100%;
+        animation:lxLinhaLuz 4s linear infinite;
+        pointer-events:none;
+        z-index:2;
+    }
+
+    /* reflexo de vidro passando */
+    .st-key-login-card::after{
+        content:"";
+        position:absolute;
+        top:0; left:-70%;
+        width:30%; height:100%;
+        background:linear-gradient(115deg,transparent,rgba(255,255,255,.10),transparent);
+        transform:skewX(-18deg);
+        animation:lxVarredura 7s ease-in-out infinite;
+        pointer-events:none;
+        z-index:1;
+    }
+
+    .lx-card-titulo{
+        font-size:1.5rem;
+        font-weight:800;
+        letter-spacing:.2px;
+        color:__TEXT__;
+        margin:2px 0 2px 0;
+    }
+    .lx-card-sub{
+        font-size:.86rem;
+        color:__MUTED__;
+        margin-bottom:10px;
+    }
+
+    /* ---------- campos ---------- */
+    .st-key-login-card label p{
+        font-size:.8rem !important;
+        font-weight:600 !important;
+        letter-spacing:.3px;
+        color:__MUTED__ !important;
+    }
+
+    .st-key-login-card div[data-baseweb="input"],
+    .st-key-login-card div[data-baseweb="base-input"]{
+        background:__INPUT_BG__ !important;
+        border-radius:13px !important;
+    }
+    .st-key-login-card div[data-baseweb="input"]{
+        border:1px solid __INPUT_BORDER__ !important;
+        transition:border-color .2s ease, box-shadow .2s ease;
+    }
+    .st-key-login-card div[data-baseweb="input"]:focus-within{
+        border-color:#22d3ee !important;
+        box-shadow:0 0 0 3px rgba(34,211,238,.18), 0 0 22px rgba(34,211,238,.14) !important;
+    }
+    .st-key-login-card input{
+        height:48px;
+        color:__TEXT__ !important;
+        -webkit-text-fill-color:__TEXT__ !important;
+        caret-color:#22d3ee;
+        background:transparent !important;
+    }
+    .st-key-login-card input::placeholder{
+        color:__MUTED__ !important;
+        -webkit-text-fill-color:__MUTED__ !important;
+        opacity:.65;
+    }
+    .st-key-login-card input:-webkit-autofill{
+        -webkit-box-shadow:0 0 0 1000px __AUTOFILL__ inset !important;
+        -webkit-text-fill-color:__TEXT__ !important;
+        border-radius:12px;
+    }
+    .st-key-login-card div[data-baseweb="input"] svg{
+        fill:__MUTED__ !important;
+    }
+
+    /* ---------- botão Entrar ---------- */
+    .st-key-login-card div[data-testid="stFormSubmitButton"] button{
+        position:relative;
+        overflow:hidden;
+        height:52px;
+        border:none !important;
+        border-radius:14px !important;
+        color:#ffffff !important;
+        font-weight:700 !important;
+        letter-spacing:.4px;
+        background:linear-gradient(90deg,#06b6d4,#3b82f6 55%,#7c3aed) !important;
+        background-size:170% 100% !important;
+        background-position:0% 50%;
+        box-shadow:0 10px 28px rgba(59,130,246,.38);
+        transition:background-position .45s ease, transform .2s ease, box-shadow .2s ease;
+    }
+    .st-key-login-card div[data-testid="stFormSubmitButton"] button:hover{
+        background-position:100% 50% !important;
+        transform:translateY(-2px);
+        box-shadow:0 14px 34px rgba(99,102,241,.48);
+    }
+    .st-key-login-card div[data-testid="stFormSubmitButton"] button:active{
+        transform:translateY(0);
+    }
+
+    /* ---------- botão "Para que serve" (discreto) ---------- */
+    .st-key-login-sobre button{
+        height:46px;
+        border-radius:14px !important;
+        background:transparent !important;
+        border:1px solid __INPUT_BORDER__ !important;
+        color:__MUTED__ !important;
+        font-weight:600 !important;
+        box-shadow:none !important;
+        transition:all .2s ease;
+        animation:lxFadeUp .9s ease .25s both;
+    }
+    .st-key-login-sobre button:hover{
+        border-color:#22d3ee !important;
+        color:__TEXT__ !important;
+        background:rgba(34,211,238,.07) !important;
+        transform:translateY(-1px);
+    }
+
+    /* ---------- chips de módulos ---------- */
+    .lx-chips{
+        display:flex;
+        flex-wrap:wrap;
+        justify-content:center;
+        gap:8px;
+        margin-top:14px;
+        animation:lxFadeUp 1s ease .35s both;
+    }
+    .lx-chips span{
+        font-size:.72rem;
+        font-weight:600;
+        color:__MUTED__;
+        padding:5px 12px;
+        border-radius:999px;
+        border:1px solid __INPUT_BORDER__;
+        background:__PILL_BG__;
+        backdrop-filter:blur(8px);
+    }
+
+    @media (prefers-reduced-motion: reduce){
+        .luxiz-logo-imagem,
+        .st-key-login-card,
+        .st-key-login-card::before,
+        .st-key-login-card::after,
+        .luxiz-logo,
+        .luxiz-teaser,
+        .lx-chips,
+        .st-key-login-sobre button{
+            animation:none !important;
+        }
+    }
+
+    </style>
+    """
+
+    for chave, valor in v.items():
+        css = css.replace(chave, valor)
+
+    return css
+
+
+# =====================================================
 # CSS DE FUNDO
 # (gradiente chamativo só na tela de login;
 # fundo sólido — branco ou escuro — no resto do app)
@@ -803,140 +1099,7 @@ def _css_overlay():
 def _css_fundo(tema, tela):
 
     if tela == "login":
-
-        if tema == "claro":
-
-            return """
-            <style>
-            @keyframes luxizBgFloat{
-                0%,100%{ background-position:0% 0%,100% 0%,100% 100%,0% 0%; }
-                50%{ background-position:12% 8%,88% 6%,88% 92%,0% 0%; }
-            }
-
-            @keyframes luxizReflexoVidro{
-                0%{ left:-60%; }
-                100%{ left:130%; }
-            }
-
-            .stApp{
-                background:
-                    radial-gradient(circle at top left,#e0e7ff 0%,transparent 35%),
-                    radial-gradient(circle at top right,#bae6fd 0%,transparent 35%),
-                    radial-gradient(circle at bottom right,#ede9fe 0%,transparent 30%),
-                    linear-gradient(135deg,#f8fafc,#f1f5f9,#f8fafc);
-                background-size:160% 160%,160% 160%,160% 160%,100% 100%;
-                animation:luxizBgFloat 16s ease-in-out infinite;
-                color:#111827;
-            }
-
-            .luxiz-teaser{
-                display:inline-block;
-                text-align:center;
-                line-height:1.5;
-                max-width:440px;
-                background:rgba(255,255,255,.65);
-                border:1px solid rgba(2,132,199,.25);
-                border-radius:18px;
-                padding:12px 22px;
-                font-size:.85rem;
-                color:#0369a1;
-                font-weight:600;
-                margin-bottom:0;
-                backdrop-filter:blur(10px);
-            }
-
-            .st-key-login-card{
-                position:relative;
-                overflow:hidden;
-                background:rgba(255,255,255,.55) !important;
-                border:1px solid rgba(0,0,0,.08) !important;
-                border-radius:20px !important;
-                backdrop-filter:blur(20px);
-                box-shadow:0 8px 32px rgba(2,132,199,.12);
-                padding:8px;
-            }
-
-            .st-key-login-card::before{
-                content:"";
-                position:absolute;
-                top:0;
-                left:-60%;
-                width:35%;
-                height:100%;
-                background:linear-gradient(115deg, transparent, rgba(255,255,255,.35), transparent);
-                transform:skewX(-18deg);
-                animation:luxizReflexoVidro 5.5s ease-in-out infinite;
-                pointer-events:none;
-                z-index:1;
-            }
-            </style>
-            """
-
-        return """
-        <style>
-        @keyframes luxizBgFloat{
-            0%,100%{ background-position:0% 0%,100% 0%,100% 100%,0% 0%; }
-            50%{ background-position:12% 8%,88% 6%,88% 92%,0% 0%; }
-        }
-
-        @keyframes luxizReflexoVidro{
-            0%{ left:-60%; }
-            100%{ left:130%; }
-        }
-
-        .stApp{
-            background:
-                radial-gradient(circle at top left,#312e81 0%,transparent 35%),
-                radial-gradient(circle at top right,#0ea5e9 0%,transparent 35%),
-                radial-gradient(circle at bottom right,#7c3aed 0%,transparent 30%),
-                linear-gradient(135deg,#010617,#020b24,#010617);
-            background-size:160% 160%,160% 160%,160% 160%,100% 100%;
-            animation:luxizBgFloat 16s ease-in-out infinite;
-            color:white;
-        }
-
-        .luxiz-teaser{
-            display:inline-block;
-            text-align:center;
-            line-height:1.5;
-            max-width:440px;
-            background:rgba(255,255,255,.06);
-            border:1px solid rgba(0,200,255,.3);
-            border-radius:18px;
-            padding:12px 22px;
-            font-size:.85rem;
-            color:#7dd3fc;
-            font-weight:600;
-            margin-bottom:0;
-            backdrop-filter:blur(10px);
-        }
-
-        .st-key-login-card{
-            position:relative;
-            overflow:hidden;
-            background:rgba(255,255,255,.05) !important;
-            border:1px solid rgba(255,255,255,.1) !important;
-            border-radius:20px !important;
-            backdrop-filter:blur(20px);
-            box-shadow:0 8px 32px rgba(0,0,0,.35);
-            padding:8px;
-        }
-
-        .st-key-login-card::before{
-            content:"";
-            position:absolute;
-            top:0;
-            left:-60%;
-            width:35%;
-            height:100%;
-            background:linear-gradient(115deg, transparent, rgba(255,255,255,.22), transparent);
-            transform:skewX(-18deg);
-            animation:luxizReflexoVidro 5.5s ease-in-out infinite;
-            pointer-events:none;
-            z-index:1;
-        }
-        </style>
-        """
+        return _css_login(tema)
 
     if tela == "inicio":
 
