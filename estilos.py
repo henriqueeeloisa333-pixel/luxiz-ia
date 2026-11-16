@@ -870,13 +870,34 @@ def _css_login(tema):
         height:100vh !important;
     }
     .block-container{
-        padding-top:.6rem !important;
+        padding-top:2.6rem !important;
         padding-bottom:0 !important;
         max-width:100% !important;
     }
-    /* reduz o espaçamento vertical entre os blocos */
+
+    /* espaçamento vertical entre os blocos (logo, aviso, card, botão) */
     .block-container [data-testid="stVerticalBlock"]{
-        gap:.55rem !important;
+        gap:1.05rem !important;
+    }
+
+    /* espaçamento interno do card (título, campos, botão Entrar) */
+    .block-container .st-key-login-card,
+    .block-container .st-key-login-card [data-testid="stVerticalBlock"]{
+        gap:.95rem !important;
+    }
+
+    /* telas um pouco baixas: aperta um pouco o espaçamento */
+    @media (max-height: 780px){
+        .block-container{
+            padding-top:1.4rem !important;
+        }
+        .block-container [data-testid="stVerticalBlock"]{
+            gap:.8rem !important;
+        }
+        .block-container .st-key-login-card,
+        .block-container .st-key-login-card [data-testid="stVerticalBlock"]{
+            gap:.7rem !important;
+        }
     }
 
     /* telas muito baixas: libera a rolagem para nada ficar cortado */
@@ -888,6 +909,10 @@ def _css_login(tema):
         section.main{
             overflow:auto !important;
             height:auto !important;
+        }
+        .block-container{
+            padding-top:.8rem !important;
+            padding-bottom:1.5rem !important;
         }
     }
     /* telas baixas: esconde os chips decorativos */
@@ -906,7 +931,7 @@ def _css_login(tema):
     /* ---------- logo ---------- */
     .luxiz-logo{
         justify-content:center;
-        margin-bottom:6px;
+        margin-bottom:10px;
         animation:lxFadeUp .7s ease both;
     }
     .luxiz-logo-imagem{
@@ -919,9 +944,13 @@ def _css_login(tema):
     .luxiz-logo-texto p{
         font-size:.68rem;
         letter-spacing:2.4px;
+        margin-top:6px;
     }
 
     /* ---------- aviso LX Roteiriza ---------- */
+    .luxiz-teaser-wrap{
+        margin-bottom:6px;
+    }
     .luxiz-teaser{
         display:inline-block;
         text-align:center;
@@ -948,7 +977,7 @@ def _css_login(tema):
         backdrop-filter:blur(24px) saturate(150%);
         -webkit-backdrop-filter:blur(24px) saturate(150%);
         box-shadow:__CARD_SHADOW__;
-        padding:10px 12px 2px 12px;
+        padding:24px 24px 22px 24px !important;
         animation:lxCardIn .75s cubic-bezier(.2,.8,.2,1) both;
     }
 
@@ -985,12 +1014,25 @@ def _css_login(tema):
         font-weight:800;
         letter-spacing:.2px;
         color:__TEXT__;
-        margin:0 0 2px 0;
+        margin:0 0 6px 0;
     }
     .lx-card-sub{
         font-size:.84rem;
         color:__MUTED__;
-        margin-bottom:4px;
+        margin-bottom:10px;
+    }
+
+    /* espaço entre os dois campos e o botão dentro do formulário */
+    .st-key-login-card [data-testid="stForm"]{
+        padding:0 !important;
+    }
+    .st-key-login-card [data-testid="stForm"] [data-testid="stVerticalBlock"]{
+        gap:.95rem !important;
+    }
+    @media (max-height: 780px){
+        .st-key-login-card [data-testid="stForm"] [data-testid="stVerticalBlock"]{
+            gap:.7rem !important;
+        }
     }
 
     /* ---------- campos ---------- */
@@ -999,6 +1041,9 @@ def _css_login(tema):
         font-weight:600 !important;
         letter-spacing:.3px;
         color:__MUTED__ !important;
+    }
+    .st-key-login-card label{
+        margin-bottom:4px !important;
     }
 
     .st-key-login-card div[data-baseweb="input"]{
@@ -1019,7 +1064,7 @@ def _css_login(tema):
         box-shadow:0 0 0 3px rgba(34,211,238,.18), 0 0 22px rgba(34,211,238,.14) !important;
     }
     .st-key-login-card input{
-        height:42px;
+        height:44px;
         color:__TEXT__ !important;
         -webkit-text-fill-color:__TEXT__ !important;
         caret-color:#22d3ee;
@@ -1040,10 +1085,13 @@ def _css_login(tema):
     }
 
     /* ---------- botão Entrar ---------- */
+    .st-key-login-card div[data-testid="stFormSubmitButton"]{
+        margin-top:6px;
+    }
     .st-key-login-card div[data-testid="stFormSubmitButton"] button{
         position:relative;
         overflow:hidden;
-        height:46px;
+        height:48px;
         border:none !important;
         border-radius:14px !important;
         color:#ffffff !important;
@@ -1065,8 +1113,11 @@ def _css_login(tema):
     }
 
     /* ---------- botão "Para que serve" (discreto) ---------- */
+    .st-key-login-sobre{
+        margin-top:4px;
+    }
     .st-key-login-sobre button{
-        height:40px;
+        height:42px;
         border-radius:14px !important;
         background:transparent !important;
         border:1px solid __INPUT_BORDER__ !important;
