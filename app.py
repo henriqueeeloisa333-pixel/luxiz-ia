@@ -502,11 +502,6 @@ if not st.session_state.logado:
 
     with col_centro:
 
-        st.markdown(
-            "<div style='height:1.5rem'></div>",
-            unsafe_allow_html=True
-        )
-
         estilos.logo_header()
 
         st.markdown(
@@ -526,8 +521,6 @@ if not st.session_state.logado:
             """,
             unsafe_allow_html=True
         )
-
-        st.write("")
 
         with st.container(border=True, key="login-card"):
 
@@ -603,8 +596,6 @@ if not st.session_state.logado:
                     st.error(
                         "Usuário ou senha inválidos."
                     )
-
-        st.write("")
 
         if st.button(
             "❓ Para que serve o Luxiz IA?",
