@@ -5,7 +5,6 @@ import streamlit as st
 import banco
 import estilos
 import avaliacoes
-import pandas as pd
 import re
 
 from datetime import timezone
@@ -294,6 +293,168 @@ def _card_rua_html(rua, nota, dupla, historico, posicao, total):
     )
 
 
+
+# =====================================================
+# RANKING E PÓDIO (visual profissional)
+# =====================================================
+
+MEDALHAS_PODIO = {
+    1: ("#facc15", "🥇"),
+    2: ("#cbd5e1", "🥈"),
+    3: ("#d97706", "🥉"),
+}
+
+CSS_RANKING = """
+<style>
+.lx-rank-row{
+    transition:transform .15s ease;
+}
+.lx-rank-row:hover{
+    transform:translateX(3px);
+}
+</style>
+"""
+
+GRADE_RANKING = (
+    "grid-template-columns:56px 130px minmax(190px,1.3fr) "
+    "minmax(200px,1.5fr) 150px;"
+)
+
+
+def _ranking_html(ordenadas, notas, duplas, posicoes):
+
+    cabecalho = (
+        f'<div style="display:grid;{GRADE_RANKING}gap:.9rem;'
+        'padding:0 1rem .4rem 1rem;font-size:.66rem;font-weight:800;'
+        'letter-spacing:.5px;text-transform:uppercase;opacity:.55;">'
+        '<div>Pos.</div><div>Rua</div><div>Equipe</div>'
+        '<div>Desempenho</div><div>Situação</div></div>'
+    )
+
+    linhas = ""
+
+    for rua in ordenadas:
+
+        nota = notas.get(rua, 0.0)
+
+        dupla = duplas.get(rua) or ""
+
+        cor, rotulo = _nivel_nota(nota)
+
+        posicao = posicoes[rua]
+
+        if posicao in MEDALHAS_PODIO:
+
+            cor_pos, emblema = MEDALHAS_PODIO[posicao]
+            tamanho_emblema = "1.25rem"
+
+        else:
+
+            cor_pos, emblema = "#64748b", f"{posicao}º"
+            tamanho_emblema = ".82rem"
+
+        proporcao = max(0.0, min(nota / 5 * 100, 100))
+
+        linhas += (
+            f'<div class="lx-rank-row" style="display:grid;{GRADE_RANKING}'
+            'gap:.9rem;align-items:center;padding:.7rem 1rem;margin-bottom:.5rem;'
+            'border-radius:.9rem;'
+            f'background:linear-gradient(100deg,{cor_pos}14,{cor}08 60%);'
+            f'border:1px solid {cor}30;border-left:5px solid {cor_pos};">'
+
+            f'<div style="width:40px;height:40px;border-radius:50%;'
+            f'background:{cor_pos}22;border:2px solid {cor_pos};display:flex;'
+            'align-items:center;justify-content:center;font-weight:800;'
+            f'font-size:{tamanho_emblema};">{emblema}</div>'
+
+            f'<div style="font-weight:800;font-size:1rem;">📍 {html.escape(rua)}</div>'
+
+            f'<div>{_avatares_html(dupla)}</div>'
+
+            '<div style="display:flex;align-items:center;gap:.7rem;">'
+            f'<div style="flex:1;height:9px;border-radius:999px;background:{cor}22;overflow:hidden;">'
+            f'<div style="width:{proporcao:.1f}%;height:100%;border-radius:999px;'
+            f'background:linear-gradient(90deg,{cor}99,{cor});"></div></div>'
+            f'<div style="font-weight:800;font-size:1.05rem;color:{cor};'
+            f'min-width:34px;text-align:right;">{_fmt1(nota)}</div>'
+            '</div>'
+
+            f'<div><span style="display:inline-block;font-size:.72rem;font-weight:800;'
+            f'padding:.22rem .65rem;border-radius:999px;background:{cor}26;color:{cor};'
+            f'border:1px solid {cor}66;white-space:nowrap;">{rotulo}</span></div>'
+
+            '</div>'
+        )
+
+    return (
+        '<div style="overflow-x:auto;">'
+        f'<div style="min-width:760px;">{cabecalho}{linhas}</div></div>'
+    )
+
+
+def _podio_html(top):
+    """top: lista de (rua, nota, dupla) já ordenada, no máximo 3 itens."""
+
+    alturas = {1: 86, 2: 60, 3: 42}
+
+    colunas = ""
+
+    # ordem visual de um pódio: 2º, 1º, 3º
+    for lugar in (2, 1, 3):
+
+        if lugar > len(top):
+            continue
+
+        rua, nota, dupla = top[lugar - 1]
+
+        cor, medalha = MEDALHAS_PODIO[lugar]
+
+        coroa = (
+            '<div style="font-size:1.6rem;line-height:1;margin-bottom:.25rem;">👑</div>'
+            if lugar == 1 else
+            '<div style="height:1.85rem;"></div>'
+        )
+
+        brilho = 34 if lugar == 1 else 18
+
+        colunas += (
+            '<div style="flex:1;min-width:210px;max-width:320px;'
+            'display:flex;flex-direction:column;">'
+            f'<div style="text-align:center;">{coroa}</div>'
+
+            f'<div style="background:linear-gradient(160deg,{cor}26,{cor}08 70%);'
+            f'border:1px solid {cor}66;border-bottom:none;border-radius:1rem 1rem 0 0;'
+            f'padding:1.1rem 1rem;text-align:center;box-shadow:0 0 {brilho}px {cor}33;">'
+
+            f'<div style="width:60px;height:60px;margin:0 auto;border-radius:50%;'
+            f'background:{cor}26;border:2px solid {cor};display:flex;align-items:center;'
+            f'justify-content:center;font-size:1.9rem;box-shadow:0 0 18px {cor}66;">{medalha}</div>'
+
+            f'<div style="font-size:1.3rem;font-weight:800;margin-top:.6rem;">'
+            f'📍 {html.escape(rua)}</div>'
+
+            f'<div style="display:flex;justify-content:center;margin-top:.55rem;">'
+            f'{_avatares_html(dupla)}</div>'
+
+            f'<div style="display:inline-block;margin-top:.8rem;background:{cor};'
+            'color:#1f2937;font-weight:800;font-size:.95rem;padding:.3rem .85rem;'
+            f'border-radius:999px;">⭐ {_fmt1(nota)}</div>'
+            '</div>'
+
+            f'<div style="height:{alturas[lugar]}px;'
+            f'background:linear-gradient(180deg,{cor}55,{cor}1a);'
+            f'border:1px solid {cor}66;border-top:none;border-radius:0 0 .8rem .8rem;'
+            'display:flex;align-items:center;justify-content:center;'
+            f'font-size:2.2rem;font-weight:900;color:{cor};">{lugar}º</div>'
+            '</div>'
+        )
+
+    return (
+        '<div style="display:flex;justify-content:center;align-items:flex-end;'
+        f'gap:1rem;flex-wrap:wrap;">{colunas}</div>'
+    )
+
+
 # =====================================================
 # DASHBOARD
 # =====================================================
@@ -374,6 +535,15 @@ def render():
         reverse=True
     )
 
+    # posição com empate: ruas com a mesma nota dividem a mesma colocação
+    posicoes = {
+        nome_rua: 1 + sum(
+            1 for outra in RUAS
+            if notas.get(outra, 0) > notas.get(nome_rua, 0)
+        )
+        for nome_rua in RUAS
+    }
+
     for i in range(0, len(RUAS), 3):
 
         cols = st.columns(3)
@@ -406,7 +576,7 @@ def render():
                         nota,
                         dupla,
                         historico,
-                        ordem_ranking.index(rua) + 1,
+                        posicoes[rua],
                         len(RUAS)
                     ),
                     unsafe_allow_html=True
@@ -420,30 +590,18 @@ def render():
 
     st.subheader("🏆 Ranking das Equipes")
 
-    ranking = []
+    if not RUAS:
 
-    for rua in RUAS:
+        st.info("Nenhuma rua cadastrada ainda.")
 
-        ranking.append(
-            {
-                "Rua": rua,
-                "Nota": notas.get(rua, 0),
-                "Equipe": duplas.get(rua, "-")
-            }
+    else:
+
+        st.markdown(CSS_RANKING, unsafe_allow_html=True)
+
+        st.markdown(
+            _ranking_html(ordem_ranking, notas, duplas, posicoes),
+            unsafe_allow_html=True
         )
-
-    df = pd.DataFrame(ranking)
-
-    df = df.sort_values(
-        by="Nota",
-        ascending=False
-    )
-
-    st.dataframe(
-        df,
-        width='stretch',
-        hide_index=True
-    )
 
     st.divider()
 
@@ -453,31 +611,22 @@ def render():
 
     st.subheader("🥇 Top 3 Equipes")
 
-    top3 = df.head(3)
+    top3 = [
+        (nome_rua, notas.get(nome_rua, 0.0), duplas.get(nome_rua) or "")
+        for nome_rua in ordem_ranking
+        if notas.get(nome_rua, 0) > 0
+    ][:3]
 
-    c1, c2, c3 = st.columns(3)
+    if top3:
 
-    colunas = [
-        c1,
-        c2,
-        c3
-    ]
+        st.markdown(
+            _podio_html(top3),
+            unsafe_allow_html=True
+        )
 
-    medalhas = [
-        "🥇",
-        "🥈",
-        "🥉"
-    ]
+    else:
 
-    for idx, (_, row) in enumerate(top3.iterrows()):
-
-        with colunas[idx]:
-
-            st.metric(
-                f"{medalhas[idx]} {row['Rua']}",
-                f"{row['Nota']:.1f}",
-                row["Equipe"]
-            )
+        st.info("Ainda não há notas lançadas para montar o pódio.")
 
     st.divider()
 
