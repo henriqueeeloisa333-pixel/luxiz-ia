@@ -42,19 +42,14 @@ OPCOES_PERIODO = [
 # =====================================================
 # ACESSO
 # =====================================================
-# Dados de vendas e lucro são sensíveis: a aba só aparece para
-# Fundador e Gestão. Para liberar para mais perfis, é só mudar
-# esta função.
+# Dados de vendas e lucro são sensíveis: a aba só aparece para quem
+# tem o login no formato "Fundador.Nome". O tipo da conta
+# (fundador/gestão) é ignorado de propósito — nem a Gestão nem os
+# demais perfis enxergam esta área.
 
 def tem_acesso(usuario, tipo):
 
-    usuario = usuario or ""
-
-    return (
-        tipo in ("fundador", "gestao")
-        or usuario.startswith("Fundador.")
-        or usuario.startswith("Gestao.")
-    )
+    return (usuario or "").startswith("Fundador.")
 
 
 # =====================================================
