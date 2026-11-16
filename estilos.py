@@ -808,7 +808,7 @@ def _css_login(tema):
             "__CARD_BG__": "rgba(255,255,255,.72)",
             "__CARD_BORDER__": "rgba(15,23,42,.08)",
             "__CARD_SHADOW__": "0 30px 70px rgba(30,64,175,.14), 0 0 60px rgba(56,189,248,.10)",
-            "__INPUT_BG__": "rgba(255,255,255,.92)",
+            "__INPUT_BG__": "#ffffff",
             "__INPUT_BORDER__": "rgba(15,23,42,.14)",
             "__AUTOFILL__": "#ffffff",
             "__PILL_BG__": "rgba(255,255,255,.7)",
@@ -823,7 +823,7 @@ def _css_login(tema):
             "__CARD_BG__": "rgba(15,23,42,.55)",
             "__CARD_BORDER__": "rgba(148,163,184,.18)",
             "__CARD_SHADOW__": "0 30px 80px rgba(0,0,0,.50), 0 0 60px rgba(56,189,248,.08)",
-            "__INPUT_BG__": "rgba(2,6,23,.55)",
+            "__INPUT_BG__": "#0b1228",
             "__INPUT_BORDER__": "rgba(148,163,184,.22)",
             "__AUTOFILL__": "#0b1228",
             "__PILL_BG__": "rgba(255,255,255,.05)",
@@ -860,8 +860,39 @@ def _css_login(tema):
         color:__TEXT__;
     }
 
+    /* tela de login fixa: cabe em uma única tela, sem rolagem */
+    html, body,
+    [data-testid="stApp"],
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    section.main{
+        overflow:hidden !important;
+        height:100vh !important;
+    }
     .block-container{
-        padding-top:1.5rem !important;
+        padding-top:.6rem !important;
+        padding-bottom:0 !important;
+        max-width:100% !important;
+    }
+    /* reduz o espaçamento vertical entre os blocos */
+    .block-container [data-testid="stVerticalBlock"]{
+        gap:.55rem !important;
+    }
+
+    /* telas muito baixas: libera a rolagem para nada ficar cortado */
+    @media (max-height: 640px){
+        html, body,
+        [data-testid="stApp"],
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"],
+        section.main{
+            overflow:auto !important;
+            height:auto !important;
+        }
+    }
+    /* telas baixas: esconde os chips decorativos */
+    @media (max-height: 820px){
+        .lx-chips{ display:none !important; }
     }
 
     /* iframes de altura zero (scripts de tema/rede) não ocupam espaço */
@@ -879,11 +910,11 @@ def _css_login(tema):
         animation:lxFadeUp .7s ease both;
     }
     .luxiz-logo-imagem{
-        height:88px;
+        height:72px;
         animation:lxLogoFlutua 5s ease-in-out infinite;
     }
     .luxiz-logo-texto h1{
-        font-size:2.5rem;
+        font-size:2.1rem;
     }
     .luxiz-logo-texto p{
         font-size:.68rem;
@@ -917,7 +948,7 @@ def _css_login(tema):
         backdrop-filter:blur(24px) saturate(150%);
         -webkit-backdrop-filter:blur(24px) saturate(150%);
         box-shadow:__CARD_SHADOW__;
-        padding:18px 14px 8px 14px;
+        padding:10px 12px 2px 12px;
         animation:lxCardIn .75s cubic-bezier(.2,.8,.2,1) both;
     }
 
@@ -950,16 +981,16 @@ def _css_login(tema):
     }
 
     .lx-card-titulo{
-        font-size:1.5rem;
+        font-size:1.3rem;
         font-weight:800;
         letter-spacing:.2px;
         color:__TEXT__;
-        margin:2px 0 2px 0;
+        margin:0 0 2px 0;
     }
     .lx-card-sub{
-        font-size:.86rem;
+        font-size:.84rem;
         color:__MUTED__;
-        margin-bottom:10px;
+        margin-bottom:4px;
     }
 
     /* ---------- campos ---------- */
@@ -970,10 +1001,14 @@ def _css_login(tema):
         color:__MUTED__ !important;
     }
 
-    .st-key-login-card div[data-baseweb="input"],
-    .st-key-login-card div[data-baseweb="base-input"]{
+    .st-key-login-card div[data-baseweb="input"]{
         background:__INPUT_BG__ !important;
         border-radius:13px !important;
+    }
+    .st-key-login-card div[data-baseweb="input"] > div,
+    .st-key-login-card div[data-baseweb="base-input"]{
+        background:transparent !important;
+        border-color:transparent !important;
     }
     .st-key-login-card div[data-baseweb="input"]{
         border:1px solid __INPUT_BORDER__ !important;
@@ -984,7 +1019,7 @@ def _css_login(tema):
         box-shadow:0 0 0 3px rgba(34,211,238,.18), 0 0 22px rgba(34,211,238,.14) !important;
     }
     .st-key-login-card input{
-        height:48px;
+        height:42px;
         color:__TEXT__ !important;
         -webkit-text-fill-color:__TEXT__ !important;
         caret-color:#22d3ee;
@@ -1008,7 +1043,7 @@ def _css_login(tema):
     .st-key-login-card div[data-testid="stFormSubmitButton"] button{
         position:relative;
         overflow:hidden;
-        height:52px;
+        height:46px;
         border:none !important;
         border-radius:14px !important;
         color:#ffffff !important;
@@ -1031,7 +1066,7 @@ def _css_login(tema):
 
     /* ---------- botão "Para que serve" (discreto) ---------- */
     .st-key-login-sobre button{
-        height:46px;
+        height:40px;
         border-radius:14px !important;
         background:transparent !important;
         border:1px solid __INPUT_BORDER__ !important;
