@@ -498,28 +498,16 @@ if not st.session_state.logado:
     estilos.marca_desenvolvedor_login()
     efeito_login.aplicar(st.session_state.tema)
 
-    _, col_centro, _ = st.columns([1, 1.1, 1])
+    _, col_centro, _ = st.columns([1.2, 1, 1.2])
 
     with col_centro:
 
         st.markdown(
-            "<div style='height:3rem'></div>",
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            """
-            <div style="display:flex;justify-content:center;">
-            """,
+            "<div style='height:1.5rem'></div>",
             unsafe_allow_html=True
         )
 
         estilos.logo_header()
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True
-        )
 
         st.markdown(
             """
@@ -543,21 +531,40 @@ if not st.session_state.logado:
 
         with st.container(border=True, key="login-card"):
 
-            st.markdown("#### 🔐 Acesso ao sistema")
-
-            usuario = st.text_input(
-                "Usuário"
+            st.markdown(
+                """
+                <div class="lx-card-titulo">Bem-vindo de volta 👋</div>
+                <div class="lx-card-sub">
+                    Entre com seu usuário e senha para acessar o painel.
+                </div>
+                """,
+                unsafe_allow_html=True
             )
 
-            senha = st.text_input(
-                "Senha",
-                type="password"
-            )
+            # st.form: o Enter do teclado também faz o login
+            with st.form("form_login", border=False):
 
-            if st.button(
-                "Entrar",
-                width='stretch'
-            ):
+                usuario = st.text_input(
+                    "Usuário",
+                    placeholder="Ex.: Gestao.Maria",
+                    key="login_usuario"
+                )
+
+                senha = st.text_input(
+                    "Senha",
+                    type="password",
+                    placeholder="Digite sua senha",
+                    key="login_senha"
+                )
+
+                entrar = st.form_submit_button(
+                    "Entrar no sistema  →",
+                    width='stretch'
+                )
+
+            if entrar:
+
+                usuario = (usuario or "").strip()
 
                 resultado = banco.autenticar(
                     usuario,
@@ -601,10 +608,25 @@ if not st.session_state.logado:
 
         if st.button(
             "❓ Para que serve o Luxiz IA?",
-            width='stretch'
+            width='stretch',
+            key="login-sobre"
         ):
 
             mostrar_sobre_luxiz()
+
+        st.markdown(
+            """
+            <div class="lx-chips">
+                <span>📊 Dashboard</span>
+                <span>⚡ Remanejamento</span>
+                <span>😊 SAC</span>
+                <span>🎯 Auditoria</span>
+                <span>📦 Estoque</span>
+                <span>📈 Histórico</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     st.stop()
 
