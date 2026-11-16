@@ -1158,7 +1158,7 @@ def render_cabecalho_inicio():
 - 📦 Nova aba **Controle de Estoque**: entrada de mercadoria e retirada para uso, com saldo em tempo real e registro de quem deu a entrada e de quem retirou.
 - 📨 Nova aba **Solicitações**: Separador, Conferente e Recebimento pedem folga, saída antecipada e outros pedidos ao supervisor (Gestão ou Fundador), que aceita ou recusa — na recusa, o motivo fica visível para quem pediu.
 - 🏆 Nova aba **Recordes**: ranking do SAC (menos chamados no nome, melhor), ranking da Auditoria (mais acertos e menos erros) e o Top 3 do Dashboard do último mês, com busca para ver os meses anteriores. Cada colaborador acompanha a quantidade de medalhas 🥇🥈🥉 que conquistou nos fechamentos (mensais no SAC e no Dashboard, trimestrais na Auditoria).
-- 🛍️ Nova aba **Loja Virtual** (somente Fundador): cadastro de produtos com preço pago e preço de venda, entrada de estoque, vendas com cliente e data de pagamento, pagamentos a receber e gráficos do andamento das vendas e do lucro.
+- 🛍️ Nova aba **Loja Virtual** (Fundador e usuários liberados): cadastro de produtos com preço pago e preço de venda, entrada de estoque, vendas com cliente e data de pagamento, pagamentos a receber e gráficos do andamento das vendas e do lucro.
         """
     )
 
@@ -1244,7 +1244,8 @@ if (
     NAV_ITENS.append(("nav_solicitacoes", "📨", nome_nav_solicitacoes))
 
 # Loja Virtual: controle de vendas e revendas. Visível somente para
-# logins "Fundador.Nome" (veja loja.tem_acesso() no loja.py).
+# logins "Fundador.Nome" e para os usuários liberados em
+# loja.USUARIOS_LIBERADOS (ex.: Adm.Vanessa).
 if loja.tem_acesso(usuario_atual, tipo):
     NAV_ITENS.append(("nav_loja", "🛍️", "Loja Virtual"))
 
