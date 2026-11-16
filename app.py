@@ -22,6 +22,7 @@ import efeito_login
 import notificacoes
 import perfil
 import historico
+import loja
 
 # =====================================================
 # CONFIGURAÇÃO
@@ -1157,6 +1158,7 @@ def render_cabecalho_inicio():
 - 📦 Nova aba **Controle de Estoque**: entrada de mercadoria e retirada para uso, com saldo em tempo real e registro de quem deu a entrada e de quem retirou.
 - 📨 Nova aba **Solicitações**: Separador, Conferente e Recebimento pedem folga, saída antecipada e outros pedidos ao supervisor (Gestão ou Fundador), que aceita ou recusa — na recusa, o motivo fica visível para quem pediu.
 - 🏆 Nova aba **Recordes**: ranking do SAC (menos chamados no nome, melhor), ranking da Auditoria (mais acertos e menos erros) e o Top 3 do Dashboard do último mês, com busca para ver os meses anteriores. Cada colaborador acompanha a quantidade de medalhas 🥇🥈🥉 que conquistou nos fechamentos (mensais no SAC e no Dashboard, trimestrais na Auditoria).
+- 🛍️ Nova aba **Loja Virtual** (Fundador e Gestão): cadastro de produtos com preço pago e preço de venda, entrada de estoque, vendas com cliente e data de pagamento, pagamentos a receber e gráficos do andamento das vendas e do lucro.
         """
     )
 
@@ -1240,6 +1242,12 @@ if (
             nome_nav_solicitacoes = f"Solicitações ({pendentes_solicitacoes})"
 
     NAV_ITENS.append(("nav_solicitacoes", "📨", nome_nav_solicitacoes))
+
+# Loja Virtual: controle de vendas e revendas (produtos, estoque,
+# pagamentos a receber e gráficos). Só Fundador e Gestão — para
+# liberar para mais perfis, ajuste loja.tem_acesso() no loja.py.
+if loja.tem_acesso(usuario_atual, tipo):
+    NAV_ITENS.append(("nav_loja", "🛍️", "Loja Virtual"))
 
 NAV_ITENS.append(("nav_historico", "📈", "Histórico Produtivo"))
 NAV_ITENS.append(("nav_perfil", "🪪", "Perfil"))
@@ -1656,6 +1664,7 @@ aba_epi = st.session_state.aba_atual == "nav_epi"
 aba_estoque = st.session_state.aba_atual == "nav_estoque"
 aba_solicitacoes = st.session_state.aba_atual == "nav_solicitacoes"
 aba_recordes = st.session_state.aba_atual == "nav_recordes"
+aba_loja = st.session_state.aba_atual == "nav_loja"
 aba_historico = st.session_state.aba_atual == "nav_historico"
 aba_perfil = st.session_state.aba_atual == "nav_perfil"
 aba_admin = st.session_state.aba_atual == "nav_administrativo"
@@ -1706,6 +1715,7 @@ def render_conteudo_inicio():
         "nav_estoque": "Entradas e retiradas de mercadoria, com saldo em tempo real.",
         "nav_solicitacoes": "Pedidos de folga e saída antecipada, com resposta do supervisor.",
         "nav_recordes": "Rankings do SAC, da Auditoria e Top 3 do Dashboard por mês.",
+        "nav_loja": "Produtos, estoque, vendas e pagamentos a receber, com gráficos.",
         "nav_historico": "Gráficos do seu empenho e do que precisa melhorar.",
         "nav_administrativo": "Gestão completa da operação em um só lugar.",
     }
@@ -1722,6 +1732,7 @@ def render_conteudo_inicio():
         "nav_estoque": "#10b981",
         "nav_solicitacoes": "#e11d48",
         "nav_recordes": "#eab308",
+        "nav_loja": "#d946ef",
         "nav_historico": "#14b8a6",
         "nav_administrativo": "#64748b",
     }
@@ -1822,6 +1833,7 @@ def render_conteudo_inicio():
                 ("🗑️", "Excluir gestores"),
                 ("🔑", "Resetar senhas"),
                 ("📨", "Responder solicitações"),
+                ("🛍️", "Loja Virtual"),
                 ("⚙️", "Controle total do sistema"),
             ]
         ),
@@ -1833,6 +1845,7 @@ def render_conteudo_inicio():
                 ("🗑️", "Excluir usuários comuns"),
                 ("🔑", "Resetar senhas"),
                 ("📨", "Responder solicitações"),
+                ("🛍️", "Loja Virtual"),
                 ("📋", "Gerenciar operação"),
             ]
         ),
@@ -2183,6 +2196,16 @@ def render_conteudo_inicio():
             "recusado, o porquê."
         ),
         (
+            "🛍️", "Loja Virtual", "#d946ef",
+            "Cadastre cada produto com o preço pago e o preço de venda. Quando "
+            "comprar mais, registre em Entrada de estoque. A cada venda, "
+            "informe o cliente, a quantidade e se já foi pago ou quando vai "
+            "pagar; o estoque e o lucro são calculados sozinhos. Em A receber "
+            "você acompanha quem ainda deve, e no Painel vê os gráficos.",
+            "Ter o controle completo de compras, vendas, estoque, lucro e "
+            "pagamentos pendentes em um só lugar."
+        ),
+        (
             "📈", "Histórico Produtivo", "#14b8a6",
             "Abra a aba para ver os gráficos do seu empenho no SAC, Dashboard, "
             "Checklist, Auditoria e Controle de EPI's. Verde significa em dia; "
@@ -2212,6 +2235,7 @@ def render_conteudo_inicio():
         "Controle de Estoque": "nav_estoque",
         "Solicitações": "nav_solicitacoes",
         "Recordes": "nav_recordes",
+        "Loja Virtual": "nav_loja",
         "Histórico Produtivo": "nav_historico",
         "Administrativo": "nav_administrativo",
     }
@@ -2429,6 +2453,25 @@ def render_aba_recordes():
 
 if aba_recordes:
     render_aba_recordes()
+
+# =====================================================
+# LOJA VIRTUAL
+# =====================================================
+# Sem run_every: a aba tem formulários, seletores e campos de texto,
+# e um recarregamento automático apagaria o que a pessoa estava
+# preenchendo no meio de um cadastro ou de uma venda.
+
+@st.fragment
+def render_aba_loja():
+
+    with estilos.mostrar_processando("Carregando..."):
+        loja.render()
+
+    st.write("")
+    botao_sair_rodape("loja")
+
+if aba_loja:
+    render_aba_loja()
 
 # =====================================================
 # HISTÓRICO PRODUTIVO
