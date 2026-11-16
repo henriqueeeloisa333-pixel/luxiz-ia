@@ -42,14 +42,24 @@ OPCOES_PERIODO = [
 # =====================================================
 # ACESSO
 # =====================================================
-# Dados de vendas e lucro são sensíveis: a aba só aparece para quem
-# tem o login no formato "Fundador.Nome". O tipo da conta
-# (fundador/gestão) é ignorado de propósito — nem a Gestão nem os
-# demais perfis enxergam esta área.
+# Dados de vendas e lucro são sensíveis: a aba só aparece para logins
+# no formato "Fundador.Nome" e para os logins listados abaixo em
+# USUARIOS_LIBERADOS. O tipo da conta (fundador/gestão) é ignorado de
+# propósito — nem a Gestão nem os demais perfis enxergam esta área.
+# Para liberar mais alguém, é só acrescentar o login na lista.
+
+USUARIOS_LIBERADOS = [
+    "adm.vanessa",
+]
 
 def tem_acesso(usuario, tipo):
 
-    return (usuario or "").startswith("Fundador.")
+    usuario = (usuario or "").strip()
+
+    return (
+        usuario.startswith("Fundador.")
+        or usuario.lower() in USUARIOS_LIBERADOS
+    )
 
 
 # =====================================================
