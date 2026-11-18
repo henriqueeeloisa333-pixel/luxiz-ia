@@ -1,2146 +1,2544 @@
-import io
-from datetime import date, timedelta
-
-import pandas as pd
 import streamlit as st
-
 import banco
 import estilos
+import os
 
+from datetime import datetime, timezone
+
+import dashboard
+import remanejamento
+import sac
+import administrativo
+import auditoria
+import rotativo
+import checklist
+import equipamentos
+import epi
+import estoque
+import solicitacoes
+import recordes
+import sac_automatico
+import efeito_login
+import notificacoes
+import perfil
+import historico
+import loja
+
+# =====================================================
+# CONFIGURAÇÃO
+# =====================================================
+
+_CAMINHO_FAVICON = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "assets",
+    "favicon.png"
+)
+
+st.set_page_config(
+    page_title="Luxiz IA",
+    page_icon=_CAMINHO_FAVICON,
+    layout="wide"
+)
+
+# =====================================================
+# AVISO DE CONEXÃO (queda de rede / rede reestabelecida)
+# =====================================================
+# Isso é puramente client-side (JavaScript no navegador), porque uma
+# queda de rede de verdade impede qualquer script Python de rodar —
+# não tem como o servidor "avisar" que a rede caiu enquanto ela está
+# caída. O truque é ouvir os eventos nativos do navegador
+# (window.addEventListener('offline'/'online')) e mostrar uma faixa
+# fixa no topo da tela, sem depender do Streamlit rodar nada.
+#
+# injetado uma única vez por sessão de navegador (guarda de
+# `window.__luxizNetStatusInit`) para não empilhar vários avisos a
+# cada rerun/clique.
+
+def _injetar_aviso_de_rede():
+
+    st.components.v1.html(
+        """
+        <script>
+        (function() {
+            try {
+                var win = window.parent;
+                var doc = win.document;
+
+                if (win.__luxizNetStatusInit) {
+                    return;
+                }
+                win.__luxizNetStatusInit = true;
+
+                var banner = doc.createElement('div');
+                banner.id = 'luxiz-net-status';
+                banner.style.position = 'fixed';
+                banner.style.top = '0';
+                banner.style.left = '0';
+                banner.style.width = '100%';
+                banner.style.zIndex = '4000000';
+                banner.style.textAlign = 'center';
+                banner.style.padding = '10px 16px';
+                banner.style.fontFamily = 'sans-serif';
+                banner.style.fontWeight = '700';
+                banner.style.fontSize = '14px';
+                banner.style.display = 'none';
+                banner.style.transition = 'opacity .35s ease';
+                banner.style.boxShadow = '0 2px 12px rgba(0,0,0,.25)';
+                doc.body.appendChild(banner);
+
+                var esconderTimeout = null;
+
+                function mostrarOffline() {
+                    clearTimeout(esconderTimeout);
+                    banner.style.background = '#dc2626';
+                    banner.style.color = '#ffffff';
+                    banner.innerHTML = '📡 Sem rede no momento... aguardando reconexão';
+                    banner.style.display = 'block';
+                    banner.style.opacity = '1';
+                }
+
+                function mostrarOnline() {
+                    clearTimeout(esconderTimeout);
+                    banner.style.background = '#16a34a';
+                    banner.style.color = '#ffffff';
+                    banner.innerHTML = '✅ Rede estabelecida novamente';
+                    banner.style.display = 'block';
+                    banner.style.opacity = '1';
+
+                    esconderTimeout = setTimeout(function() {
+                        banner.style.opacity = '0';
+                        setTimeout(function() {
+                            banner.style.display = 'none';
+                        }, 400);
+                    }, 4000);
+                }
+
+                win.addEventListener('offline', mostrarOffline);
+                win.addEventListener('online', mostrarOnline);
+
+                if (win.navigator && win.navigator.onLine === false) {
+                    mostrarOffline();
+                }
+            } catch (erro) {
+                // Se o navegador bloquear o acesso ao parent por
+                // qualquer motivo, falha em silêncio — nunca deve
+                // quebrar o resto do app.
+            }
+        })();
+        </script>
+        """,
+        height=0
+    )
+
+
+# =====================================================
+# RODAPÉ DE STATUS (fragmento com autorefresh isolado)
+# =====================================================
+# Antes o st_autorefresh recarregava o app INTEIRO a cada 80s
+# (e cada clique/tecla digitada também disparava um rerun completo,
+# incluindo idas ao banco). Agora só este pedacinho do rodapé
+# atualiza sozinho a cada 80s, sem afetar o resto da tela.
+
+@st.fragment(run_every=120)
+def render_status_footer():
+
+    # Também serve como "heartbeat" de presença: a cada renovação
+    # automática (e assim que a página carrega logada), marcamos o
+    # usuário como ativo agora — é o que alimenta o "quem está
+    # logado" na aba Usuários do Administrativo.
+    if st.session_state.get("usuario"):
+        try:
+            banco.atualizar_ultimo_acesso(st.session_state.usuario)
+        except Exception:
+            pass
+
+    if st.session_state.get("token_sessao"):
+        try:
+            banco.renovar_sessao(st.session_state.token_sessao)
+        except Exception:
+            pass
+
+    st.markdown(
+        f"""
+        <div class="footer-luxiz">
+            <span class="online">🟢 Sistema Online</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span class="cloud">☁️ Supabase Conectado</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span class="refresh">🔄 Atualização Automática</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            Última sincronização:
+            {estilos.agora_local().strftime('%H:%M:%S')}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# =====================================================
+# SESSION STATE
+# =====================================================
+
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+
+if "usuario" not in st.session_state:
+    st.session_state.usuario = ""
+
+# =====================================================
+# BANCO
+# =====================================================
+
+banco.inicializar_banco()
+
+# Antes de qualquer exclusão de registros de Auditoria, grava as
+# medalhas dos períodos já fechados (o gestor exporta e apaga os
+# registros no começo de cada trimestre — o histórico não pode se perder).
+recordes.proteger_medalhas_na_exclusao()
+
+# SAC automático: as reclamações do mês passam a ser contadas sozinhas
+# pelos cards da Análise Técnica (só a meta continua manual).
+sac_automatico.ativar()
+
+# =====================================================
+# RESTAURA SESSÃO PELO TOKEN DA URL
+# =====================================================
+# O Streamlit perde o session_state toda vez que a página
+# recarrega sozinha (F5, uma queda de rede rápida, o navegador
+# reconectando o "fio" da aplicação). Só que a URL continua a
+# mesma no navegador — por isso, no login, guardamos um token
+# nela (?sessao=...). Se a pessoa cair e a página recarregar,
+# usamos esse token para reconhecer quem era e devolvê-la
+# exatamente para onde estava, sem pedir login de novo.
+#
+# O MESMO vale para a aba em que a pessoa estava (?aba=...): sem
+# isso, ao restaurar a sessão o app não sabia em qual tela ela
+# estava e sempre voltava para "Início" — péssimo para quem deixa
+# o app aberto num monitor de operação. Guardando a aba na URL
+# também, a restauração devolve a pessoa para a MESMA aba de onde
+# ela estava assim que a rede volta.
+
+if not st.session_state.logado:
+
+    token_sessao_url = st.query_params.get("sessao")
+
+    if token_sessao_url:
+
+        sessao_restaurada = banco.validar_sessao(token_sessao_url)
+
+        if sessao_restaurada:
+
+            (
+                usuario_restaurado,
+                tipo_restaurado,
+                trocar_senha_restaurado,
+                armazem_id_restaurado,
+                armazem_nome_restaurado
+            ) = sessao_restaurada
+
+            st.session_state.logado = True
+            st.session_state.usuario = usuario_restaurado
+            st.session_state.tipo_usuario = tipo_restaurado
+            st.session_state.trocar_senha = trocar_senha_restaurado
+            st.session_state.armazem_id = armazem_id_restaurado
+            st.session_state.armazem_nome = armazem_nome_restaurado
+            st.session_state.armazem_visualizado_id = armazem_id_restaurado
+            st.session_state.armazem_visualizado_nome = armazem_nome_restaurado
+            st.session_state.token_sessao = token_sessao_url
+
+            # Restaura também a aba em que a pessoa estava (se houver
+            # uma salva na URL) — a validação final contra as abas
+            # que esse usuário pode ver acontece mais abaixo, depois
+            # que CHAVES_VALIDAS é montado.
+            aba_url_restaurada = st.query_params.get("aba")
+
+            if aba_url_restaurada:
+                st.session_state.aba_atual = aba_url_restaurada
+
+        else:
+
+            # Token inválido/expirado: tira da URL para não ficar
+            # tentando de novo a cada recarregamento.
+            del st.query_params["sessao"]
+
+# O rodapé "Sistema Online" só precisa se auto-atualizar
+# depois de logar — antes disso, não há necessidade de
+# ficar recarregando sozinho a cada 120s.
+
+if st.session_state.logado:
+    render_status_footer()
+
+if "tipo_usuario" not in st.session_state:
+    st.session_state.tipo_usuario = "usuario"
+
+if "trocar_senha" not in st.session_state:
+    st.session_state.trocar_senha = False
+
+# =====================================================
+# TEMA INICIAL: SEGUE O DO NAVEGADOR / SISTEMA
+# =====================================================
+# O config.toml fixa theme.base="dark" no Streamlit (vale para todo
+# mundo), então st.context.theme.type SEMPRE responderia "dark" e
+# não serve para descobrir a preferência de quem acessa. Por isso a
+# detecção é feita no próprio navegador, com JavaScript
+# (matchMedia "prefers-color-scheme"), uma única vez:
+#
+#   1. Sem ?tema= (escolha manual) nem ?tn= (tema do navegador) na
+#      URL, um pequeno script lê a preferência do navegador e
+#      recarrega a página já com ?tn=claro ou ?tn=escuro.
+#   2. O app lê o ?tn= e abre no tema certo ("modo automático").
+#   3. Quando a pessoa mexe no botão de tema, o modo automático
+#      desliga e a escolha dela vai para ?tema= (vence o ?tn= e
+#      sobrevive a F5 ou queda de rede).
+
+def _detectar_tema_navegador():
+
+    st.components.v1.html(
+        """
+        <script>
+        (function() {
+            try {
+                var win = window.parent;
+                var url = new win.URL(win.location.href);
+
+                if (url.searchParams.has('tn') || url.searchParams.has('tema')) {
+                    return;
+                }
+
+                var claro = win.matchMedia
+                    && win.matchMedia('(prefers-color-scheme: light)').matches;
+
+                url.searchParams.set('tn', claro ? 'claro' : 'escuro');
+                win.location.replace(url.toString());
+            } catch (erro) {
+                // Sem acesso ao navegador: o app segue no tema escuro padrão.
+            }
+        })();
+        </script>
+        """,
+        height=0
+    )
+
+
+def _tema_do_navegador():
+
+    tema_navegador = st.query_params.get("tn")
+
+    if tema_navegador in ("claro", "escuro"):
+        return tema_navegador
+
+    return None
+
+
+if "tema" not in st.session_state:
+
+    tema_url = st.query_params.get("tema")
+
+    if tema_url in ("claro", "escuro"):
+
+        st.session_state.tema = tema_url
+        st.session_state.tema_automatico = False
+
+    else:
+
+        st.session_state.tema = _tema_do_navegador() or "escuro"
+        st.session_state.tema_automatico = True
+
+# Só dispara a detecção enquanto a URL ainda não tem nenhuma das
+# duas marcas — depois do primeiro recarregamento isso nunca mais roda.
+if (
+    st.session_state.get("tema_automatico")
+    and not st.query_params.get("tn")
+    and not st.query_params.get("tema")
+):
+    _detectar_tema_navegador()
+
+# =====================================================
+# SELETOR DE TEMA (discreto, canto superior direito)
+# =====================================================
+
+# O toggle fica fixado (via CSS) dentro da mesma faixa da barra
+# de status do rodapé — não precisa mais de coluna own própria.
+
+tema_claro = st.toggle(
+    "☀️" if st.session_state.tema == "escuro" else "🌙",
+    value=(st.session_state.tema == "claro"),
+    key="toggle_tema",
+    help="Alternar entre modo claro e escuro"
+)
+
+novo_tema = "claro" if tema_claro else "escuro"
+
+if novo_tema != st.session_state.tema:
+
+    # A pessoa mexeu no botão: a escolha manual passa a valer e fica
+    # guardada na URL, para sobreviver a um F5 ou queda de rede.
+    st.session_state.tema_automatico = False
+    st.query_params["tema"] = novo_tema
+
+st.session_state.tema = novo_tema
+
+# =====================================================
+# ESTILO
+# =====================================================
+
+estilos.aplicar_fundo(
+    tema=st.session_state.tema,
+    tela=(
+        "login" if not st.session_state.logado
+        or st.session_state.get("trocar_senha")
+        else "inicio" if st.session_state.get("aba_atual", "nav_inicio") == "nav_inicio"
+        else "app"
+    )
+)
+
+# =====================================================
+# LOGIN
+# =====================================================
+
+@st.dialog("✨ Sobre o Luxiz IA", width="large")
+def mostrar_sobre_luxiz():
+
+    with st.container(height=480):
+
+        st.markdown("""
+
+O **Luxiz IA** foi desenvolvido para auxiliar líderes, supervisores, coordenadores e gestores na administração operacional diária de armazéns e centros logísticos.
+
+---
+
+## 📊 Dashboard Organizacional
+
+O Dashboard foi criado para gerar motivação e engajamento das equipes.
+
+O líder realiza inspeções presenciais em cada rua, setor ou área operacional e atribui uma nota conforme a organização, limpeza e padrão operacional encontrado.
+
+Isso cria maior senso de responsabilidade, incentivo saudável entre equipes, melhoria contínua e acompanhamento visual da evolução operacional.
+
+---
+
+## ⚡ Central de Remanejamento
+
+Monitora prioridades operacionais em tempo real — docas prioritárias, coletas urgentes, itens pendentes, separações críticas, carregamentos e atividades administrativas.
+
+Ferramenta ideal para faturistas, administrativo, supervisores e gestores operacionais.
+
+---
+
+## 😊 Central SAC
+
+Controla reclamações, falhas operacionais e ocorrências logísticas.
+
+O objetivo é definir uma meta mensal e trabalhar continuamente para permanecer dentro dela, medindo a qualidade operacional, acompanhando tendências e agindo preventivamente.
+
+---
+
+## 🎯 Auditoria de Atividades
+
+Registra acertos e erros de cada colaborador por função (Conferente, Empilhador, Assistente Logístico), com histórico individual e nível de aproveitamento.
+
+O objetivo é identificar quem precisa de reforço e reconhecer quem está com excelência.
+
+---
+
+## 🔄 Rodízio de Fim de Expediente
+
+Gera automaticamente a escala semanal de quem faz cada atividade de fim de expediente, alternando as pessoas de forma justa (rodízio), além de mostrar as atividades fixas.
+
+---
+
+## ✅ Checklist de Equipamentos
+
+Registro das inspeções de hidráulicos, carrinhos, empilhadeiras e pigmentação feitas pelos colaboradores, com histórico de conformidade e exportação para Excel.
+
+---
+
+## 🧰 Equipamentos
+
+Mostra quem é o responsável por cada hidráulico e carrinho, e quais carrinhos ficam fixos em cada local, sem precisar de remanejamento.
+
+---
+
+## 📦 Controle de Estoque
+
+Registra as entradas de mercadoria e as retiradas para uso, mostrando o saldo de cada produto e quem fez cada movimentação.
+
+---
+
+## 🏆 Recordes
+
+Mostra os destaques da operação em três rankings: o SAC (quem tem menos chamados vinculados ao nome fica na frente), a Auditoria (mais acertos e menos erros) e o Top 3 de ruas do Dashboard, sempre do último mês, com busca para ver os meses anteriores. No fechamento de cada período (mês no SAC e no Dashboard, trimestre na Auditoria), quem fica entre os 3 primeiros ganha medalhas de ouro, prata e bronze, que ficam guardadas para sempre no quadro de medalhas, mesmo depois que os registros da Auditoria são apagados.
+
+---
+
+## 📨 Solicitações
+
+Os colaboradores pedem folga, saída antecipada e outras solicitações direto ao supervisor escolhido (Gestão ou Fundador). O supervisor aceita ou recusa, e, em caso de recusa, o motivo fica visível para quem pediu.
+
+---
+
+## 📈 Histórico Produtivo
+
+Reúne, em gráficos simples, o empenho de cada pessoa em todo o sistema — SAC, Dashboard, Checklist, Auditoria e Controle de EPI's — e aponta o que precisa melhorar.
+
+---
+
+## ⚙️ Administrativo
+
+Área de gestão completa da operação: cadastro de usuários, responsáveis, atividades do rodízio, carrinhos fixos e demais parâmetros do sistema.
+
+---
+
+## 🎯 Objetivo do Luxiz IA
+
+Transformar indicadores operacionais em informações simples, rápidas e visuais, auxiliando líderes e gestores na tomada de decisão diária.
+        """)
+
+
+if not st.session_state.logado:
+
+    estilos.marca_desenvolvedor_login()
+    efeito_login.aplicar(st.session_state.tema)
+
+    _, col_centro, _ = st.columns([1.2, 1, 1.2])
+
+    with col_centro:
+
+        estilos.logo_header()
+
+        st.markdown(
+            """
+            <div class="luxiz-teaser-wrap" style="justify-content:center;">
+                <div class="luxiz-teaser">
+                    🚀 Conheça também o
+                    <a href="https://sites.google.com/view/lx-roteiriza/in%C3%ADcio"
+                       target="_blank" rel="noopener noreferrer"
+                       style="color:inherit;font-weight:800;text-decoration:underline;">LX&nbsp;Roteiriza</a>
+                    <a href="https://sites.google.com/view/lx-roteiriza/in%C3%ADcio"
+                       target="_blank" rel="noopener noreferrer"
+                       title="Abrir o site do LX Roteiriza"
+                       style="color:inherit;text-decoration:none;font-weight:800;">➡️</a>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        with st.container(border=True, key="login-card"):
+
+            st.markdown(
+                """
+                <div class="lx-card-titulo">Bem-vindo de volta 👋</div>
+                <div class="lx-card-sub">
+                    Entre com seu usuário e senha para acessar o painel.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # st.form: o Enter do teclado também faz o login
+            with st.form("form_login", border=False):
+
+                usuario = st.text_input(
+                    "Usuário",
+                    placeholder="Ex.: Gestao.Maria",
+                    key="login_usuario"
+                )
+
+                senha = st.text_input(
+                    "Senha",
+                    type="password",
+                    placeholder="Digite sua senha",
+                    key="login_senha"
+                )
+
+                entrar = st.form_submit_button(
+                    "Entrar no sistema  →",
+                    width='stretch'
+                )
+
+            if entrar:
+
+                usuario = (usuario or "").strip()
+
+                resultado = banco.autenticar(
+                    usuario,
+                    senha
+                )
+
+                if resultado:
+
+                    st.session_state.logado = True
+                    st.session_state.usuario = usuario
+
+                    # retorno:
+                    # (id, tipo, trocar_senha, armazem_id, nome_armazem)
+
+                    st.session_state.tipo_usuario = resultado[1]
+                    st.session_state.trocar_senha = resultado[2]
+                    st.session_state.armazem_id = resultado[3]
+                    st.session_state.armazem_nome = resultado[4]
+
+                    # Fundador começa vendo o próprio armazém, mas
+                    # pode trocar depois pelo seletor no topo.
+                    st.session_state.armazem_visualizado_id = resultado[3]
+                    st.session_state.armazem_visualizado_nome = resultado[4]
+
+                    # Token de sessão salvo na URL: se a página
+                    # recarregar sozinha (F5, queda de rede), o
+                    # login é restaurado automaticamente.
+                    token_sessao = banco.criar_sessao(usuario)
+                    st.session_state.token_sessao = token_sessao
+                    st.query_params["sessao"] = token_sessao
+
+                    st.rerun()
+
+                else:
+
+                    st.error(
+                        "Usuário ou senha inválidos."
+                    )
+
+        if st.button(
+            "❓ Para que serve o Luxiz IA?",
+            width='stretch',
+            key="login-sobre"
+        ):
+
+            mostrar_sobre_luxiz()
+
+        st.markdown(
+            """
+            <div class="lx-chips">
+                <span>📊 Dashboard</span>
+                <span>⚡ Remanejamento</span>
+                <span>😊 SAC</span>
+                <span>🎯 Auditoria</span>
+                <span>📦 Estoque</span>
+                <span>📈 Histórico</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.stop()
+
+# =====================================================
+# TROCA DE SENHA OBRIGATÓRIA
+# (primeiro acesso com senha temporária, ou senha resetada
+# por um Fundador/Gestão)
+# =====================================================
+
+if st.session_state.logado and st.session_state.get("trocar_senha"):
+
+    estilos.marca_desenvolvedor_login()
+    efeito_login.aplicar(st.session_state.tema)
+
+    _, col_centro_senha, _ = st.columns([1, 1.1, 1])
+
+    with col_centro_senha:
+
+        st.markdown(
+            "<div style='height:3rem'></div>",
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            """
+            <div style="display:flex;justify-content:center;">
+            """,
+            unsafe_allow_html=True
+        )
+
+        estilos.logo_header()
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+        with st.container(border=True, key="login-card"):
+
+            st.markdown("#### 🔑 Defina sua nova senha")
+
+            st.caption(
+                "Este é o seu primeiro acesso (ou sua senha foi "
+                "redefinida). Por segurança, crie uma senha nova "
+                "antes de continuar."
+            )
+
+            nova_senha_primeiro_acesso = st.text_input(
+                "Nova senha",
+                type="password",
+                key="nova_senha_primeiro_acesso"
+            )
+
+            confirmar_nova_senha = st.text_input(
+                "Confirmar nova senha",
+                type="password",
+                key="confirmar_nova_senha_primeiro_acesso"
+            )
+
+            if st.button(
+                "💾 Salvar nova senha",
+                width='stretch'
+            ):
+
+                if not nova_senha_primeiro_acesso or not confirmar_nova_senha:
+
+                    st.error(
+                        "Preencha os dois campos para continuar."
+                    )
+
+                elif nova_senha_primeiro_acesso != confirmar_nova_senha:
+
+                    st.error(
+                        "As senhas não coincidem."
+                    )
+
+                elif len(nova_senha_primeiro_acesso) < 4:
+
+                    st.error(
+                        "A nova senha precisa ter pelo menos 4 caracteres."
+                    )
+
+                else:
+
+                    with estilos.mostrar_processando("salvando nova senha..."):
+                        banco.alterar_senha(
+                            st.session_state.usuario,
+                            nova_senha_primeiro_acesso
+                        )
+
+                    st.session_state.trocar_senha = False
+
+                    estilos.notificar_sucesso("senha alterada com sucesso.")
+                    st.rerun()
+
+        st.write("")
+
+        _, col_sair_senha = st.columns([3, 1])
+
+        with col_sair_senha:
+
+            if st.button(
+                "🚪 Sair",
+                width='stretch',
+                key="sair_troca_senha"
+            ):
+
+                banco.encerrar_sessao(
+                    st.session_state.get("token_sessao")
+                )
+
+                st.query_params.clear()
+                st.session_state.clear()
+                st.rerun()
+
+    st.stop()
+
+# =====================================================
+# AVISO DE CONEXÃO (só depois de logado)
+# =====================================================
+
+_injetar_aviso_de_rede()
+
+# =====================================================
+# PERFIL
+# =====================================================
+
+tipo = st.session_state.tipo_usuario
+
+usuario_atual = st.session_state.usuario
+
+eh_fundador_prefixo = usuario_atual.startswith("Fundador.")
+eh_gestao_prefixo = usuario_atual.startswith("Gestao.")
+eh_separador = usuario_atual.startswith("Separador.")
+eh_conferente = usuario_atual.startswith("Conferente.")
+eh_recebimento = usuario_atual.startswith("Recebimento.")
+eh_painel = usuario_atual.startswith("Painel.")
+
+acesso_restrito = eh_separador or eh_conferente
+
+if tipo == "fundador" or eh_fundador_prefixo:
+    badge = "👑 Fundador"
+
+elif tipo == "gestao" or eh_gestao_prefixo:
+    badge = "🛡️ Gestão"
+
+elif eh_separador:
+    badge = "📦 Separador"
+
+elif eh_conferente:
+    badge = "🔎 Conferente"
+
+elif eh_recebimento:
+    badge = "📥 Recebimento"
+
+elif eh_painel:
+    badge = "📟 Painel Logístico"
+
+else:
+    badge = "👤 Usuário"
+
+nome_exibicao = (
+    usuario_atual.split(".", 1)[1].strip().title()
+    if "." in usuario_atual
+    else usuario_atual
+)
+
+# =====================================================
+# ARMAZÉM EM VISUALIZAÇÃO
+# =====================================================
+# Para a maioria dos usuários, é sempre o próprio armazém. Só o
+# Fundador pode trocar (pelo seletor mostrado mais abaixo) e ver
+# os dados de qualquer armazém cadastrado.
+
+armazem_id_atual = st.session_state.get(
+    "armazem_visualizado_id",
+    st.session_state.get("armazem_id")
+)
+
+def botao_sair_rodape(identificador):
+
+    st.write("")
+
+    _, col_sair = st.columns([3, 1])
+
+    with col_sair:
+
+        if st.button(
+            "🚪 Sair",
+            width='stretch',
+            key=f"sair_{identificador}"
+        ):
+
+            banco.encerrar_sessao(
+                st.session_state.get("token_sessao")
+            )
+
+            st.query_params.clear()
+            st.session_state.clear()
+            st.rerun()
+
+
+def render_cabecalho_inicio():
+
+    agora = estilos.agora_local()
+
+    if agora.hour < 5:
+        saudacao = "Boa madrugada"
+    elif agora.hour < 12:
+        saudacao = "Bom dia"
+    elif agora.hour < 18:
+        saudacao = "Boa tarde"
+    else:
+        saudacao = "Boa noite"
+
+    nome_armazem_atual = (
+        st.session_state.get("armazem_visualizado_nome")
+        or st.session_state.get("armazem_nome")
+        or ""
+    )
+
+    DIAS_EXTENSO = [
+        "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+        "sexta-feira", "sábado", "domingo"
+    ]
+
+    data_extenso = (
+        f"{DIAS_EXTENSO[agora.weekday()]}, {agora.day:02d}/{agora.month:02d}"
+    )
+
+    if st.session_state.tema == "claro":
+        HERO_GRADIENTE = "linear-gradient(120deg, #0ea5e9, #6366f1 45%, #a855f7 85%)"
+        HERO_SOMBRA = "0 18px 40px rgba(99,102,241,.28)"
+        HERO_TEXTO_SUB = "rgba(255,255,255,.88)"
+    else:
+        HERO_GRADIENTE = "linear-gradient(120deg, #0b1224, #1e3a8a 40%, #6d28d9 75%, #0b1224)"
+        HERO_SOMBRA = "0 18px 40px rgba(0,0,0,.45)"
+        HERO_TEXTO_SUB = "rgba(226,232,240,.82)"
+
+    st.markdown(
+        f"""
+        <style>
+        @keyframes luxizHeroGradiente {{
+            0%   {{ background-position:0% 50%; }}
+            50%  {{ background-position:100% 50%; }}
+            100% {{ background-position:0% 50%; }}
+        }}
+        @keyframes luxizHeroSubir {{
+            from {{ opacity:0; transform:translateY(14px); }}
+            to   {{ opacity:1; transform:translateY(0); }}
+        }}
+        @keyframes luxizHeroBrilho {{
+            0%, 100% {{ opacity:.5; transform:scale(1); }}
+            50%      {{ opacity:.85; transform:scale(1.08); }}
+        }}
+        .luxiz-hero {{
+            position:relative;
+            overflow:hidden;
+            border-radius:1.4rem;
+            padding:1.8rem 2rem;
+            background:{HERO_GRADIENTE};
+            background-size:220% 220%;
+            animation:luxizHeroGradiente 14s ease infinite;
+            box-shadow:{HERO_SOMBRA};
+            margin-bottom:1.4rem;
+        }}
+        .luxiz-hero::before, .luxiz-hero::after {{
+            content:"";
+            position:absolute;
+            border-radius:50%;
+            background:rgba(255,255,255,.14);
+            filter:blur(6px);
+            animation:luxizHeroBrilho 5s ease-in-out infinite;
+            pointer-events:none;
+        }}
+        .luxiz-hero::before {{
+            width:220px;height:220px;
+            top:-90px; right:-60px;
+        }}
+        .luxiz-hero::after {{
+            width:140px;height:140px;
+            bottom:-70px; right:18%;
+            animation-delay:1.6s;
+        }}
+        .luxiz-hero-linha {{
+            position:relative;
+            z-index:1;
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:1.2rem;
+            flex-wrap:wrap;
+            animation:luxizHeroSubir .5s ease;
+        }}
+        .luxiz-hero-saudacao {{
+            font-size:.95rem;
+            font-weight:700;
+            letter-spacing:.3px;
+            color:{HERO_TEXTO_SUB};
+            margin:0 0 .15rem 0;
+        }}
+        .luxiz-hero-nome {{
+            font-size:1.9rem;
+            font-weight:800;
+            color:#ffffff;
+            margin:0;
+            line-height:1.2;
+        }}
+        .luxiz-hero-sub {{
+            margin-top:.5rem;
+            display:flex;
+            align-items:center;
+            gap:.5rem;
+            flex-wrap:wrap;
+        }}
+        .luxiz-hero-chip {{
+            background:rgba(255,255,255,.16);
+            color:#fff;
+            padding:.22rem .7rem;
+            border-radius:999px;
+            font-size:.78rem;
+            font-weight:700;
+            backdrop-filter:blur(2px);
+            border:1px solid rgba(255,255,255,.22);
+        }}
+        .luxiz-hero-direita {{
+            text-align:right;
+            color:{HERO_TEXTO_SUB};
+            font-size:.8rem;
+        }}
+        </style>
+        <div class="luxiz-hero">
+            <div class="luxiz-hero-linha">
+                <div>
+                    <p class="luxiz-hero-saudacao">✨ {saudacao}</p>
+                    <p class="luxiz-hero-nome">{nome_exibicao}</p>
+                    <div class="luxiz-hero-sub">
+                        <span class="luxiz-hero-chip">{badge}</span>
+                        {f'<span class="luxiz-hero-chip">🏢 {nome_armazem_atual}</span>' if nome_armazem_atual else ''}
+                        <span class="luxiz-hero-chip">📅 {data_extenso}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    col1, col2 = st.columns([7, 2])
+
+    with col1:
+
+        modulos_visiveis_hero = {chave for chave, _, _ in NAV_ITENS}
+
+        kpis = []
+
+        kpis.append((
+            "🧩", "Módulos disponíveis",
+            str(len(NAV_ITENS) - 1), "#a855f7"
+        ))
+
+        kpis.append((
+            "🔔", "Notificações pendentes",
+            str(notificacoes.contar_pendentes(usuario_atual, armazem_id_atual)),
+            "#ef4444"
+        ))
+
+        if "nav_dashboard" in modulos_visiveis_hero:
+
+            ruas_hero = banco.listar_ruas(armazem_id_atual)
+            notas_hero = banco.ler_notas(armazem_id_atual)
+
+            media_hero = (
+                round(sum(notas_hero.values()) / len(notas_hero), 1)
+                if notas_hero else 0
+            )
+
+            kpis.append((
+                "📍", "Ruas monitoradas", str(len(ruas_hero)), "#3b82f6"
+            ))
+
+            kpis.append((
+                "⭐", "Média geral", str(media_hero), "#22c55e"
+            ))
+
+        else:
+
+            kpis.append((
+                "🏢", "Armazém atual",
+                nome_armazem_atual or "—", "#0ea5e9"
+            ))
+
+            kpis.append((
+                "🕒", "Horário atual",
+                agora.strftime("%H:%M"), "#f59e0b"
+            ))
+
+        cols_kpi = st.columns(len(kpis))
+
+        for (icone_kpi, rotulo_kpi, valor_kpi, cor_kpi), col_kpi in zip(kpis, cols_kpi):
+
+            with col_kpi:
+
+                st.markdown(
+                    f"""
+                    <div style="
+                        background:{cor_kpi}14;
+                        border:1px solid {cor_kpi}40;
+                        border-radius:.9rem;
+                        padding:.7rem .9rem;
+                        text-align:center;
+                    ">
+                        <div style="font-size:1.3rem;">{icone_kpi}</div>
+                        <div style="font-size:1.15rem;font-weight:800;color:{cor_kpi};margin-top:.1rem;">
+                            {valor_kpi}
+                        </div>
+                        <div style="font-size:.72rem;opacity:.75;margin-top:.1rem;">
+                            {rotulo_kpi}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+    with col2:
+
+        usuarios_armazem_hero = banco.listar_usuarios(armazem_id_atual)
+
+        perfis_armazem_hero = {
+            perfil["usuario"]: perfil
+            for perfil in banco.ler_perfis(armazem_id_atual)
+        }
+
+        usuarios_online_hero = []
+
+        for uid_hero, nome_usuario_hero, tipo_usuario_hero, ultimo_acesso_hero in usuarios_armazem_hero:
+
+            if not nome_usuario_hero or not ultimo_acesso_hero:
+                continue
+
+            segundos_desde_acesso_hero = (
+                datetime.now(timezone.utc)
+                - ultimo_acesso_hero.replace(tzinfo=timezone.utc)
+            ).total_seconds()
+
+            if segundos_desde_acesso_hero > 240:
+                continue
+
+            perfil_usuario_hero = perfis_armazem_hero.get(nome_usuario_hero)
+
+            nome_exibicao_hero = (
+                banco.nome_completo_perfil(perfil_usuario_hero)
+                if perfil_usuario_hero else
+                (
+                    nome_usuario_hero.split(".", 1)[1].strip().title()
+                    if "." in nome_usuario_hero
+                    else nome_usuario_hero
+                )
+            )
+
+            usuarios_online_hero.append(nome_exibicao_hero)
+
+        with st.popover(
+            f"🟢 Online ({len(usuarios_online_hero)})",
+            help="Online agora"
+        ):
+
+            st.caption("👥 Quem está online agora")
+
+            if usuarios_online_hero:
+
+                for nome_online_hero in sorted(usuarios_online_hero):
+
+                    st.markdown(f"🟢 {nome_online_hero}")
+
+            else:
+
+                st.caption("Ninguém online no momento.")
+
+        notificacoes.sino(usuario_atual, armazem_id_atual)
+
+        st.caption(
+            f"☁️ Sincronizado com o servidor\n\n"
+            f"Última atualização: "
+            f"{agora.strftime('%H:%M:%S')}"
+        )
+
+    if tipo == "fundador" or eh_fundador_prefixo:
+
+        lista_armazens = banco.listar_armazens()
+
+        nomes_armazens = [nome for _, nome in lista_armazens]
+        ids_armazens = [id_ for id_, _ in lista_armazens]
+
+        indice_atual = (
+            ids_armazens.index(st.session_state.armazem_visualizado_id)
+            if st.session_state.armazem_visualizado_id in ids_armazens
+            else 0
+        )
+
+        nome_escolhido = st.selectbox(
+            "📍 Visualizando dados de:",
+            nomes_armazens,
+            index=indice_atual,
+            key="seletor_armazem_fundador"
+        )
+
+        indice_escolhido = nomes_armazens.index(nome_escolhido)
+
+        if ids_armazens[indice_escolhido] != st.session_state.armazem_visualizado_id:
+
+            st.session_state.armazem_visualizado_id = ids_armazens[indice_escolhido]
+            st.session_state.armazem_visualizado_nome = nome_escolhido
+            st.rerun()
+
+    with st.popover("🆕 Novidades da versão 1.0.5"):
+
+        st.markdown(
+            """
+**O que há de novo no Luxiz IA:**
+
+- 🕒 Os cards do Dashboard agora mostram a **data e hora** da última atualização de cada rua, além de quem atualizou.
+- 🔐 Tela de login redesenhada: mais limpa, com foco na logo (agora com um efeito de brilho pulsante) e um fundo com movimento suave.
+- ❓ Texto "Para que serve o Luxiz IA?" atualizado, agora explicando todos os módulos do sistema (Auditoria, Rodízio, Checklist, Equipamentos e Administrativo, além de Dashboard, Remanejamento e SAC).
+- 📖 Nova seção **"Modo de Usar"** na tela inicial, logo abaixo das Permissões, explicando como usar cada módulo e qual é a meta dele.
+- ⚡ Ações do dia a dia (salvar, adicionar, excluir) ficaram mais rápidas: o app agora reaproveita a conexão com o banco de dados em vez de abrir uma nova a cada clique.
+- 🖥️ O fundo do app não depende mais das configurações de tema do navegador — o visual é sempre o mesmo, controlado só pelo Luxiz IA.
+- 🎨 Os cards do Dashboard e do Remanejamento ficam **coloridos por inteiro** conforme a nota ou a prioridade — dá para ver a situação de longe, sem precisar ler o texto.
+- 🕒 O histórico de Remanejamentos foi movido para um botão discreto no final da página, deixando a tela mais limpa.
+- ✨ Feedback visual em tempo real: ao salvar, adicionar ou excluir algo, o sistema mostra "Luxiz IA atualizando..." e confirma com um aviso rápido na tela.
+- ⏱️ Atualização automática das telas a cada 120 segundos, reduzindo o "piscar" da tela.
+- 🔍 Análise Técnica no SAC com muito mais detalhe: Chamado, Cliente, Nota Fiscal, Cód Produto, Produto, Tratativa, Hora, Separador, Volume, Carga, Região, Motorista, Balança e Conferente.
+- 📥 Botão para exportar toda a Análise Técnica para uma planilha Excel.
+- 🗑️ É possível excluir vários registros de Remanejamento e de Análise Técnica de uma vez, usando as caixinhas de seleção.
+- 👥 Perfis de acesso **Separador**, **Conferente** e **Recebimento**, cada um com visão restrita aos módulos que fazem parte da sua rotina.
+- 📈 Nova aba **Histórico Produtivo**: gráficos do seu empenho no SAC, Dashboard, Checklist, Auditoria e Controle de EPI's, mostrando o que precisa melhorar.
+- 📦 Nova aba **Controle de Estoque**: entrada de mercadoria e retirada para uso, com saldo em tempo real e registro de quem deu a entrada e de quem retirou.
+- 📨 Nova aba **Solicitações**: Separador, Conferente e Recebimento pedem folga, saída antecipada e outros pedidos ao supervisor (Gestão ou Fundador), que aceita ou recusa — na recusa, o motivo fica visível para quem pediu.
+- 🏆 Nova aba **Recordes**: ranking do SAC (menos chamados no nome, melhor), ranking da Auditoria (mais acertos e menos erros) e o Top 3 do Dashboard do último mês, com busca para ver os meses anteriores. Cada colaborador acompanha a quantidade de medalhas 🥇🥈🥉 que conquistou nos fechamentos (mensais no SAC e no Dashboard, trimestrais na Auditoria).
+- 🛍️ Nova aba **Loja Virtual** (Fundador e usuários liberados): cadastro de produtos com preço pago e preço de venda, entrada de estoque, vendas com cliente e data de pagamento, pagamentos a receber e gráficos do andamento das vendas e do lucro.
+        """
+    )
+
+# =====================================================
+# ABAS PRINCIPAIS
+# =====================================================
+
+if acesso_restrito:
+
+    NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
+        ("nav_dashboard", "📊", "Dashboard"),
+        ("nav_sac", "😊", "SAC"),
+        ("nav_rotativo", "🔄", "Rodízio"),
+        ("nav_checklist", "✅", "Checklist"),
+        ("nav_equipamentos", "🧰", "Equipamentos"),
+        ("nav_epi", "🦺", "Controle de EPI's"),
+    ]
+
+elif eh_recebimento:
+
+    NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
+        ("nav_auditoria", "🎯", "Auditoria"),
+        ("nav_checklist", "✅", "Checklist"),
+        ("nav_equipamentos", "🧰", "Equipamentos"),
+        ("nav_epi", "🦺", "Controle de EPI's"),
+    ]
+
+elif eh_painel:
+
+    NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
+        ("nav_dashboard", "📊", "Dashboard"),
+        ("nav_remanejamento", "⚡", "Remanejamento"),
+        ("nav_sac", "😊", "SAC"),
+        ("nav_auditoria", "🎯", "Auditoria"),
+        ("nav_rotativo", "🔄", "Rodízio"),
+    ]
+
+else:
+
+    NAV_ITENS = [
+        ("nav_inicio", "🏠", "Início"),
+        ("nav_dashboard", "📊", "Dashboard"),
+        ("nav_remanejamento", "⚡", "Remanejamento"),
+        ("nav_sac", "😊", "SAC"),
+        ("nav_auditoria", "🎯", "Auditoria"),
+        ("nav_rotativo", "🔄", "Rodízio"),
+        ("nav_checklist", "✅", "Checklist"),
+        ("nav_equipamentos", "🧰", "Equipamentos"),
+        ("nav_epi", "🦺", "Controle de EPI's"),
+        ("nav_estoque", "📦", "Controle de Estoque"),
+        ("nav_administrativo", "⚙️", "Administrativo"),
+    ]
+
+# Recordes: aparece para todos os perfis.
+NAV_ITENS.append(("nav_recordes", "🏆", "Recordes"))
+
+# Solicitações: aparece para quem envia (Separador, Conferente,
+# Recebimento) e para quem responde (Gestão e Fundador). Para o
+# supervisor, o nome da aba mostra quantas estão aguardando resposta.
+if (
+    solicitacoes.eh_solicitante(usuario_atual)
+    or solicitacoes.eh_supervisor(usuario_atual, tipo)
+):
+
+    nome_nav_solicitacoes = "Solicitações"
+
+    if solicitacoes.eh_supervisor(usuario_atual, tipo):
+
+        try:
+            pendentes_solicitacoes = solicitacoes.contar_pendentes_supervisor(
+                armazem_id_atual,
+                usuario_atual
+            )
+        except Exception:
+            pendentes_solicitacoes = 0
+
+        if pendentes_solicitacoes:
+            nome_nav_solicitacoes = f"Solicitações ({pendentes_solicitacoes})"
+
+    NAV_ITENS.append(("nav_solicitacoes", "📨", nome_nav_solicitacoes))
+
+# Loja Virtual: controle de vendas e revendas. Visível somente para
+# logins "Fundador.Nome" e para os usuários liberados em
+# loja.USUARIOS_LIBERADOS (ex.: Adm.Vanessa).
+if loja.tem_acesso(usuario_atual, tipo):
+    NAV_ITENS.append(("nav_loja", "🛍️", "Loja Virtual"))
+
+NAV_ITENS.append(("nav_historico", "📈", "Histórico Produtivo"))
+NAV_ITENS.append(("nav_perfil", "🪪", "Perfil"))
+CHAVES_VALIDAS = [chave for chave, _, _ in NAV_ITENS]
+
+if (
+    "aba_atual" not in st.session_state
+    or st.session_state.aba_atual not in CHAVES_VALIDAS
+):
+    st.session_state.aba_atual = CHAVES_VALIDAS[0]
+
+# Mantém a URL sempre sincronizada com a aba atual — é o que
+# permite, numa queda de rede seguida de reconexão, devolver a
+# pessoa exatamente para a mesma tela (ver bloco de restauração de
+# sessão, mais acima).
+if st.query_params.get("aba") != st.session_state.aba_atual:
+    st.query_params["aba"] = st.session_state.aba_atual
+
+
+def ir_para_aba(chave_destino):
+    """
+    Troca a aba atual e já grava a escolha na URL (?aba=...), para
+    que uma queda de rede seguida de reconexão devolva a pessoa
+    para essa mesma aba em vez de cair na tela Início.
+    """
+
+    st.session_state.aba_atual = chave_destino
+    st.query_params["aba"] = chave_destino
+    st.rerun()
+
+
+@st.fragment
+def render_sidebar():
+
+    # =====================================================
+    # BARRA LATERAL (construída com CSS, não usa st.sidebar)
+    # =====================================================
+
+    if "sidebar_aberta" not in st.session_state:
+        st.session_state.sidebar_aberta = True
+
+    # O clique no toggle é resolvido AQUI, antes de qualquer CSS ou
+    # rótulo que dependa de sidebar_aberta. Assim, quando o estado
+    # muda, todo o resto da função (largura do painel, CSS, rótulo
+    # do botão, nomes dos itens de navegação) já enxerga o valor
+    # novo — tudo numa única passada consistente, sem precisar de
+    # st.rerun() (que já dispara sozinho, uma vez, por ser um botão
+    # dentro de um fragment).
+    if st.button(
+        "\u200b",
+        key="toggle_sidebar_luxiz"
+    ):
+        st.session_state.sidebar_aberta = not st.session_state.sidebar_aberta
+
+    LARGURA_PAINEL_PX = 208 if st.session_state.sidebar_aberta else 64
+    TOPO_INICIAL_PX = 104
+    ESPACAMENTO_PX = 56
+
+    # Altura aproximada da barra global "🟢 Sistema Online" fixa no rodapé
+    # da página inteira (definida em estilos.py, classe .footer-luxiz).
+    ALTURA_RODAPE_GLOBAL_PX = 40
+
+    # Altura do rodapé próprio da barra lateral (bolinha + nome do usuário),
+    # que fica encaixado logo acima da barra global.
+    ALTURA_RODAPE_SIDEBAR_PX = 46
+
+    # A barra lateral é um painel próprio (não usa st.sidebar), então
+    # precisa seguir manualmente o tema claro/escuro escolhido no topo.
+    if st.session_state.tema == "claro":
+        COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.94))"
+        COR_BORDA_SIDEBAR = "rgba(0,0,0,.08)"
+        COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.06)"
+        COR_TEXTO_TOGGLE = "#0f172a"
+        COR_BOTAO_NAV_INATIVO = "rgba(15,23,42,.035)"
+        COR_BOTAO_NAV_INATIVO_HOVER = "rgba(15,23,42,.07)"
+        COR_BORDA_BOTAO_NAV = "rgba(15,23,42,.08)"
+        COR_TEXTO_BOTAO_NAV = "#334155"
+    else:
+        COR_FUNDO_SIDEBAR = "linear-gradient(180deg, rgba(8,12,24,.95), rgba(8,12,24,.88))"
+        COR_BORDA_SIDEBAR = "rgba(255,255,255,.08)"
+        COR_SOMBRA_SIDEBAR = "2px 0 18px rgba(0,0,0,.25)"
+        COR_TEXTO_TOGGLE = "#e2e8f0"
+        COR_BOTAO_NAV_INATIVO = "rgba(255,255,255,.04)"
+        COR_BOTAO_NAV_INATIVO_HOVER = "rgba(255,255,255,.09)"
+        COR_BORDA_BOTAO_NAV = "rgba(255,255,255,.08)"
+        COR_TEXTO_BOTAO_NAV = "#cbd5e1"
+
+    extra_css_fechado = "" if st.session_state.sidebar_aberta else """
+        div[class*="st-key-nav_"] button{
+            text-align:center !important;
+            padding-left:0 !important;
+            font-size:1.15rem !important;
+        }
+    """
+
+    st.markdown(
+        f"""
+        <style>
+        .luxiz-sidebar-fundo{{
+            position:fixed;
+            left:0;
+            top:0;
+            width:{LARGURA_PAINEL_PX}px;
+            height:100vh;
+            background:{COR_FUNDO_SIDEBAR};
+            border-right:1px solid {COR_BORDA_SIDEBAR};
+            box-shadow:{COR_SOMBRA_SIDEBAR};
+            z-index:999996;
+            transition:width .18s ease, background .18s ease;
+        }}
+        .luxiz-sidebar-sub{{
+            position:fixed;
+            left:0;
+            top:70px;
+            width:{LARGURA_PAINEL_PX}px;
+            text-align:center;
+            z-index:999997;
+            color:#64748b;
+            font-size:.68rem;
+            letter-spacing:1px;
+            text-transform:uppercase;
+            pointer-events:none;
+        }}
+        div[class*="st-key-toggle_sidebar_luxiz"]{{
+            position:fixed;
+            left:0;
+            top:16px;
+            width:{LARGURA_PAINEL_PX}px;
+            z-index:999999;
+            text-align:center;
+            transition:width .18s ease;
+        }}
+        div[class*="st-key-toggle_sidebar_luxiz"] button{{
+            background:transparent !important;
+            border:none !important;
+            box-shadow:none !important;
+            color:transparent !important;
+            width:100%;
+            height:40px;
+            padding:.3rem 0 !important;
+        }}
+        div[class*="st-key-toggle_sidebar_luxiz"] button:hover ~ .luxiz-sidebar-toggle-visual,
+        .luxiz-sidebar-toggle-visual:hover{{
+            filter:brightness(1.25);
+        }}
+        .luxiz-sidebar-toggle-visual{{
+            position:fixed;
+            left:0;
+            top:16px;
+            width:{LARGURA_PAINEL_PX}px;
+            height:40px;
+            z-index:999998;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:0;
+            pointer-events:none;
+            overflow:hidden;
+            transition:width .18s ease;
+        }}
+        .luxiz-sidebar-toggle-visual img{{
+            height:28px;
+            width:auto;
+            display:block;
+            flex-shrink:0;
+        }}
+        .luxiz-sidebar-toggle-visual span{{
+            font-weight:800;
+            font-size:1.05rem;
+            letter-spacing:.4px;
+            color:{COR_TEXTO_TOGGLE};
+            white-space:nowrap;
+            margin-left:-10px;
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]{{
+            position:fixed;
+            left:0;
+            top:{TOPO_INICIAL_PX + 26}px;
+            width:{LARGURA_PAINEL_PX}px;
+            bottom:{ALTURA_RODAPE_GLOBAL_PX + ALTURA_RODAPE_SIDEBAR_PX}px;
+            overflow-y:auto;
+            overflow-x:hidden;
+            padding:0 16px;
+            box-sizing:border-box;
+            z-index:999998;
+            transition:width .18s ease;
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar{{
+            width:5px;
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-thumb{{
+            background:rgba(148,163,184,.45);
+            border-radius:999px;
+        }}
+        div[class*="st-key-painel_navegacao_scroll"]::-webkit-scrollbar-track{{
+            background:transparent;
+        }}
+        div[class*="st-key-nav_"]{{
+            margin-bottom:8px;
+            width:100%;
+        }}
+        div[class*="st-key-nav_"] > div{{
+            width:100%;
+        }}
+        div[class*="st-key-nav_"] div[data-testid="stButton"]{{
+            width:100%;
+        }}
+        div[class*="st-key-nav_"] button{{
+            width:100% !important;
+            display:block;
+            height:44px;
+            min-height:44px;
+            max-height:44px;
+            border-radius:12px !important;
+            border-width:1px !important;
+            border-style:solid !important;
+            text-align:left;
+            padding-left:16px !important;
+            font-size:.92rem;
+            font-weight:600 !important;
+            white-space:nowrap;
+            position:relative;
+            overflow:hidden;
+            box-sizing:border-box;
+            transition:transform .15s ease, filter .15s ease,
+                background .15s ease, box-shadow .15s ease, border-color .15s ease;
+        }}
+        div[class*="st-key-nav_"] button p{{
+            font-weight:inherit !important;
+            position:relative;
+            z-index:1;
+        }}
+
+        /* Reflexo de vidro: uma faixa de brilho que desliza sobre o
+           botão quando o mouse passa por cima — igual nos dois estados. */
+        div[class*="st-key-nav_"] button::before{{
+            content:"";
+            position:absolute;
+            top:0;
+            left:-130%;
+            width:55%;
+            height:100%;
+            background:linear-gradient(115deg, transparent, rgba(255,255,255,.55), transparent);
+            transform:skewX(-18deg);
+            transition:left .55s ease;
+            pointer-events:none;
+            z-index:0;
+        }}
+        div[class*="st-key-nav_"] button:hover::before{{
+            left:140%;
+        }}
+
+        div[class*="st-key-nav_"] button[kind="secondary"]{{
+            background:{COR_BOTAO_NAV_INATIVO} !important;
+            border-color:{COR_BORDA_BOTAO_NAV} !important;
+            color:{COR_TEXTO_BOTAO_NAV} !important;
+            box-shadow:none !important;
+        }}
+        div[class*="st-key-nav_"] button[kind="secondary"]:hover{{
+            background:{COR_BOTAO_NAV_INATIVO_HOVER} !important;
+            border-color:rgba(0,200,255,.35) !important;
+            color:{COR_TEXTO_TOGGLE} !important;
+        }}
+        div[class*="st-key-nav_"] button[kind="primary"]{{
+            background:linear-gradient(135deg,#00c8ff,#a855f7) !important;
+            border-color:transparent !important;
+            color:#ffffff !important;
+            box-shadow:0 2px 8px rgba(124,58,237,.30) !important;
+        }}
+        div[class*="st-key-nav_"] button[kind="primary"]:hover{{
+            filter:brightness(1.08);
+        }}
+        {extra_css_fechado}
+        .block-container{{
+            padding-left:{LARGURA_PAINEL_PX + (32 if st.session_state.sidebar_aberta else 24)}px !important;
+            transition:padding-left .18s ease;
+        }}
+        </style>
+        <div class="luxiz-sidebar-fundo"></div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    _logo_toggle_b64 = estilos._logo_base64()
+
+    st.markdown(
+        f"""
+        <div class="luxiz-sidebar-toggle-visual">
+            <img src="data:image/png;base64,{_logo_toggle_b64}" alt="Luxiz IA">
+            {'<span>Luxiz IA</span>' if st.session_state.sidebar_aberta else ''}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if st.session_state.sidebar_aberta:
+
+        st.markdown(
+            '<div class="luxiz-sidebar-sub">Navegação</div>',
+            unsafe_allow_html=True
+        )
+
+    with st.container(key="painel_navegacao_scroll"):
+
+        for indice, (chave, icone, nome) in enumerate(NAV_ITENS):
+
+            ativo = st.session_state.aba_atual == chave
+
+            rotulo_nav = (
+                f"{icone}   {nome}"
+                if st.session_state.sidebar_aberta
+                else icone
+            )
+
+            if st.button(
+                rotulo_nav,
+                key=chave,
+                type="primary" if ativo else "secondary"
+            ):
+                ir_para_aba(chave)
+
+    # =====================================================
+    # RODAPÉ DA BARRA LATERAL (bolinha online + usuário logado)
+    # =====================================================
+    # Fica sempre fixo, acima da barra global "Sistema Online" do
+    # rodapé da página — só a área de navegação (acima) rola.
+
+    perfil_atual_sidebar = banco.ler_perfil(usuario_atual)
+
+    if perfil_atual_sidebar:
+        nome_perfil_sidebar = banco.nome_completo_perfil(perfil_atual_sidebar)
+        foto_perfil_sidebar = perfil_atual_sidebar.get("foto")
+    else:
+        nome_perfil_sidebar = nome_exibicao
+        foto_perfil_sidebar = None
+
+    if foto_perfil_sidebar:
+
+        avatar_html_sidebar = (
+            f'<img src="{foto_perfil_sidebar}" style="'
+            f'width:24px;height:24px;border-radius:50%;object-fit:cover;'
+            f'flex-shrink:0;">'
+        )
+
+    else:
+
+        iniciais_sidebar = "".join(
+            p[0].upper() for p in nome_perfil_sidebar.split()[:2]
+        ) or "?"
+
+        avatar_html_sidebar = (
+            f'<div style="'
+            f'width:24px;height:24px;border-radius:50%;flex-shrink:0;'
+            f'background:linear-gradient(135deg,#3b82f6,#a855f7);'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'color:white;font-weight:800;font-size:.62rem;'
+            f'">{iniciais_sidebar}</div>'
+        )
+
+    rotulo_rodape_sidebar = (
+        f'{avatar_html_sidebar}<span class="luxiz-sidebar-rodape-nome">{nome_perfil_sidebar}</span>'
+        if st.session_state.sidebar_aberta
+        else avatar_html_sidebar
+    )
+
+    st.markdown(
+        f"""
+        <style>
+        .luxiz-sidebar-rodape{{
+            position:fixed;
+            left:0;
+            bottom:{ALTURA_RODAPE_GLOBAL_PX}px;
+            width:{LARGURA_PAINEL_PX}px;
+            height:{ALTURA_RODAPE_SIDEBAR_PX}px;
+            box-sizing:border-box;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:8px;
+            z-index:999998;
+            font-size:.78rem;
+            font-weight:700;
+            color:{COR_TEXTO_TOGGLE};
+            white-space:nowrap;
+            overflow:hidden;
+            padding:0 12px;
+            border-top:1px solid {COR_BORDA_SIDEBAR};
+            background:{COR_FUNDO_SIDEBAR};
+            transition:width .18s ease;
+        }}
+        .luxiz-sidebar-rodape-nome{{
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+            min-width:0;
+        }}
+        </style>
+        <div class="luxiz-sidebar-rodape">{rotulo_rodape_sidebar}</div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+render_sidebar()
+aba_inicio = st.session_state.aba_atual == "nav_inicio"
+aba_dashboard = st.session_state.aba_atual == "nav_dashboard"
+aba_remanejamento = st.session_state.aba_atual == "nav_remanejamento"
+aba_sac = st.session_state.aba_atual == "nav_sac"
+aba_auditoria = st.session_state.aba_atual == "nav_auditoria"
+aba_rotativo = st.session_state.aba_atual == "nav_rotativo"
+aba_checklist = st.session_state.aba_atual == "nav_checklist"
+aba_equipamentos = st.session_state.aba_atual == "nav_equipamentos"
+aba_epi = st.session_state.aba_atual == "nav_epi"
+aba_estoque = st.session_state.aba_atual == "nav_estoque"
+aba_solicitacoes = st.session_state.aba_atual == "nav_solicitacoes"
+aba_recordes = st.session_state.aba_atual == "nav_recordes"
+aba_loja = st.session_state.aba_atual == "nav_loja"
+aba_historico = st.session_state.aba_atual == "nav_historico"
+aba_perfil = st.session_state.aba_atual == "nav_perfil"
+aba_admin = st.session_state.aba_atual == "nav_administrativo"
+
+
+# =====================================================
+# INÍCIO
+# =====================================================
+
+def render_conteudo_inicio():
+
+    st.markdown(
+        """
+        <style>
+        div[class*="st-key-home-mod-"]{
+            transition:transform .18s ease, box-shadow .18s ease;
+        }
+        div[class*="st-key-home-mod-"]:hover{
+            transform:translateY(-3px);
+        }
+        div[class*="st-key-home-ir-"] button{
+            width:100% !important;
+            border-radius:999px !important;
+            font-weight:700 !important;
+            font-size:.8rem !important;
+            padding:.25rem 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.subheader("🚀 Acesso Rápido")
+
+    st.caption(
+        "Clique em qualquer módulo abaixo para abrir direto, ou use a barra lateral."
+    )
+
+    DESCRICOES_MODULOS = {
+        "nav_dashboard": "Notas de organização por rua, em tempo real.",
+        "nav_remanejamento": "Prioridades operacionais monitoradas ao vivo.",
+        "nav_sac": "Metas de reclamações e análise técnica por pessoa.",
+        "nav_auditoria": "Acertos e erros de cada colaborador, com histórico.",
+        "nav_rotativo": "Escala automática das atividades de fim de expediente.",
+        "nav_checklist": "Inspeção de hidráulicos, carrinhos, empilhadeiras e pigmentação.",
+        "nav_equipamentos": "Responsáveis por hidráulicos e carrinhos, e carrinhos fixos por local.",
+        "nav_epi": "Registro de entrega de EPIs, com assinatura digital do colaborador.",
+        "nav_estoque": "Entradas e retiradas de mercadoria, com saldo em tempo real.",
+        "nav_solicitacoes": "Pedidos de folga e saída antecipada, com resposta do supervisor.",
+        "nav_recordes": "Rankings do SAC, da Auditoria e Top 3 do Dashboard por mês.",
+        "nav_loja": "Produtos, estoque, vendas e pagamentos a receber, com gráficos.",
+        "nav_historico": "Gráficos do seu empenho e do que precisa melhorar.",
+        "nav_administrativo": "Gestão completa da operação em um só lugar.",
+    }
+
+    CORES_MODULOS = {
+        "nav_dashboard": "#3b82f6",
+        "nav_remanejamento": "#f59e0b",
+        "nav_sac": "#22c55e",
+        "nav_auditoria": "#ec4899",
+        "nav_rotativo": "#06b6d4",
+        "nav_checklist": "#a855f7",
+        "nav_equipamentos": "#0ea5e9",
+        "nav_epi": "#f97316",
+        "nav_estoque": "#10b981",
+        "nav_solicitacoes": "#e11d48",
+        "nav_recordes": "#eab308",
+        "nav_loja": "#d946ef",
+        "nav_historico": "#14b8a6",
+        "nav_administrativo": "#64748b",
+    }
+
+    modulos_disponiveis = [
+        (chave, icone, nome)
+        for chave, icone, nome in NAV_ITENS
+        if chave != "nav_inicio"
+    ]
+
+    st.write("")
+
+    for inicio_linha in range(0, len(modulos_disponiveis), 3):
+
+        linha = st.columns(3)
+
+        for offset in range(3):
+
+            indice = inicio_linha + offset
+
+            if indice >= len(modulos_disponiveis):
+                continue
+
+            chave, icone, nome = modulos_disponiveis[indice]
+
+            cor = CORES_MODULOS.get(chave, "#3b82f6")
+
+            with linha[offset]:
+
+                chave_card_home = f"home-mod-{chave}"
+
+                st.markdown(
+                    f"""
+                    <style>
+                    .st-key-{chave_card_home}{{
+                        border:1px solid {cor}40 !important;
+                        background:{cor}0c !important;
+                        border-radius:1rem !important;
+                    }}
+                    .st-key-{chave_card_home}:hover{{
+                        border-color:{cor} !important;
+                        box-shadow:0 10px 24px {cor}33;
+                    }}
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                with st.container(border=True, key=chave_card_home):
+
+                    st.markdown(
+                        f"""
+                        <div style="
+                            width:48px;height:48px;border-radius:12px;
+                            background:{cor}22;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;margin-bottom:.5rem;
+                        ">{icone}</div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                    st.markdown(
+                        f"**{nome}**"
+                    )
+
+                    st.caption(
+                        DESCRICOES_MODULOS.get(chave, "")
+                    )
+
+                    st.write("")
+
+                    if st.button(
+                        "Abrir →",
+                        key=f"home-ir-{chave}",
+                        width='stretch'
+                    ):
+                        ir_para_aba(chave)
+
+    st.divider()
+
+    st.subheader(
+        "🔐 Permissões do Perfil"
+    )
+
+    st.caption(
+        "O que o seu login pode ver e fazer dentro do Luxiz IA."
+    )
+
+    PERFIS_PERMISSOES = {
+        "fundador": (
+            "👑", "Fundador", "#f59e0b",
+            "Controle total do sistema, sem restrições.",
+            [
+                ("👥", "Criar usuários"),
+                ("🛡️", "Criar gestores"),
+                ("🗑️", "Excluir usuários"),
+                ("🗑️", "Excluir gestores"),
+                ("🔑", "Resetar senhas"),
+                ("📨", "Responder solicitações"),
+                ("🛍️", "Loja Virtual"),
+                ("⚙️", "Controle total do sistema"),
+            ]
+        ),
+        "gestao": (
+            "🛡️", "Gestão", "#3b82f6",
+            "Gerencia a operação e o time no dia a dia.",
+            [
+                ("👥", "Criar usuários"),
+                ("🗑️", "Excluir usuários comuns"),
+                ("🔑", "Resetar senhas"),
+                ("📨", "Responder solicitações"),
+                ("📋", "Gerenciar operação"),
+            ]
+        ),
+        "painel": (
+            "📟", "Painel Logístico", "#6366f1",
+            "Visão consolidada e ao vivo da operação, sem acesso administrativo.",
+            [
+                ("📊", "Dashboard"),
+                ("⚡", "Remanejamento"),
+                ("😊", "SAC"),
+                ("🎯", "Auditoria"),
+                ("🔄", "Rodízio"),
+            ]
+        ),
+        "separador": (
+            "📦", "Separador", "#22c55e",
+            "Acesso focado na rotina operacional do separador.",
+            [
+                ("📊", "Dashboard"),
+                ("😊", "SAC"),
+                ("🔄", "Rodízio"),
+                ("✅", "Checklist"),
+                ("📨", "Solicitações"),
+            ]
+        ),
+        "conferente": (
+            "🔎", "Conferente", "#06b6d4",
+            "Acesso focado na rotina operacional do conferente.",
+            [
+                ("📊", "Dashboard"),
+                ("😊", "SAC"),
+                ("🔄", "Rodízio"),
+                ("✅", "Checklist"),
+                ("📨", "Solicitações"),
+            ]
+        ),
+        "recebimento": (
+            "📥", "Recebimento", "#a855f7",
+            "Acesso focado na conferência e na própria auditoria.",
+            [
+                ("🎯", "Auditoria (apenas o próprio card)"),
+                ("✅", "Checklist"),
+                ("📨", "Solicitações"),
+            ]
+        ),
+        "usuario": (
+            "👤", "Usuário", "#64748b",
+            "Acesso padrão à operação do dia a dia.",
+            [
+                ("📊", "Dashboard"),
+                ("😊", "SAC"),
+                ("⚡", "Remanejamento"),
+                ("🎯", "Auditoria"),
+                ("🔄", "Rodízio"),
+                ("✅", "Checklist"),
+                ("📦", "Controle de Estoque"),
+                ("⚙️", "Administrativo operacional"),
+            ]
+        ),
+    }
+
+    # Recordes está liberado para todos os perfis
+    for _perfil_chave in PERFIS_PERMISSOES:
+        PERFIS_PERMISSOES[_perfil_chave][4].append(("🏆", "Recordes"))
+
+    if tipo == "fundador" or eh_fundador_prefixo:
+        perfil_chave_atual = "fundador"
+    elif tipo == "gestao" or eh_gestao_prefixo:
+        perfil_chave_atual = "gestao"
+    elif eh_painel:
+        perfil_chave_atual = "painel"
+    elif eh_separador:
+        perfil_chave_atual = "separador"
+    elif eh_conferente:
+        perfil_chave_atual = "conferente"
+    elif eh_recebimento:
+        perfil_chave_atual = "recebimento"
+    else:
+        perfil_chave_atual = "usuario"
+
+    icone_perfil, titulo_perfil, cor_perfil, desc_perfil, lista_permissoes = (
+        PERFIS_PERMISSOES[perfil_chave_atual]
+    )
+
+    chips_permissoes_html = "".join(
+        f"""
+        <span style="
+            display:inline-flex;align-items:center;gap:.4rem;
+            background:{cor_perfil}16;
+            border:1px solid {cor_perfil}45;
+            padding:.4rem .85rem;
+            border-radius:999px;
+            font-size:.82rem;
+            font-weight:700;
+            margin:.25rem .4rem .25rem 0;
+        ">{emoji_p} {texto_p}</span>
+        """
+        for emoji_p, texto_p in lista_permissoes
+    )
+
+    st.markdown(
+        f"""
+        <style>
+        @keyframes luxizPerfilSubir {{
+            from {{ opacity:0; transform:translateY(10px); }}
+            to   {{ opacity:1; transform:translateY(0); }}
+        }}
+        .luxiz-perfil-card {{
+            position:relative;
+            overflow:hidden;
+            border-radius:1.2rem;
+            padding:1.5rem 1.7rem;
+            border:1px solid {cor_perfil}40;
+            background:linear-gradient(135deg, {cor_perfil}18, {cor_perfil}05 65%);
+            animation:luxizPerfilSubir .4s ease;
+        }}
+        .luxiz-perfil-card::before {{
+            content:"";
+            position:absolute;
+            width:200px;height:200px;
+            border-radius:50%;
+            background:{cor_perfil}14;
+            top:-90px; right:-60px;
+            pointer-events:none;
+        }}
+        .luxiz-perfil-cabecalho {{
+            display:flex;
+            align-items:center;
+            gap:1rem;
+            position:relative;
+            z-index:1;
+        }}
+        .luxiz-perfil-icone {{
+            flex-shrink:0;
+            width:56px;height:56px;
+            border-radius:16px;
+            background:{cor_perfil}25;
+            display:flex;align-items:center;justify-content:center;
+            font-size:1.7rem;
+            box-shadow:0 8px 18px {cor_perfil}35;
+        }}
+        .luxiz-perfil-titulo {{
+            font-size:1.3rem;
+            font-weight:800;
+            color:{cor_perfil};
+            margin:0;
+        }}
+        .luxiz-perfil-desc {{
+            font-size:.85rem;
+            opacity:.8;
+            margin:.15rem 0 0 0;
+        }}
+        .luxiz-perfil-rotulo-lista {{
+            font-size:.72rem;
+            font-weight:800;
+            letter-spacing:.5px;
+            text-transform:uppercase;
+            opacity:.6;
+            margin:1.2rem 0 .5rem 0;
+            position:relative;
+            z-index:1;
+        }}
+        .luxiz-perfil-permissoes {{
+            position:relative;
+            z-index:1;
+        }}
+        </style>
+        <div class="luxiz-perfil-card">
+            <div class="luxiz-perfil-cabecalho">
+                <div class="luxiz-perfil-icone">{icone_perfil}</div>
+                <div>
+                    <p class="luxiz-perfil-titulo">{titulo_perfil}</p>
+                    <p class="luxiz-perfil-desc">{desc_perfil}</p>
+                </div>
+            </div>
+            <p class="luxiz-perfil-rotulo-lista">✅ Acessos liberados</p>
+            <div class="luxiz-perfil-permissoes">{chips_permissoes_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if (tipo == "fundador" or eh_fundador_prefixo) or (tipo == "gestao" or eh_gestao_prefixo):
+
+        st.write("")
+
+        st.subheader(
+            "👥 Como Cadastrar Usuários"
+        )
+
+        st.caption(
+            "Guia rápido para tirar as dúvidas mais comuns na hora de criar um novo acesso."
+        )
+
+        with st.expander("❓ Passo a passo para criar um usuário", expanded=False):
+
+            st.markdown(
+                "**1.** Vá em **⚙️ Administrativo → 👥 Usuários → ➕ Criar novo usuário**."
+            )
+
+            st.markdown(
+                "**2.** No campo **Usuário**, digite sempre no formato "
+                "`Função.Nome` — o prefixo antes do ponto define o que a "
+                "pessoa pode ver e fazer no sistema, e também gera o "
+                "emblema colorido dela na lista de usuários. Funções "
+                "disponíveis:"
+            )
+
+            col_funcoes_a, col_funcoes_b = st.columns(2)
+
+            with col_funcoes_a:
+                st.markdown(
+                    """
+                    - `Gestao.` 🛡️ — acesso de gestão
+                    - `Separador.` 📦
+                    - `Conferente.` 🔎
+                    - `Painel.` 📟 — Dashboard, Remanejamento,
+                      SAC, Auditoria e Rodízio
+                    """
+                )
+
+            with col_funcoes_b:
+                st.markdown(
+                    """
+                    - `Recebimento.` 📥
+                    - `Empilhador.` 🏗️
+                    - `Assistente.` 🧑‍💼 (Assistente Logístico)
+                    """
+                )
+
+            st.markdown(
+                "**Exemplos válidos:** `Separador.Joao`, `Conferente.Maria`, "
+                "`Empilhador.PedroSilva`."
+            )
+
+            st.markdown(
+                "**3.** Defina uma **Senha Inicial** — pode ser qualquer "
+                "senha temporária, a pessoa poderá trocá-la depois no "
+                "primeiro acesso."
+            )
+
+            st.markdown(
+                "**4.** Clique em **➕ Criar Usuário**. O login já aparece "
+                "na lista \"Usuários cadastrados\" logo abaixo, com o "
+                "emblema da função."
+            )
+
+            st.warning(
+                "⚠️ O nome depois do ponto precisa ser igual ao nome usado "
+                "nos cadastros de Auditoria, EPI etc. (ex.: se o usuário é "
+                "`Separador.Joao`, os registros devem usar \"Joao\"). É "
+                "assim que o sistema reconhece que os registros pertencem "
+                "àquela pessoa e libera a visão certa para ela."
+            )
+
+    st.divider()
+
+    st.subheader(
+        "📖 Modo de Usar"
+    )
+
+    st.caption(
+        "O que cada módulo faz e qual é o seu objetivo dentro da operação."
+    )
+
+    MODO_DE_USAR = [
+        (
+            "📊", "Dashboard", "#3b82f6",
+            "O líder inspeciona presencialmente cada rua/setor e atribui uma nota "
+            "de organização, limpeza e padrão operacional.",
+            "Gerar engajamento e senso de responsabilidade entre as equipes, "
+            "reconhecendo quem está com o melhor desempenho."
+        ),
+        (
+            "⚡", "Remanejamento", "#f59e0b",
+            "Cadastre uma prioridade (docas, coletas urgentes, separações críticas "
+            "etc.) e classifique a urgência: Alta, Média ou Normal.",
+            "Deixar visível, em tempo real, o que precisa de atenção imediata na operação."
+        ),
+        (
+            "😊", "SAC", "#22c55e",
+            "As reclamações do mês são contadas sozinhas, conforme os chamados "
+            "são registrados na Análise Técnica. No Administrativo você define "
+            "apenas a meta do mês; acompanhe as ocorrências por pessoa nos cards.",
+            "Medir a qualidade operacional, identificar gargalos e agir antes que "
+            "as reclamações aumentem."
+        ),
+        (
+            "🎯", "Auditoria", "#ec4899",
+            "Registre os acertos e erros de cada colaborador por função "
+            "(Conferente, Empilhador, Assistente Logístico).",
+            "Acompanhar o aproveitamento individual e direcionar treinamento para "
+            "quem mais precisa."
+        ),
+        (
+            "🔄", "Rodízio", "#06b6d4",
+            "Cadastre as pessoas e as atividades de fim de expediente no "
+            "Administrativo; o sistema gera a escala da semana sozinho.",
+            "Garantir um rodízio justo das atividades de fim de expediente, "
+            "sem depender de planilha manual."
+        ),
+        (
+            "✅", "Checklist", "#a855f7",
+            "Registre a inspeção de hidráulicos, carrinhos, empilhadeiras e "
+            "pigmentação, marcando Conforme ou Não Conforme.",
+            "Manter o histórico de conformidade dos equipamentos e permitir a "
+            "exportação para Excel."
+        ),
+        (
+            "🧰", "Equipamentos", "#0ea5e9",
+            "Consulte quem é responsável por cada hidráulico/carrinho e quais "
+            "carrinhos ficam fixos em cada local.",
+            "Facilitar a localização de equipamentos e de quem é o responsável "
+            "por cada um."
+        ),
+        (
+            "🦺", "Controle de EPI's", "#f97316",
+            "Registre o EPI entregue a cada colaborador. A pessoa (usuário "
+            "Separador/Conferente/Recebimento com o mesmo nome) vê a "
+            "pendência e assina digitalmente confirmando o recebimento.",
+            "Ter um registro confiável, com assinatura, de cada EPI entregue."
+        ),
+        (
+            "📦", "Controle de Estoque", "#10b981",
+            "Registre cada entrada de mercadoria e cada retirada para uso, "
+            "informando quem deu a entrada ou quem retirou. O saldo de cada "
+            "produto é calculado sozinho.",
+            "Saber o que temos em estoque, evitar falta de material e ter o "
+            "registro de quem movimentou cada item."
+        ),
+        (
+            "🏆", "Recordes", "#eab308",
+            "Abra a aba e escolha SAC, Auditoria ou Dashboard. No SAC, quem "
+            "tem menos chamados no nome fica na frente; na Auditoria, ganha "
+            "quem acerta mais e erra menos; no Dashboard aparece o Top 3 de "
+            "ruas do último mês (use a busca para ver meses anteriores). Na sub-aba "
+            "Medalhas você vê quantas 🥇🥈🥉 já conquistou nos fechamentos de cada período.",
+            "Reconhecer quem mais se empenha e motivar todos a subir de posição."
+        ),
+        (
+            "📨", "Solicitações", "#e11d48",
+            "Colaboradores (Separador, Conferente, Recebimento): escolha o "
+            "supervisor, o tipo de pedido (folga, saída antecipada etc.), o dia "
+            "e explique o motivo. Supervisores (Gestão e Fundador): abra a aba "
+            "Recebidas e aceite ou recuse; ao recusar, o motivo é obrigatório.",
+            "Dar um canal simples e registrado para os pedidos do dia a dia, "
+            "com resposta clara — quem pediu sempre sabe o resultado e, se "
+            "recusado, o porquê."
+        ),
+        (
+            "🛍️", "Loja Virtual", "#d946ef",
+            "Cadastre cada produto com o preço pago e o preço de venda. Quando "
+            "comprar mais, registre em Entrada de estoque. A cada venda, "
+            "informe o cliente, a quantidade e se já foi pago ou quando vai "
+            "pagar; o estoque e o lucro são calculados sozinhos. Em A receber "
+            "você acompanha quem ainda deve, e no Painel vê os gráficos. Na aba "
+            "Lingerie, lance cada peça vendida: o total soma sozinho e a comissão "
+            "é de 30% até R$ 500,00 e de 40% acima disso.",
+            "Ter o controle completo de compras, vendas, estoque, lucro e "
+            "pagamentos pendentes em um só lugar."
+        ),
+        (
+            "📈", "Histórico Produtivo", "#14b8a6",
+            "Abra a aba para ver os gráficos do seu empenho no SAC, Dashboard, "
+            "Checklist, Auditoria e Controle de EPI's. Verde significa em dia; "
+            "amarelo e vermelho mostram onde há o que melhorar.",
+            "Mostrar a cada pessoa, de forma simples e visual, o que ela precisa "
+            "melhorar dentro do sistema."
+        ),
+        (
+            "⚙️", "Administrativo", "#64748b",
+            "Cadastre usuários, responsáveis, atividades do rodízio, carrinhos "
+            "fixos e demais parâmetros do sistema.",
+            "Centralizar toda a configuração da operação em um só lugar."
+        ),
+    ]
+
+    modulos_visiveis = {chave for chave, _, _ in NAV_ITENS}
+
+    mapa_modo_de_usar = {
+        "Dashboard": "nav_dashboard",
+        "Remanejamento": "nav_remanejamento",
+        "SAC": "nav_sac",
+        "Auditoria": "nav_auditoria",
+        "Rodízio": "nav_rotativo",
+        "Checklist": "nav_checklist",
+        "Equipamentos": "nav_equipamentos",
+        "Controle de EPI's": "nav_epi",
+        "Controle de Estoque": "nav_estoque",
+        "Solicitações": "nav_solicitacoes",
+        "Recordes": "nav_recordes",
+        "Loja Virtual": "nav_loja",
+        "Histórico Produtivo": "nav_historico",
+        "Administrativo": "nav_administrativo",
+    }
+
+    for icone, nome, cor, como_usar, objetivo in MODO_DE_USAR:
+
+        if mapa_modo_de_usar.get(nome) not in modulos_visiveis:
+            continue
+
+        with st.expander(f"{icone}  {nome}"):
+
+            st.markdown(f"**🧭 Como usar:** {como_usar}")
+
+            st.markdown(
+                f"""
+                <div style="
+                    background:{cor}18;
+                    border-left:4px solid {cor};
+                    padding:.5rem .7rem;
+                    border-radius:.4rem;
+                    margin-top:.4rem;
+                ">
+                🎯 <strong>Meta:</strong> {objetivo}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    st.divider()
+
+    botao_sair_rodape("inicio")
+
+if aba_inicio:
+    with estilos.mostrar_processando("Carregando..."):
+        render_cabecalho_inicio()
+        notificacoes.renderizar(usuario_atual, armazem_id_atual)
+        render_conteudo_inicio()
+
+@st.fragment(run_every=120)
+def render_aba_dashboard():
+
+    with estilos.mostrar_processando("Carregando..."):
+        dashboard.render()
+
+    st.write("")
+    botao_sair_rodape("dashboard")
+
+if aba_dashboard:
+    render_aba_dashboard()
+
+# =====================================================
+# REMANEJAMENTO
+# =====================================================
+
+@st.fragment
+def render_aba_remanejamento():
+
+    with estilos.mostrar_processando("Carregando..."):
+        remanejamento.render()
+
+    st.write("")
+    botao_sair_rodape("remanejamento")
+
+if aba_remanejamento:
+    render_aba_remanejamento()
+
+# =====================================================
+# SAC
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_sac():
+
+    with estilos.mostrar_processando("Carregando..."):
+        sac.render()
+
+    st.write("")
+    botao_sair_rodape("sac")
+
+if aba_sac:
+    render_aba_sac()
+
+# =====================================================
+# AUDITORIA DE ATIVIDADES
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_auditoria():
+
+    with estilos.mostrar_processando("Carregando..."):
+        auditoria.render()
+
+    st.write("")
+    botao_sair_rodape("auditoria")
+
+if aba_auditoria:
+    render_aba_auditoria()
+
+# =====================================================
+# RODÍZIO - FIM DE EXPEDIENTE
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_rotativo():
+
+    with estilos.mostrar_processando("Carregando..."):
+        rotativo.render()
+
+    st.write("")
+    botao_sair_rodape("rotativo")
+
+if aba_rotativo:
+    render_aba_rotativo()
+
+# =====================================================
+# CHECKLIST
+# =====================================================
+
+@st.fragment
+def render_aba_checklist():
+
+    with estilos.mostrar_processando("Carregando..."):
+        checklist.render()
+
+    st.write("")
+    botao_sair_rodape("checklist")
+
+if aba_checklist:
+    render_aba_checklist()
+
+# =====================================================
+# EQUIPAMENTOS
+# =====================================================
+
+@st.fragment(run_every=120)
+def render_aba_equipamentos():
+
+    with estilos.mostrar_processando("Carregando..."):
+        equipamentos.render()
+
+    st.write("")
+    botao_sair_rodape("equipamentos")
+
+if aba_equipamentos:
+    render_aba_equipamentos()
+
+# =====================================================
+# CONTROLE DE EPI's
+# =====================================================
+
+@st.fragment
+def render_aba_epi():
+
+    with estilos.mostrar_processando("Carregando..."):
+        epi.render()
+
+    st.write("")
+    botao_sair_rodape("epi")
+
+if aba_epi:
+    render_aba_epi()
+
+# =====================================================
+# CONTROLE DE ESTOQUE
+# =====================================================
+# Sem run_every de propósito: a aba tem formulários e st.tabs(), e
+# um recarregamento automático no meio do preenchimento apagaria o
+# que a pessoa estava digitando.
+
+@st.fragment
+def render_aba_estoque():
+
+    with estilos.mostrar_processando("Carregando..."):
+        estoque.render()
+
+    st.write("")
+    botao_sair_rodape("estoque")
+
+if aba_estoque:
+    render_aba_estoque()
+
+# =====================================================
+# SOLICITAÇÕES
+# =====================================================
+# Sem run_every, pelo mesmo motivo do estoque: formulários e
+# campos de texto (motivo da recusa) não podem ser apagados por um
+# recarregamento automático enquanto a pessoa digita.
+
+@st.fragment
+def render_aba_solicitacoes():
+
+    with estilos.mostrar_processando("Carregando..."):
+        solicitacoes.render()
+
+    st.write("")
+    botao_sair_rodape("solicitacoes")
+
+if aba_solicitacoes:
+    render_aba_solicitacoes()
+
+# =====================================================
+# RECORDES
+# =====================================================
+# Sem run_every: a aba tem seletores (período, função, mês) e um
+# recarregamento automático faria a escolha da pessoa piscar/voltar.
+
+@st.fragment
+def render_aba_recordes():
+
+    with estilos.mostrar_processando("Carregando..."):
+        recordes.render()
+
+    st.write("")
+    botao_sair_rodape("recordes")
+
+if aba_recordes:
+    render_aba_recordes()
 
 # =====================================================
 # LOJA VIRTUAL
 # =====================================================
-# Controle de vendas e revendas: cadastro de produtos (preço pago e
-# preço de venda), entrada de estoque, vendas (para quem, quanto e
-# quando vai pagar), pagamentos a receber e gráficos do andamento.
-#
-# As tabelas são criadas sozinhas na primeira vez que a aba é aberta
-# (CREATE TABLE IF NOT EXISTS) — não precisa mexer no banco.py.
-
-COR_LOJA = "#d946ef"
-
-FORMAS_PAGAMENTO = [
-    "Pix",
-    "Dinheiro",
-    "Cartão de crédito",
-    "Cartão de débito",
-    "Boleto",
-    "Transferência",
-    "Outro",
-]
-
-OPCOES_PERIODO = [
-    "Este mês",
-    "Últimos 30 dias",
-    "Últimos 90 dias",
-    "Este ano",
-    "Tudo",
-]
-
-# Lingerie (peças de fornecedor): comissão sobre o total vendido.
-# Até o limite (inclusive) vale o percentual baixo; acima dele, o
-# percentual alto — aplicado sobre o total inteiro.
-LINGERIE_LIMITE = 500.0
-LINGERIE_PCT_BAIXO = 30
-LINGERIE_PCT_ALTO = 40
-
-
-# =====================================================
-# ACESSO
-# =====================================================
-# Dados de vendas e lucro são sensíveis: a aba só aparece para logins
-# no formato "Fundador.Nome" e para os logins listados abaixo em
-# USUARIOS_LIBERADOS. O tipo da conta (fundador/gestão) é ignorado de
-# propósito — nem a Gestão nem os demais perfis enxergam esta área.
-# Para liberar mais alguém, é só acrescentar o login na lista.
-
-USUARIOS_LIBERADOS = [
-    "adm.vanessa",
-]
-
-def tem_acesso(usuario, tipo):
-
-    usuario = (usuario or "").strip()
-
-    return (
-        usuario.startswith("Fundador.")
-        or usuario.lower() in USUARIOS_LIBERADOS
-    )
-
-
-# =====================================================
-# FORMATAÇÃO
-# =====================================================
-
-def _brl(valor):
-
-    try:
-        valor = float(valor)
-    except (TypeError, ValueError):
-        valor = 0.0
-
-    texto = f"{valor:,.2f}"
-
-    return "R$ " + texto.replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def _data_br(valor):
-
-    if valor is None or pd.isna(valor):
-        return "—"
-
-    return valor.strftime("%d/%m/%Y")
-
-
-def _recarregar():
-
-    # Dentro de um fragmento, recarrega só a aba (mais rápido). Se por
-    # algum motivo não estiver num fragmento, cai no rerun normal.
-    try:
-        st.rerun(scope="fragment")
-    except Exception:
-        st.rerun()
-
-
-# =====================================================
-# BANCO DE DADOS
-# =====================================================
-
-@st.cache_resource(show_spinner=False)
-def _garantir_schema():
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS loja_produtos (
-            id BIGSERIAL PRIMARY KEY,
-            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
-            nome TEXT NOT NULL,
-            categoria TEXT,
-            custo NUMERIC(12,2) NOT NULL DEFAULT 0,
-            preco_venda NUMERIC(12,2) NOT NULL DEFAULT 0,
-            estoque_minimo INTEGER NOT NULL DEFAULT 0,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (armazem_id, nome)
-        )
-        """)
-
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS loja_entradas (
-            id BIGSERIAL PRIMARY KEY,
-            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
-            produto_id BIGINT NOT NULL REFERENCES loja_produtos(id) ON DELETE CASCADE,
-            quantidade INTEGER NOT NULL,
-            custo_unitario NUMERIC(12,2) NOT NULL DEFAULT 0,
-            data_entrada DATE NOT NULL,
-            fornecedor TEXT,
-            observacao TEXT,
-            criado_por TEXT,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS loja_vendas (
-            id BIGSERIAL PRIMARY KEY,
-            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
-            produto_id BIGINT REFERENCES loja_produtos(id) ON DELETE SET NULL,
-            produto_nome TEXT NOT NULL,
-            cliente TEXT,
-            quantidade INTEGER NOT NULL,
-            preco_unitario NUMERIC(12,2) NOT NULL,
-            custo_unitario NUMERIC(12,2) NOT NULL DEFAULT 0,
-            data_venda DATE NOT NULL,
-            forma_pagamento TEXT,
-            data_pagamento DATE,
-            pago BOOLEAN NOT NULL DEFAULT FALSE,
-            data_pago DATE,
-            observacao TEXT,
-            criado_por TEXT,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_loja_produtos_armazem ON loja_produtos (armazem_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_loja_entradas_armazem ON loja_entradas (armazem_id, data_entrada DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_loja_entradas_produto ON loja_entradas (produto_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_loja_vendas_armazem ON loja_vendas (armazem_id, data_venda DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_loja_vendas_produto ON loja_vendas (produto_id)")
-
-        conn.commit()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-        banco.liberar(conn)
-
-    return True
-
-
-def _consultar(sql, params=()):
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-        cursor.execute(sql, params)
-
-        colunas = [c[0] for c in cursor.description]
-
-        return [dict(zip(colunas, linha)) for linha in cursor.fetchall()]
-
-    finally:
-        banco.liberar(conn)
-
-
-def _executar(sql, params=()):
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-        cursor.execute(sql, params)
-        conn.commit()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-        banco.liberar(conn)
-
-
-def _limpar_cache():
-
-    ler_produtos.clear()
-    ler_vendas.clear()
-    ler_entradas.clear()
-    ler_lingerie_abertas.clear()
-    ler_lingerie_acertos.clear()
-    ler_lingerie_pecas_fechadas.clear()
-
-
-@st.cache_data(ttl=20, show_spinner=False)
-def ler_produtos(armazem_id):
-
-    linhas = _consultar("""
-    SELECT
-        p.id,
-        p.nome,
-        COALESCE(p.categoria, '') AS categoria,
-        p.custo::float AS custo,
-        p.preco_venda::float AS preco_venda,
-        p.estoque_minimo,
-        COALESCE((
-            SELECT SUM(e.quantidade) FROM loja_entradas e
-            WHERE e.produto_id = p.id
-        ), 0)::int AS entradas,
-        COALESCE((
-            SELECT SUM(v.quantidade) FROM loja_vendas v
-            WHERE v.produto_id = p.id
-        ), 0)::int AS vendidos
-    FROM loja_produtos p
-    WHERE p.armazem_id = %s
-    ORDER BY LOWER(p.nome)
-    """, (armazem_id,))
-
-    for linha in linhas:
-        linha["estoque"] = linha["entradas"] - linha["vendidos"]
-
-    return linhas
-
-
-@st.cache_data(ttl=20, show_spinner=False)
-def ler_vendas(armazem_id):
-
-    return _consultar("""
-    SELECT
-        id,
-        produto_id,
-        produto_nome,
-        COALESCE(cliente, '') AS cliente,
-        quantidade,
-        preco_unitario::float AS preco_unitario,
-        custo_unitario::float AS custo_unitario,
-        data_venda,
-        COALESCE(forma_pagamento, '') AS forma_pagamento,
-        data_pagamento,
-        pago,
-        data_pago,
-        COALESCE(observacao, '') AS observacao
-    FROM loja_vendas
-    WHERE armazem_id = %s
-    ORDER BY data_venda DESC, id DESC
-    """, (armazem_id,))
-
-
-@st.cache_data(ttl=20, show_spinner=False)
-def ler_entradas(armazem_id):
-
-    return _consultar("""
-    SELECT
-        e.id,
-        p.nome AS produto,
-        e.quantidade,
-        e.custo_unitario::float AS custo_unitario,
-        e.data_entrada,
-        COALESCE(e.fornecedor, '') AS fornecedor,
-        COALESCE(e.observacao, '') AS observacao
-    FROM loja_entradas e
-    JOIN loja_produtos p ON p.id = e.produto_id
-    WHERE e.armazem_id = %s
-    ORDER BY e.data_entrada DESC, e.id DESC
-    LIMIT 200
-    """, (armazem_id,))
-
-
-def criar_produto(
-    armazem_id, nome, categoria, custo, preco_venda,
-    estoque_minimo, estoque_inicial, usuario, hoje
-):
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        INSERT INTO loja_produtos
-            (armazem_id, nome, categoria, custo, preco_venda, estoque_minimo)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (armazem_id, nome) DO NOTHING
-        RETURNING id
-        """, (
-            armazem_id, nome, categoria or None,
-            custo, preco_venda, estoque_minimo
-        ))
-
-        linha = cursor.fetchone()
-
-        if not linha:
-            conn.rollback()
-            return False
-
-        if estoque_inicial > 0:
-
-            cursor.execute("""
-            INSERT INTO loja_entradas
-                (armazem_id, produto_id, quantidade, custo_unitario,
-                 data_entrada, observacao, criado_por)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                armazem_id, linha[0], estoque_inicial, custo,
-                hoje, "Estoque inicial", usuario
-            ))
-
-        conn.commit()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-        banco.liberar(conn)
-
-    _limpar_cache()
-
-    return True
-
-
-def editar_produto(
-    id_produto, armazem_id, nome, categoria,
-    custo, preco_venda, estoque_minimo
-):
-
-    _executar("""
-    UPDATE loja_produtos
-    SET nome = %s,
-        categoria = %s,
-        custo = %s,
-        preco_venda = %s,
-        estoque_minimo = %s
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (
-        nome, categoria or None, custo, preco_venda,
-        estoque_minimo, id_produto, armazem_id
-    ))
-
-    _limpar_cache()
-
-
-def excluir_produto(id_produto, armazem_id):
-
-    # As vendas já feitas continuam no histórico (produto_id fica
-    # vazio, mas o nome do produto foi guardado junto com a venda).
-    _executar("""
-    DELETE FROM loja_produtos
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (id_produto, armazem_id))
-
-    _limpar_cache()
-
-
-def registrar_entrada(
-    armazem_id, produto_id, quantidade, custo_unitario,
-    data_entrada, fornecedor, observacao, usuario
-):
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        INSERT INTO loja_entradas
-            (armazem_id, produto_id, quantidade, custo_unitario,
-             data_entrada, fornecedor, observacao, criado_por)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            armazem_id, produto_id, quantidade, custo_unitario,
-            data_entrada, fornecedor or None, observacao or None, usuario
-        ))
-
-        # Se informou o preço pago nessa compra, ele vira o "preço
-        # pago" atual do produto (usado no lucro das próximas vendas).
-        if custo_unitario > 0:
-
-            cursor.execute("""
-            UPDATE loja_produtos
-            SET custo = %s
-            WHERE id = %s
-            AND armazem_id = %s
-            """, (custo_unitario, produto_id, armazem_id))
-
-        conn.commit()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-        banco.liberar(conn)
-
-    _limpar_cache()
-
-
-def excluir_entrada(id_entrada, armazem_id):
-
-    _executar("""
-    DELETE FROM loja_entradas
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (id_entrada, armazem_id))
-
-    _limpar_cache()
-
-
-def registrar_venda(
-    armazem_id, produto_id, cliente, quantidade, preco_unitario,
-    data_venda, forma_pagamento, data_pagamento, pago,
-    observacao, usuario
-):
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-
-        # Confere o estoque na hora (com o produto travado), para duas
-        # vendas ao mesmo tempo não passarem do que existe.
-        cursor.execute("""
-        SELECT
-            p.nome,
-            p.custo::float,
-            COALESCE((
-                SELECT SUM(e.quantidade) FROM loja_entradas e
-                WHERE e.produto_id = p.id
-            ), 0)
-            - COALESCE((
-                SELECT SUM(v.quantidade) FROM loja_vendas v
-                WHERE v.produto_id = p.id
-            ), 0)
-        FROM loja_produtos p
-        WHERE p.id = %s
-        AND p.armazem_id = %s
-        FOR UPDATE OF p
-        """, (produto_id, armazem_id))
-
-        linha = cursor.fetchone()
-
-        if not linha:
-            conn.rollback()
-            raise ValueError("Produto não encontrado.")
-
-        nome_produto, custo_atual, estoque_atual = linha
-
-        if quantidade > int(estoque_atual):
-            conn.rollback()
-            raise ValueError(
-                f"Estoque insuficiente: restam {int(estoque_atual)} "
-                f"unidade(s) de {nome_produto}."
-            )
-
-        cursor.execute("""
-        INSERT INTO loja_vendas
-            (armazem_id, produto_id, produto_nome, cliente, quantidade,
-             preco_unitario, custo_unitario, data_venda, forma_pagamento,
-             data_pagamento, pago, data_pago, observacao, criado_por)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            armazem_id, produto_id, nome_produto, cliente, quantidade,
-            preco_unitario, custo_atual, data_venda, forma_pagamento,
-            data_pagamento, pago, data_venda if pago else None,
-            observacao or None, usuario
-        ))
-
-        conn.commit()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-        banco.liberar(conn)
-
-    _limpar_cache()
-
-
-def marcar_pago(id_venda, armazem_id, data_pago):
-
-    _executar("""
-    UPDATE loja_vendas
-    SET pago = TRUE,
-        data_pago = %s
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (data_pago, id_venda, armazem_id))
-
-    _limpar_cache()
-
-
-def desfazer_pagamento(id_venda, armazem_id):
-
-    _executar("""
-    UPDATE loja_vendas
-    SET pago = FALSE,
-        data_pago = NULL
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (id_venda, armazem_id))
-
-    _limpar_cache()
-
-
-def excluir_venda(id_venda, armazem_id):
-
-    _executar("""
-    DELETE FROM loja_vendas
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (id_venda, armazem_id))
-
-    _limpar_cache()
-
-
-# =====================================================
-# APOIO (DataFrames, períodos, visual)
-# =====================================================
-
-def _df_vendas(vendas):
-
-    df = pd.DataFrame(vendas)
-
-    if df.empty:
-        return df
-
-    df["total"] = df["quantidade"] * df["preco_unitario"]
-    df["custo_total"] = df["quantidade"] * df["custo_unitario"]
-    df["lucro"] = df["total"] - df["custo_total"]
-    df["data_venda"] = pd.to_datetime(df["data_venda"])
-    df["data_pagamento"] = pd.to_datetime(df["data_pagamento"])
-    df["pago"] = df["pago"].astype(bool)
-
-    return df
-
-
-def _intervalo(opcao, hoje):
-
-    if opcao == "Este mês":
-        return hoje.replace(day=1), hoje
-
-    if opcao == "Últimos 30 dias":
-        return hoje - timedelta(days=29), hoje
-
-    if opcao == "Últimos 90 dias":
-        return hoje - timedelta(days=89), hoje
-
-    if opcao == "Este ano":
-        return date(hoje.year, 1, 1), hoje
-
-    return None, None
-
-
-def _filtrar_periodo(df, opcao, hoje):
-
-    if df.empty:
-        return df
-
-    inicio, fim = _intervalo(opcao, hoje)
-
-    if inicio is None:
-        return df
-
-    return df[
-        (df["data_venda"] >= pd.Timestamp(inicio))
-        & (df["data_venda"] <= pd.Timestamp(fim))
-    ]
-
-
-def _soma(df, coluna):
-
-    if df is None or df.empty:
-        return 0.0
-
-    return float(df[coluna].sum())
-
-
-def _status_pagamento(pago, vencimento, hoje):
-
-    if pago:
-        return "✅ Pago"
-
-    if vencimento is None or pd.isna(vencimento):
-        return "⏳ A receber"
-
-    dia = vencimento.date()
-
-    if dia < hoje:
-        return "🔴 Vencido"
-
-    if dia == hoje:
-        return "🟠 Vence hoje"
-
-    return "⏳ A receber"
-
-
-def _kpis(itens):
-
-    colunas = st.columns(len(itens))
-
-    for (icone, rotulo, valor, cor), coluna in zip(itens, colunas):
-
-        with coluna:
-
-            st.markdown(
-                f'<div style="background:{cor}14;border:1px solid {cor}40;'
-                f'border-radius:.9rem;padding:.7rem .9rem;text-align:center;'
-                f'margin-bottom:.6rem;">'
-                f'<div style="font-size:1.3rem;">{icone}</div>'
-                f'<div style="font-size:1.1rem;font-weight:800;color:{cor};'
-                f'margin-top:.1rem;">{valor}</div>'
-                f'<div style="font-size:.72rem;opacity:.75;margin-top:.1rem;">'
-                f'{rotulo}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-
-
-def _mapa_produtos(produtos):
-
-    return {
-        p["id"]: (
-            f'{p["nome"]} — estoque: {p["estoque"]} — '
-            f'{_brl(p["preco_venda"])}'
-        )
-        for p in produtos
-    }
-
-
-# =====================================================
-# ABA: PAINEL
-# =====================================================
-
-def _aba_painel(produtos, vendas, hoje):
-
-    df = _df_vendas(vendas)
-
-    if not produtos and df.empty:
-
-        st.info(
-            "Ainda não há nada cadastrado. Comece pela aba "
-            "**🏷️ Produtos** para cadastrar o primeiro produto."
-        )
-
-        return
-
-    periodo = st.selectbox(
-        "📅 Período",
-        OPCOES_PERIODO,
-        index=0,
-        key="loja_painel_periodo"
-    )
-
-    df_periodo = _filtrar_periodo(df, periodo, hoje)
-
-    receita = _soma(df_periodo, "total")
-    lucro = _soma(df_periodo, "lucro")
-    qtd_vendida = int(_soma(df_periodo, "quantidade"))
-    num_vendas = 0 if df_periodo.empty else len(df_periodo)
-    ticket = receita / num_vendas if num_vendas else 0.0
-    margem = (lucro / receita * 100) if receita else 0.0
-
-    _kpis([
-        ("💵", f"Vendido ({periodo.lower()})", _brl(receita), "#3b82f6"),
-        ("📈", f"Lucro ({margem:.0f}% de margem)", _brl(lucro), "#22c55e"),
-        ("📦", "Unidades vendidas", str(qtd_vendida), "#a855f7"),
-        ("🧾", "Ticket médio", _brl(ticket), "#0ea5e9"),
-    ])
-
-    if df.empty:
-        pendentes = df
-        vencidos = df
-    else:
-        pendentes = df[~df["pago"]]
-        vencidos = pendentes[pendentes["data_pagamento"] < pd.Timestamp(hoje)]
-
-    a_receber = _soma(pendentes, "total")
-    total_vencido = _soma(vencidos, "total")
-
-    valor_estoque_custo = sum(
-        max(p["estoque"], 0) * p["custo"] for p in produtos
-    )
-
-    valor_estoque_venda = sum(
-        max(p["estoque"], 0) * p["preco_venda"] for p in produtos
-    )
-
-    _kpis([
-        ("⏳", "A receber (total)", _brl(a_receber), "#f59e0b"),
-        ("🔴", "Vencido", _brl(total_vencido), "#ef4444"),
-        ("🏷️", "Estoque (valor pago)", _brl(valor_estoque_custo), "#64748b"),
-        ("🛍️", "Estoque (valor de venda)", _brl(valor_estoque_venda), COR_LOJA),
-    ])
-
-    # ---------------- alertas ----------------
-
-    criticos = [
-        p for p in produtos
-        if p["estoque"] <= 0
-        or (p["estoque_minimo"] > 0 and p["estoque"] <= p["estoque_minimo"])
-    ]
-
-    if criticos:
-
-        texto_criticos = ", ".join(
-            f'**{p["nome"]}** ({p["estoque"]} em estoque)'
-            for p in criticos
-        )
-
-        st.warning(f"📦 Repor estoque: {texto_criticos}")
-
-    if not vencidos.empty:
-
-        st.error(
-            f"🔴 {len(vencidos)} pagamento(s) vencido(s), somando "
-            f"{_brl(total_vencido)}. Veja na aba **💰 A receber**."
-        )
-
-    # ---------------- gráficos ----------------
-
-    st.divider()
-
-    st.markdown("##### 📊 Vendas e lucro por mês")
-
-    if df.empty:
-
-        st.caption("Os gráficos aparecem assim que a primeira venda for registrada.")
-
-    else:
-
-        meses = pd.period_range(
-            end=pd.Timestamp(hoje),
-            periods=12,
-            freq="M"
-        )
-
-        mensal = (
-            df.groupby(df["data_venda"].dt.to_period("M"))[["total", "lucro"]]
-            .sum()
-            .reindex(meses, fill_value=0.0)
-        )
-
-        mensal.index = [p.strftime("%Y-%m") for p in mensal.index]
-        mensal.columns = ["Vendido", "Lucro"]
-
-        st.bar_chart(mensal, color=["#3b82f6", "#22c55e"])
-
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-
-            st.markdown(f"##### 🏆 Mais vendidos ({periodo.lower()})")
-
-            if df_periodo.empty:
-                st.caption("Sem vendas neste período.")
-            else:
-                por_produto = (
-                    df_periodo.groupby("produto_nome")["total"]
-                    .sum()
-                    .sort_values(ascending=False)
-                    .head(10)
-                )
-                por_produto.name = "Vendido"
-                st.bar_chart(por_produto, color="#a855f7", horizontal=True)
-
-        with col_b:
-
-            st.markdown(f"##### 💰 Lucro por produto ({periodo.lower()})")
-
-            if df_periodo.empty:
-                st.caption("Sem vendas neste período.")
-            else:
-                lucro_produto = (
-                    df_periodo.groupby("produto_nome")["lucro"]
-                    .sum()
-                    .sort_values(ascending=False)
-                    .head(10)
-                )
-                lucro_produto.name = "Lucro"
-                st.bar_chart(lucro_produto, color="#22c55e", horizontal=True)
-
-        col_c, col_d = st.columns(2)
-
-        with col_c:
-
-            st.markdown(f"##### 👥 Melhores clientes ({periodo.lower()})")
-
-            clientes_validos = (
-                df_periodo[df_periodo["cliente"] != ""]
-                if not df_periodo.empty else df_periodo
-            )
-
-            if clientes_validos.empty:
-                st.caption("Sem vendas neste período.")
-            else:
-                por_cliente = (
-                    clientes_validos.groupby("cliente")["total"]
-                    .sum()
-                    .sort_values(ascending=False)
-                    .head(10)
-                )
-                por_cliente.name = "Comprou"
-                st.bar_chart(por_cliente, color="#0ea5e9", horizontal=True)
-
-        with col_d:
-
-            st.markdown("##### 🗓️ Previsão de recebimentos")
-
-            if pendentes.empty:
-                st.caption("Nada a receber no momento.")
-            else:
-                prev = pendentes.copy()
-
-                prev["mes"] = prev["data_pagamento"].dt.strftime("%Y-%m")
-                prev["mes"] = prev["mes"].fillna("Sem data")
-
-                por_mes = prev.groupby("mes")["total"].sum()
-                por_mes.name = "A receber"
-
-                st.bar_chart(por_mes, color="#f59e0b")
-
-    if produtos:
-
-        st.markdown("##### 📦 Estoque atual x mínimo")
-
-        estoque_df = pd.DataFrame({
-            "Estoque": [max(p["estoque"], 0) for p in produtos],
-            "Mínimo": [p["estoque_minimo"] for p in produtos],
-        }, index=[p["nome"] for p in produtos])
-
-        st.bar_chart(estoque_df, color=["#14b8a6", "#ef4444"])
-
-
-# =====================================================
-# ABA: PRODUTOS
-# =====================================================
-
-def _aba_produtos(armazem_id, usuario, produtos, hoje):
-
-    with st.expander("➕ Cadastrar novo produto", expanded=not produtos):
-
-        with st.form("loja_form_produto", clear_on_submit=True):
-
-            col1, col2 = st.columns([2, 1])
-
-            with col1:
-                nome = st.text_input("Nome do produto")
-
-            with col2:
-                categoria = st.text_input("Categoria (opcional)")
-
-            col3, col4 = st.columns(2)
-
-            with col3:
-                custo = st.number_input(
-                    "Preço pago (custo por unidade) — R$",
-                    min_value=0.0,
-                    step=1.0,
-                    format="%.2f"
-                )
-
-            with col4:
-                preco_venda = st.number_input(
-                    "Preço de venda (por unidade) — R$",
-                    min_value=0.0,
-                    step=1.0,
-                    format="%.2f"
-                )
-
-            col5, col6 = st.columns(2)
-
-            with col5:
-                estoque_inicial = st.number_input(
-                    "Quantidade que você tem agora",
-                    min_value=0,
-                    step=1,
-                    value=0
-                )
-
-            with col6:
-                estoque_minimo = st.number_input(
-                    "Avisar quando chegar em (estoque mínimo)",
-                    min_value=0,
-                    step=1,
-                    value=0
-                )
-
-            salvar = st.form_submit_button("💾 Salvar produto", width="stretch")
-
-        if salvar:
-
-            nome_limpo = (nome or "").strip()
-
-            if not nome_limpo:
-
-                st.error("Informe o nome do produto.")
-
-            elif any(p["nome"].strip().lower() == nome_limpo.lower() for p in produtos):
-
-                st.error("Já existe um produto com esse nome.")
-
-            else:
-
-                with estilos.mostrar_processando("salvando produto..."):
-                    criado = criar_produto(
-                        armazem_id, nome_limpo, (categoria or "").strip(),
-                        custo, preco_venda, int(estoque_minimo),
-                        int(estoque_inicial), usuario, hoje
-                    )
-
-                if criado:
-                    estilos.notificar_sucesso("produto cadastrado com sucesso.")
-                    _recarregar()
-                else:
-                    st.error("Não foi possível cadastrar (nome já existe?).")
-
-    st.markdown("##### 🏷️ Produtos cadastrados")
-
-    if not produtos:
-
-        st.info("Nenhum produto cadastrado ainda.")
-
-        return
-
-    linhas = []
-
-    for p in produtos:
-
-        lucro_un = p["preco_venda"] - p["custo"]
-
-        margem = (
-            lucro_un / p["preco_venda"] * 100
-            if p["preco_venda"] > 0 else 0
-        )
-
-        if p["estoque"] <= 0:
-            situacao = "🔴 Sem estoque"
-        elif p["estoque_minimo"] and p["estoque"] <= p["estoque_minimo"]:
-            situacao = "🟠 Estoque baixo"
-        else:
-            situacao = "🟢 OK"
-
-        linhas.append({
-            "Produto": p["nome"],
-            "Categoria": p["categoria"] or "—",
-            "Preço pago": _brl(p["custo"]),
-            "Preço de venda": _brl(p["preco_venda"]),
-            "Lucro por un.": _brl(lucro_un),
-            "Margem": f"{margem:.0f}%",
-            "Estoque": p["estoque"],
-            "Situação": situacao,
-            "Valor em estoque (venda)": _brl(max(p["estoque"], 0) * p["preco_venda"]),
-        })
-
-    st.dataframe(
-        pd.DataFrame(linhas),
-        width="stretch",
-        hide_index=True
-    )
-
-    with st.expander("✏️ Editar ou excluir produto"):
-
-        mapa = {p["id"]: p["nome"] for p in produtos}
-
-        pid = st.selectbox(
-            "Produto",
-            list(mapa.keys()),
-            format_func=lambda i: mapa[i],
-            key="loja_editar_produto"
-        )
-
-        produto = next(p for p in produtos if p["id"] == pid)
-
-        with st.form(f"loja_form_editar_{pid}"):
-
-            col1, col2 = st.columns([2, 1])
-
-            with col1:
-                nome_ed = st.text_input("Nome", value=produto["nome"])
-
-            with col2:
-                categoria_ed = st.text_input("Categoria", value=produto["categoria"])
-
-            col3, col4, col5 = st.columns(3)
-
-            with col3:
-                custo_ed = st.number_input(
-                    "Preço pago — R$",
-                    min_value=0.0, step=1.0, format="%.2f",
-                    value=float(produto["custo"])
-                )
-
-            with col4:
-                preco_ed = st.number_input(
-                    "Preço de venda — R$",
-                    min_value=0.0, step=1.0, format="%.2f",
-                    value=float(produto["preco_venda"])
-                )
-
-            with col5:
-                minimo_ed = st.number_input(
-                    "Estoque mínimo",
-                    min_value=0, step=1,
-                    value=int(produto["estoque_minimo"])
-                )
-
-            salvar_ed = st.form_submit_button("💾 Salvar alterações", width="stretch")
-
-        st.caption(
-            "Mudar o preço aqui vale só para as próximas vendas — as vendas "
-            "já registradas continuam com o preço de quando foram feitas."
-        )
-
-        if salvar_ed:
-
-            nome_ed_limpo = (nome_ed or "").strip()
-
-            if not nome_ed_limpo:
-
-                st.error("O nome não pode ficar vazio.")
-
-            else:
-
-                try:
-
-                    with estilos.mostrar_processando("salvando alterações..."):
-                        editar_produto(
-                            pid, armazem_id, nome_ed_limpo,
-                            (categoria_ed or "").strip(),
-                            custo_ed, preco_ed, int(minimo_ed)
-                        )
-
-                    estilos.notificar_sucesso("produto atualizado com sucesso.")
-                    _recarregar()
-
-                except Exception:
-
-                    st.error("Não foi possível salvar (já existe outro produto com esse nome?).")
-
-        confirma = st.checkbox(
-            "Confirmo que quero excluir este produto "
-            "(as vendas já feitas continuam no histórico)",
-            key=f"loja_conf_excluir_produto_{pid}"
-        )
-
-        if st.button(
-            "🗑️ Excluir produto",
-            disabled=not confirma,
-            key=f"loja_btn_excluir_produto_{pid}"
-        ):
-
-            with estilos.mostrar_processando("excluindo produto..."):
-                excluir_produto(pid, armazem_id)
-
-            estilos.notificar_sucesso("produto excluído.")
-            _recarregar()
-
-
-# =====================================================
-# ABA: ENTRADA DE ESTOQUE
-# =====================================================
-
-def _aba_entrada(armazem_id, usuario, produtos, hoje):
-
-    if not produtos:
-
-        st.info("Cadastre um produto primeiro, na aba **🏷️ Produtos**.")
-
-        return
-
-    st.caption(
-        "Use quando comprar mais mercadoria para revender. A quantidade "
-        "soma no estoque; se informar o preço pago, ele passa a valer "
-        "como o novo preço pago do produto."
-    )
-
-    mapa = _mapa_produtos(produtos)
-
-    with st.form("loja_form_entrada", clear_on_submit=True):
-
-        pid = st.selectbox(
-            "Produto",
-            list(mapa.keys()),
-            format_func=lambda i: mapa[i]
-        )
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            quantidade = st.number_input("Quantidade comprada", min_value=1, step=1, value=1)
-
-        with col2:
-            custo = st.number_input(
-                "Preço pago por unidade — R$",
-                min_value=0.0, step=1.0, format="%.2f",
-                help="Deixe 0 para manter o preço pago atual do produto."
-            )
-
-        with col3:
-            data_entrada = st.date_input("Data da compra", value=hoje, format="DD/MM/YYYY")
-
-        col4, col5 = st.columns(2)
-
-        with col4:
-            fornecedor = st.text_input("Fornecedor (opcional)")
-
-        with col5:
-            observacao = st.text_input("Observação (opcional)")
-
-        salvar = st.form_submit_button("📥 Registrar entrada", width="stretch")
-
-    if salvar:
-
-        with estilos.mostrar_processando("registrando entrada..."):
-            registrar_entrada(
-                armazem_id, pid, int(quantidade), custo, data_entrada,
-                (fornecedor or "").strip(), (observacao or "").strip(), usuario
-            )
-
-        estilos.notificar_sucesso("entrada de estoque registrada.")
-        _recarregar()
-
-    entradas = ler_entradas(armazem_id)
-
-    st.markdown("##### 📜 Últimas entradas")
-
-    if not entradas:
-
-        st.caption("Nenhuma entrada registrada ainda.")
-
-        return
-
-    tabela = pd.DataFrame([
-        {
-            "Data": _data_br(pd.Timestamp(e["data_entrada"])),
-            "Produto": e["produto"],
-            "Qtd": e["quantidade"],
-            "Preço pago un.": _brl(e["custo_unitario"]),
-            "Total pago": _brl(e["quantidade"] * e["custo_unitario"]),
-            "Fornecedor": e["fornecedor"] or "—",
-            "Obs.": e["observacao"] or "—",
-        }
-        for e in entradas
-    ])
-
-    st.dataframe(tabela, width="stretch", hide_index=True)
-
-    with st.expander("🗑️ Excluir uma entrada (lançada errado)"):
-
-        mapa_entradas = {
-            e["id"]: (
-                f'{_data_br(pd.Timestamp(e["data_entrada"]))} · {e["produto"]} · '
-                f'{e["quantidade"]} un.'
-            )
-            for e in entradas
-        }
-
-        eid = st.selectbox(
-            "Entrada",
-            list(mapa_entradas.keys()),
-            format_func=lambda i: mapa_entradas[i],
-            key="loja_excluir_entrada"
-        )
-
-        st.caption("Ao excluir, a quantidade sai do estoque do produto.")
-
-        confirma = st.checkbox("Confirmo a exclusão", key="loja_conf_excluir_entrada")
-
-        if st.button("🗑️ Excluir entrada", disabled=not confirma, key="loja_btn_excluir_entrada"):
-
-            with estilos.mostrar_processando("excluindo entrada..."):
-                excluir_entrada(eid, armazem_id)
-
-            estilos.notificar_sucesso("entrada excluída.")
-            _recarregar()
-
-
-# =====================================================
-# ABA: NOVA VENDA
-# =====================================================
-
-def _aba_nova_venda(armazem_id, usuario, produtos, vendas, hoje):
-
-    if not produtos:
-
-        st.info("Cadastre um produto primeiro, na aba **🏷️ Produtos**.")
-
-        return
-
-    # Contador usado nas chaves dos campos: ao registrar uma venda ele
-    # aumenta e todos os campos voltam em branco.
-    n = st.session_state.get("loja_venda_n", 0)
-
-    mapa = _mapa_produtos(produtos)
-
-    pid = st.selectbox(
-        "Produto",
-        list(mapa.keys()),
-        format_func=lambda i: mapa[i],
-        key=f"loja_v_produto_{n}"
-    )
-
-    produto = next(p for p in produtos if p["id"] == pid)
-
-    estoque = produto["estoque"]
-
-    if estoque <= 0:
-        st.error("Este produto está sem estoque. Registre uma entrada na aba **📥 Entrada de estoque**.")
-
-    clientes = sorted(
-        {v["cliente"] for v in vendas if v["cliente"]},
-        key=str.lower
-    )
-
-    OPCAO_NOVO = "➕ Novo cliente"
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        escolha_cliente = st.selectbox(
-            "Cliente (para quem vendeu)",
-            [OPCAO_NOVO] + clientes,
-            key=f"loja_v_cliente_{n}"
-        )
-
-        if escolha_cliente == OPCAO_NOVO:
-            cliente = st.text_input("Nome do cliente", key=f"loja_v_cliente_novo_{n}").strip()
-        else:
-            cliente = escolha_cliente
-
-    with col2:
-
-        data_venda = st.date_input(
-            "Data da venda",
-            value=hoje,
-            format="DD/MM/YYYY",
-            key=f"loja_v_data_{n}"
-        )
-
-    col3, col4, col5 = st.columns(3)
-
-    with col3:
-
-        quantidade = st.number_input(
-            "Quantidade",
-            min_value=1,
-            max_value=max(estoque, 1),
-            value=1,
-            step=1,
-            key=f"loja_v_qtd_{n}_{pid}"
-        )
-
-    with col4:
-
-        preco = st.number_input(
-            "Preço de venda (por unidade) — R$",
-            min_value=0.0,
-            step=1.0,
-            format="%.2f",
-            value=float(produto["preco_venda"]),
-            key=f"loja_v_preco_{n}_{pid}"
-        )
-
-    with col5:
-
-        forma = st.selectbox(
-            "Forma de pagamento",
-            FORMAS_PAGAMENTO,
-            key=f"loja_v_forma_{n}"
-        )
-
-    situacao = st.radio(
-        "Situação do pagamento",
-        ["✅ Já foi pago", "⏳ Vai pagar depois"],
-        horizontal=True,
-        key=f"loja_v_situacao_{n}"
-    )
-
-    pago = situacao.startswith("✅")
-
-    if pago:
-
-        data_pagamento = data_venda
-
-    else:
-
-        data_pagamento = st.date_input(
-            "Quando vai pagar?",
-            value=hoje + timedelta(days=7),
-            format="DD/MM/YYYY",
-            key=f"loja_v_vencimento_{n}"
-        )
-
-    observacao = st.text_input("Observação (opcional)", key=f"loja_v_obs_{n}")
-
-    total = quantidade * preco
-    lucro = quantidade * (preco - produto["custo"])
-
-    st.info(
-        f"Total da venda: **{_brl(total)}**  ·  "
-        f"Lucro estimado: **{_brl(lucro)}**  ·  "
-        f"Estoque depois da venda: **{estoque - quantidade}**"
-    )
-
-    if st.button(
-        "🛒 Registrar venda",
-        type="primary",
-        disabled=estoque <= 0,
-        key=f"loja_v_registrar_{n}"
-    ):
-
-        if not cliente:
-
-            st.error("Informe para quem foi a venda.")
-
-        else:
-
-            try:
-
-                with estilos.mostrar_processando("registrando venda..."):
-                    registrar_venda(
-                        armazem_id, pid, cliente, int(quantidade), preco,
-                        data_venda, forma, data_pagamento, pago,
-                        (observacao or "").strip(), usuario
-                    )
-
-                st.session_state["loja_venda_n"] = n + 1
-
-                estilos.notificar_sucesso("venda registrada com sucesso.")
-                _recarregar()
-
-            except ValueError as erro:
-
-                st.error(str(erro))
-
-
-# =====================================================
-# ABA: A RECEBER
-# =====================================================
-
-def _aba_a_receber(armazem_id, vendas, hoje):
-
-    df = _df_vendas(vendas)
-
-    pendentes = df if df.empty else df[~df["pago"]]
-
-    if pendentes.empty:
-
-        st.success("🎉 Nenhum pagamento pendente. Tudo recebido!")
-
-        return
-
-    pendentes = pendentes.sort_values(
-        "data_pagamento",
-        na_position="last"
-    )
-
-    ts_hoje = pd.Timestamp(hoje)
-
-    vencidos = pendentes[pendentes["data_pagamento"] < ts_hoje]
-
-    proximos = pendentes[
-        (pendentes["data_pagamento"] >= ts_hoje)
-        & (pendentes["data_pagamento"] <= ts_hoje + pd.Timedelta(days=7))
-    ]
-
-    _kpis([
-        ("⏳", "Total a receber", _brl(_soma(pendentes, "total")), "#f59e0b"),
-        ("🔴", f"Vencido ({len(vencidos)})", _brl(_soma(vencidos, "total")), "#ef4444"),
-        ("🗓️", f"Vence em 7 dias ({len(proximos)})", _brl(_soma(proximos, "total")), "#0ea5e9"),
-    ])
-
-    st.markdown("##### 👥 Quanto cada cliente deve")
-
-    por_cliente = (
-        pendentes.assign(cliente=pendentes["cliente"].replace("", "(sem nome)"))
-        .groupby("cliente")["total"]
-        .sum()
-        .sort_values(ascending=False)
-    )
-
-    st.dataframe(
-        pd.DataFrame({
-            "Cliente": por_cliente.index,
-            "Deve": [_brl(v) for v in por_cliente.values],
-        }),
-        width="stretch",
-        hide_index=True
-    )
-
-    st.markdown("##### 💰 Pagamentos pendentes")
-
-    for _, linha in pendentes.iterrows():
-
-        status = _status_pagamento(False, linha["data_pagamento"], hoje)
-
-        col_a, col_b, col_c, col_d, col_e = st.columns([2.2, 2.6, 1.5, 1.8, 1.5])
-
-        with col_a:
-            st.markdown(f"**{linha['cliente'] or '(sem nome)'}**")
-            st.caption(f"Venda de {_data_br(linha['data_venda'])}")
-
-        with col_b:
-            st.markdown(f"{linha['produto_nome']}")
-            st.caption(f"{int(linha['quantidade'])} un. × {_brl(linha['preco_unitario'])}")
-
-        with col_c:
-            st.markdown(f"**{_brl(linha['total'])}**")
-
-        with col_d:
-            st.markdown(status)
-            st.caption(f"Vencimento: {_data_br(linha['data_pagamento'])}")
-
-        with col_e:
-
-            if st.button("✅ Recebi", key=f"loja_pago_{int(linha['id'])}"):
-
-                with estilos.mostrar_processando("registrando pagamento..."):
-                    marcar_pago(int(linha["id"]), armazem_id, hoje)
-
-                estilos.notificar_sucesso("pagamento registrado.")
-                _recarregar()
-
-        st.divider()
-
-
-# =====================================================
-# ABA: VENDAS (histórico)
-# =====================================================
-
-def _aba_vendas(armazem_id, vendas, hoje):
-
-    df = _df_vendas(vendas)
-
-    if df.empty:
-
-        st.info("Nenhuma venda registrada ainda.")
-
-        return
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-
-        periodo = st.selectbox(
-            "Período",
-            OPCOES_PERIODO,
-            index=len(OPCOES_PERIODO) - 1,
-            key="loja_vendas_periodo"
-        )
-
-    clientes = sorted({c for c in df["cliente"] if c}, key=str.lower)
-    produtos_vendidos = sorted(set(df["produto_nome"]), key=str.lower)
-
-    with col2:
-        filtro_cliente = st.selectbox("Cliente", ["Todos"] + clientes, key="loja_vendas_cliente")
-
-    with col3:
-        filtro_produto = st.selectbox("Produto", ["Todos"] + produtos_vendidos, key="loja_vendas_produto")
-
-    with col4:
-        filtro_situacao = st.selectbox(
-            "Situação",
-            ["Todas", "Pagas", "A receber", "Vencidas"],
-            key="loja_vendas_situacao"
-        )
-
-    filtrado = _filtrar_periodo(df, periodo, hoje)
-
-    if filtro_cliente != "Todos":
-        filtrado = filtrado[filtrado["cliente"] == filtro_cliente]
-
-    if filtro_produto != "Todos":
-        filtrado = filtrado[filtrado["produto_nome"] == filtro_produto]
-
-    if filtro_situacao == "Pagas":
-        filtrado = filtrado[filtrado["pago"]]
-    elif filtro_situacao == "A receber":
-        filtrado = filtrado[~filtrado["pago"]]
-    elif filtro_situacao == "Vencidas":
-        filtrado = filtrado[
-            (~filtrado["pago"])
-            & (filtrado["data_pagamento"] < pd.Timestamp(hoje))
-        ]
-
-    if filtrado.empty:
-
-        st.info("Nenhuma venda encontrada com esses filtros.")
-
-        return
-
-    st.caption(
-        f"{len(filtrado)} venda(s)  ·  Total: {_brl(_soma(filtrado, 'total'))}  ·  "
-        f"Lucro: {_brl(_soma(filtrado, 'lucro'))}"
-    )
-
-    tabela = pd.DataFrame({
-        "Data": filtrado["data_venda"].dt.strftime("%d/%m/%Y"),
-        "Cliente": filtrado["cliente"].replace("", "—"),
-        "Produto": filtrado["produto_nome"],
-        "Qtd": filtrado["quantidade"],
-        "Preço un.": filtrado["preco_unitario"].map(_brl),
-        "Total": filtrado["total"].map(_brl),
-        "Lucro": filtrado["lucro"].map(_brl),
-        "Pagamento": filtrado["forma_pagamento"].replace("", "—"),
-        "Situação": filtrado.apply(
-            lambda r: _status_pagamento(r["pago"], r["data_pagamento"], hoje),
-            axis=1
-        ),
-        "Vencimento": filtrado["data_pagamento"].dt.strftime("%d/%m/%Y").fillna("—"),
-        "Obs.": filtrado["observacao"].replace("", "—"),
-    })
-
-    st.dataframe(tabela, width="stretch", hide_index=True)
-
-    st.download_button(
-        "📥 Baixar esta lista (planilha CSV)",
-        data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
-        file_name=f"vendas_{hoje.strftime('%Y-%m-%d')}.csv",
-        mime="text/csv",
-        key="loja_baixar_vendas"
-    )
-
-    with st.expander("🛠️ Corrigir uma venda (desfazer pagamento ou excluir)"):
-
-        mapa = {
-            int(r["id"]): (
-                f'{_data_br(r["data_venda"])} · {r["cliente"] or "(sem nome)"} · '
-                f'{r["produto_nome"]} · {_brl(r["total"])}'
-            )
-            for _, r in filtrado.iterrows()
-        }
-
-        vid = st.selectbox(
-            "Venda",
-            list(mapa.keys()),
-            format_func=lambda i: mapa[i],
-            key="loja_corrigir_venda"
-        )
-
-        venda = filtrado[filtrado["id"] == vid].iloc[0]
-
-        if venda["pago"]:
-
-            if st.button("↩️ Desfazer pagamento (voltar para 'a receber')", key=f"loja_desfazer_{vid}"):
-
-                with estilos.mostrar_processando("atualizando venda..."):
-                    desfazer_pagamento(vid, armazem_id)
-
-                estilos.notificar_sucesso("pagamento desfeito.")
-                _recarregar()
-
-        st.caption("Ao excluir uma venda, as unidades voltam para o estoque.")
-
-        confirma = st.checkbox("Confirmo a exclusão desta venda", key=f"loja_conf_excluir_venda_{vid}")
-
-        if st.button("🗑️ Excluir venda", disabled=not confirma, key=f"loja_btn_excluir_venda_{vid}"):
-
-            with estilos.mostrar_processando("excluindo venda..."):
-                excluir_venda(vid, armazem_id)
-
-            estilos.notificar_sucesso("venda excluída.")
-            _recarregar()
-
-
-# =====================================================
-# ABA: LINGERIE (peças de fornecedor, com comissão)
-# =====================================================
-# As peças vendidas vão sendo lançadas numa lista aberta (já salvas
-# no banco, então não se perdem se a página recarregar). O total
-# soma sozinho e a comissão depende dele:
-#
-#   total até R$ 500,00  → comissão de 30% sobre o total
-#   total acima de R$ 500,00 → comissão de 40% sobre o total
-#
-# Quando terminar a rodada com o fornecedor, "Fechar acerto" guarda
-# a lista no histórico (com total, comissão e quanto repassar ao
-# fornecedor) e começa uma lista nova.
-
-@st.cache_resource(show_spinner=False)
-def _garantir_schema_lingerie():
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS lingerie_acertos (
-            id BIGSERIAL PRIMARY KEY,
-            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
-            fornecedor TEXT,
-            data_acerto DATE NOT NULL,
-            total NUMERIC(12,2) NOT NULL,
-            percentual INTEGER NOT NULL,
-            comissao NUMERIC(12,2) NOT NULL,
-            repasse NUMERIC(12,2) NOT NULL,
-            criado_por TEXT,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS lingerie_pecas (
-            id BIGSERIAL PRIMARY KEY,
-            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
-            acerto_id BIGINT REFERENCES lingerie_acertos(id) ON DELETE SET NULL,
-            descricao TEXT NOT NULL,
-            preco NUMERIC(12,2) NOT NULL,
-            criado_por TEXT,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lingerie_acertos_armazem ON lingerie_acertos (armazem_id, data_acerto DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lingerie_pecas_armazem ON lingerie_pecas (armazem_id, acerto_id)")
-
-        conn.commit()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-        banco.liberar(conn)
-
-    return True
-
-
-def _calcular_comissao(total):
-
-    total = round(float(total or 0), 2)
-
-    percentual = (
-        LINGERIE_PCT_ALTO if total > LINGERIE_LIMITE
-        else LINGERIE_PCT_BAIXO
-    )
-
-    comissao = round(total * percentual / 100, 2)
-    repasse = round(total - comissao, 2)
-
-    return percentual, comissao, repasse
-
-
-@st.cache_data(ttl=20, show_spinner=False)
-def ler_lingerie_abertas(armazem_id):
-
-    return _consultar("""
-    SELECT
-        id,
-        descricao,
-        preco::float AS preco
-    FROM lingerie_pecas
-    WHERE armazem_id = %s
-    AND acerto_id IS NULL
-    ORDER BY id
-    """, (armazem_id,))
-
-
-@st.cache_data(ttl=20, show_spinner=False)
-def ler_lingerie_acertos(armazem_id):
-
-    return _consultar("""
-    SELECT
-        a.id,
-        COALESCE(a.fornecedor, '') AS fornecedor,
-        a.data_acerto,
-        a.total::float AS total,
-        a.percentual,
-        a.comissao::float AS comissao,
-        a.repasse::float AS repasse,
-        (
-            SELECT COUNT(*) FROM lingerie_pecas p
-            WHERE p.acerto_id = a.id
-        )::int AS qtd
-    FROM lingerie_acertos a
-    WHERE a.armazem_id = %s
-    ORDER BY a.data_acerto DESC, a.id DESC
-    LIMIT 100
-    """, (armazem_id,))
-
-
-@st.cache_data(ttl=20, show_spinner=False)
-def ler_lingerie_pecas_fechadas(armazem_id):
-
-    return _consultar("""
-    SELECT
-        acerto_id,
-        descricao,
-        preco::float AS preco
-    FROM lingerie_pecas
-    WHERE armazem_id = %s
-    AND acerto_id IS NOT NULL
-    ORDER BY id
-    """, (armazem_id,))
-
-
-def adicionar_peca_lingerie(armazem_id, descricao, preco, usuario):
-
-    _executar("""
-    INSERT INTO lingerie_pecas
-        (armazem_id, descricao, preco, criado_por)
-    VALUES (%s, %s, %s, %s)
-    """, (armazem_id, descricao, preco, usuario))
-
-    _limpar_cache()
-
-
-def excluir_peca_lingerie(id_peca, armazem_id):
-
-    # Só remove peças da lista aberta; peças de acertos já fechados
-    # só mudam se o acerto for desfeito.
-    _executar("""
-    DELETE FROM lingerie_pecas
-    WHERE id = %s
-    AND armazem_id = %s
-    AND acerto_id IS NULL
-    """, (id_peca, armazem_id))
-
-    _limpar_cache()
-
-
-def fechar_acerto_lingerie(armazem_id, fornecedor, data_acerto, usuario):
-
-    conn = banco.conectar()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT id, preco
-        FROM lingerie_pecas
-        WHERE armazem_id = %s
-        AND acerto_id IS NULL
-        FOR UPDATE
-        """, (armazem_id,))
-
-        linhas = cursor.fetchall()
-
-        if not linhas:
-            conn.rollback()
-            raise ValueError("Não há peças na lista para fechar.")
-
-        total = round(sum(float(l[1]) for l in linhas), 2)
-
-        percentual, comissao, repasse = _calcular_comissao(total)
-
-        cursor.execute("""
-        INSERT INTO lingerie_acertos
-            (armazem_id, fornecedor, data_acerto, total,
-             percentual, comissao, repasse, criado_por)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-        """, (
-            armazem_id, fornecedor or None, data_acerto, total,
-            percentual, comissao, repasse, usuario
-        ))
-
-        acerto_id = cursor.fetchone()[0]
-
-        cursor.execute("""
-        UPDATE lingerie_pecas
-        SET acerto_id = %s
-        WHERE armazem_id = %s
-        AND acerto_id IS NULL
-        """, (acerto_id, armazem_id))
-
-        conn.commit()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-        banco.liberar(conn)
-
-    _limpar_cache()
-
-
-def desfazer_acerto_lingerie(id_acerto, armazem_id):
-
-    # As peças voltam para a lista aberta (ON DELETE SET NULL).
-    _executar("""
-    DELETE FROM lingerie_acertos
-    WHERE id = %s
-    AND armazem_id = %s
-    """, (id_acerto, armazem_id))
-
-    _limpar_cache()
-
-
-def _aba_lingerie(armazem_id, usuario, hoje):
-
-    pecas = ler_lingerie_abertas(armazem_id)
-
-    total = round(sum(p["preco"] for p in pecas), 2)
-
-    percentual, comissao, repasse = _calcular_comissao(total)
-
-    st.caption(
-        f"Lance cada peça vendida e o total vai somando sozinho. "
-        f"Total até {_brl(LINGERIE_LIMITE)}: comissão de {LINGERIE_PCT_BAIXO}%. "
-        f"Total acima de {_brl(LINGERIE_LIMITE)}: comissão de "
-        f"{LINGERIE_PCT_ALTO}% sobre o total."
-    )
-
-    with st.form("loja_form_lingerie", clear_on_submit=True):
-
-        col1, col2 = st.columns([3, 1.2])
-
-        with col1:
-            descricao = st.text_input(
-                "Peça vendida",
-                placeholder="Ex.: Conjunto de renda preto, tam. M"
-            )
-
-        with col2:
-            preco = st.number_input(
-                "Preço vendido — R$",
-                min_value=0.0,
-                step=1.0,
-                format="%.2f"
-            )
-
-        adicionar = st.form_submit_button("➕ Adicionar peça", width="stretch")
-
-    if adicionar:
-
-        descricao_limpa = (descricao or "").strip()
-
-        if not descricao_limpa:
-
-            st.error("Informe qual peça foi vendida.")
-
-        elif preco <= 0:
-
-            st.error("Informe o preço da venda (maior que zero).")
-
-        else:
-
-            with estilos.mostrar_processando("adicionando peça..."):
-                adicionar_peca_lingerie(
-                    armazem_id, descricao_limpa, preco, usuario
-                )
-
-            _recarregar()
-
-    _kpis([
-        ("🧾", f"Peças na lista ({len(pecas)})", _brl(total), "#3b82f6"),
-        ("💖", f"Sua comissão ({percentual}%)", _brl(comissao), "#22c55e"),
-        ("🏭", "Repassar ao fornecedor", _brl(repasse), "#f59e0b"),
-    ])
-
-    if pecas:
-
-        if total > LINGERIE_LIMITE:
-
-            st.success(
-                f"🎉 Total acima de {_brl(LINGERIE_LIMITE)}: comissão de "
-                f"**{LINGERIE_PCT_ALTO}%** sobre o total."
-            )
-
-        else:
-
-            st.info(
-                f"💡 Acima de {_brl(LINGERIE_LIMITE)} a comissão sobe para "
-                f"**{LINGERIE_PCT_ALTO}%** sobre o total. Você está a "
-                f"**{_brl(LINGERIE_LIMITE - total)}** desse valor."
-            )
-
-        st.markdown("##### 🛍️ Peças desta rodada")
-
-        for numero, peca in enumerate(pecas, start=1):
-
-            col_n, col_d, col_p, col_x = st.columns([0.6, 4, 1.8, 1])
-
-            with col_n:
-                st.markdown(f"**{numero}**")
-
-            with col_d:
-                st.markdown(peca["descricao"])
-
-            with col_p:
-                st.markdown(f"**{_brl(peca['preco'])}**")
-
-            with col_x:
-
-                if st.button("🗑️", key=f"loja_ling_del_{peca['id']}", help="Remover esta peça"):
-
-                    with estilos.mostrar_processando("removendo peça..."):
-                        excluir_peca_lingerie(peca["id"], armazem_id)
-
-                    _recarregar()
-
-        st.divider()
-
-        st.markdown("##### ✅ Fechar acerto")
-
-        st.caption(
-            "Use quando terminar a rodada: o total, a comissão e o valor do "
-            "fornecedor ficam guardados no histórico e a lista começa de novo."
-        )
-
-        col_f, col_d2 = st.columns([2, 1])
-
-        with col_f:
-            fornecedor = st.text_input(
-                "Fornecedor (opcional)",
-                key="loja_ling_fornecedor"
-            )
-
-        with col_d2:
-            data_acerto = st.date_input(
-                "Data do acerto",
-                value=hoje,
-                format="DD/MM/YYYY",
-                key="loja_ling_data"
-            )
-
-        if st.button("✅ Fechar acerto", type="primary", key="loja_ling_fechar"):
-
-            try:
-
-                with estilos.mostrar_processando("fechando acerto..."):
-                    fechar_acerto_lingerie(
-                        armazem_id, (fornecedor or "").strip(),
-                        data_acerto, usuario
-                    )
-
-                estilos.notificar_sucesso("acerto fechado e guardado no histórico.")
-                _recarregar()
-
-            except ValueError as erro:
-
-                st.error(str(erro))
-
-    else:
-
-        st.info("Nenhuma peça lançada ainda. Adicione a primeira acima.")
-
-    # ---------------- histórico ----------------
-
-    acertos = ler_lingerie_acertos(armazem_id)
-
-    if not acertos:
-        return
-
-    st.divider()
-
-    st.markdown("##### 📜 Acertos anteriores")
-
-    comissao_total = sum(a["comissao"] for a in acertos)
-
-    st.caption(
-        f"{len(acertos)} acerto(s)  ·  Comissão total: {_brl(comissao_total)}"
-    )
-
-    st.dataframe(
-        pd.DataFrame([
-            {
-                "Data": _data_br(pd.Timestamp(a["data_acerto"])),
-                "Fornecedor": a["fornecedor"] or "—",
-                "Peças": a["qtd"],
-                "Total vendido": _brl(a["total"]),
-                "Comissão": f'{a["percentual"]}%',
-                "Valor da comissão": _brl(a["comissao"]),
-                "Repassar ao fornecedor": _brl(a["repasse"]),
-            }
-            for a in acertos
-        ]),
-        width="stretch",
-        hide_index=True
-    )
-
-    with st.expander("🔍 Ver peças de um acerto ou desfazê-lo"):
-
-        mapa = {
-            a["id"]: (
-                f'{_data_br(pd.Timestamp(a["data_acerto"]))} · '
-                f'{a["fornecedor"] or "sem fornecedor"} · {_brl(a["total"])}'
-            )
-            for a in acertos
-        }
-
-        aid = st.selectbox(
-            "Acerto",
-            list(mapa.keys()),
-            format_func=lambda i: mapa[i],
-            key="loja_ling_ver_acerto"
-        )
-
-        pecas_fechadas = [
-            p for p in ler_lingerie_pecas_fechadas(armazem_id)
-            if p["acerto_id"] == aid
-        ]
-
-        if pecas_fechadas:
-
-            st.dataframe(
-                pd.DataFrame([
-                    {"Peça": p["descricao"], "Preço": _brl(p["preco"])}
-                    for p in pecas_fechadas
-                ]),
-                width="stretch",
-                hide_index=True
-            )
-
-        st.caption(
-            "Ao desfazer, as peças voltam para a lista da rodada atual."
-        )
-
-        confirma = st.checkbox(
-            "Confirmo que quero desfazer este acerto",
-            key=f"loja_ling_conf_desfazer_{aid}"
-        )
-
-        if st.button(
-            "↩️ Desfazer acerto",
-            disabled=not confirma,
-            key=f"loja_ling_btn_desfazer_{aid}"
-        ):
-
-            with estilos.mostrar_processando("desfazendo acerto..."):
-                desfazer_acerto_lingerie(aid, armazem_id)
-
-            estilos.notificar_sucesso("acerto desfeito.")
-            _recarregar()
-
-
-# =====================================================
-# TELA PRINCIPAL
-# =====================================================
-
-def render():
-
-    estilos.exibir_notificacao_pendente()
-
-    usuario = st.session_state.get("usuario", "")
-    tipo = st.session_state.get("tipo_usuario", "usuario")
-
-    if not tem_acesso(usuario, tipo):
-
-        st.error("Você não tem acesso a esta área.")
-
-        return
-
-    _garantir_schema()
-    _garantir_schema_lingerie()
-
-    armazem_id = st.session_state.get(
-        "armazem_visualizado_id",
-        st.session_state.get("armazem_id")
-    )
-
-    estilos.cabecalho_pagina(
-        "🛍️",
-        "Loja Virtual",
-        "Produtos, estoque, vendas e pagamentos a receber — tudo em um só lugar.",
-        COR_LOJA
-    )
+# Sem run_every: a aba tem formulários, seletores e campos de texto,
+# e um recarregamento automático apagaria o que a pessoa estava
+# preenchendo no meio de um cadastro ou de uma venda.
+
+@st.fragment
+def render_aba_loja():
+
+    with estilos.mostrar_processando("Carregando..."):
+        loja.render()
 
     st.write("")
+    botao_sair_rodape("loja")
 
-    hoje = estilos.agora_local().date()
+if aba_loja:
+    render_aba_loja()
 
-    produtos = ler_produtos(armazem_id)
-    vendas = ler_vendas(armazem_id)
+# =====================================================
+# HISTÓRICO PRODUTIVO
+# =====================================================
 
-    (
-        aba_painel, aba_produtos, aba_entrada, aba_venda,
-        aba_receber, aba_historico, aba_lingerie
-    ) = st.tabs([
-        "📊 Painel",
-        "🏷️ Produtos",
-        "📥 Entrada de estoque",
-        "🛒 Nova venda",
-        "💰 A receber",
-        "📜 Vendas",
-        "👙 Lingerie",
-    ])
+@st.fragment(run_every=120)
+def render_aba_historico():
 
-    with aba_painel:
-        _aba_painel(produtos, vendas, hoje)
+    with estilos.mostrar_processando("Carregando..."):
+        historico.render()
 
-    with aba_produtos:
-        _aba_produtos(armazem_id, usuario, produtos, hoje)
+    st.write("")
+    botao_sair_rodape("historico")
 
-    with aba_entrada:
-        _aba_entrada(armazem_id, usuario, produtos, hoje)
+if aba_historico:
+    render_aba_historico()
 
-    with aba_venda:
-        _aba_nova_venda(armazem_id, usuario, produtos, vendas, hoje)
+# =====================================================
+# PERFIL
+# =====================================================
 
-    with aba_receber:
-        _aba_a_receber(armazem_id, vendas, hoje)
+@st.fragment
+def render_aba_perfil():
 
-    with aba_historico:
-        _aba_vendas(armazem_id, vendas, hoje)
+    with estilos.mostrar_processando("Carregando..."):
+        perfil.render()
 
-    with aba_lingerie:
-        _aba_lingerie(armazem_id, usuario, hoje)
+    st.write("")
+    botao_sair_rodape("perfil")
+
+if aba_perfil:
+    render_aba_perfil()
+
+# =====================================================
+# ADMINISTRATIVO
+# =====================================================
+# Cada aba interna (Dashboard, Remanejamento, SAC, etc.) agora é
+# seu próprio fragmento (veja administrativo.py) — salvar algo em
+# uma aba só recarrega aquela aba, rápido e isolado, sem precisar
+# de um run_every aqui em cima. Isso também evita um bug antigo:
+# st.tabs() sendo recarregado sozinho por um run_every enquanto a
+# pessoa mexe nele podia deixar a tela "duplicada" (conteúdo antigo
+# em cima, novo embaixo).
+
+@st.fragment
+def render_aba_admin():
+
+    with estilos.mostrar_processando("Carregando..."):
+        administrativo.render()
+
+    st.write("")
+    botao_sair_rodape("admin")
+
+if aba_admin:
+    render_aba_admin()
+
+# =====================================================
+# RODAPÉ
+# =====================================================
+
+st.write("")
+st.divider()
+
+estilos.rodape()
+
+st.markdown(
+    "<p style='text-align:center;font-size:.7rem;color:#94a3b8;margin-top:2px;'>Versão 1.0.5</p>",
+    unsafe_allow_html=True
+)
