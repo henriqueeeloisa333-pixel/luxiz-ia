@@ -821,7 +821,15 @@ def botao_sair_rodape(identificador):
             st.rerun()
 
 
+MESES_EXTENSO = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+]
+
+
 def render_cabecalho_inicio():
+
+    from html import escape as _esc
 
     agora = estilos.agora_local()
 
@@ -845,241 +853,259 @@ def render_cabecalho_inicio():
         "sexta-feira", "sábado", "domingo"
     ]
 
-    data_extenso = (
-        f"{DIAS_EXTENSO[agora.weekday()]}, {agora.day:02d}/{agora.month:02d}"
+    dia_semana = DIAS_EXTENSO[agora.weekday()]
+    mes_extenso = MESES_EXTENSO[agora.month - 1]
+
+    # Usa o nome do Perfil (se a pessoa já preencheu) na saudação.
+    try:
+        perfil_hero_atual = banco.ler_perfil(usuario_atual)
+    except Exception:
+        perfil_hero_atual = None
+
+    nome_hero = (
+        (perfil_hero_atual.get("nome") or nome_exibicao)
+        if perfil_hero_atual else nome_exibicao
     )
 
     if st.session_state.tema == "claro":
-        HERO_GRADIENTE = "linear-gradient(120deg, #0ea5e9, #6366f1 45%, #a855f7 85%)"
-        HERO_SOMBRA = "0 18px 40px rgba(99,102,241,.28)"
-        HERO_TEXTO_SUB = "rgba(255,255,255,.88)"
+        HERO_GRADIENTE = "linear-gradient(135deg, #1d4ed8 0%, #4f46e5 55%, #7c3aed 100%)"
+        HERO_SOMBRA = "0 14px 34px rgba(79,70,229,.25)"
+        HERO_TEXTO_SUB = "rgba(255,255,255,.82)"
     else:
-        HERO_GRADIENTE = "linear-gradient(120deg, #0b1224, #1e3a8a 40%, #6d28d9 75%, #0b1224)"
-        HERO_SOMBRA = "0 18px 40px rgba(0,0,0,.45)"
-        HERO_TEXTO_SUB = "rgba(226,232,240,.82)"
+        HERO_GRADIENTE = "linear-gradient(135deg, #0f1b3d 0%, #1e3a8a 55%, #5b21b6 100%)"
+        HERO_SOMBRA = "0 14px 34px rgba(0,0,0,.42)"
+        HERO_TEXTO_SUB = "rgba(226,232,240,.78)"
+
+    css_inicio = """
+    <style>
+
+    /* ---------- remove o "vazio" no topo da página ----------
+       Cada bloco de CSS/estilo do app vira um elemento invisível que,
+       mesmo sem altura, ganha um espaçamento do Streamlit. Somados,
+       empurravam o conteúdo para baixo. */
+    .stElementContainer:has([data-testid="stMarkdownContainer"] > style):not(:has([data-testid="stMarkdownContainer"] > :not(style))),
+    .stElementContainer:has(iframe[height="0"]){
+        display:none !important;
+    }
+    .stElementContainer:has(.luxiz-sidebar-fundo),
+    .stElementContainer:has(.luxiz-sidebar-toggle-visual),
+    .stElementContainer:has(.luxiz-sidebar-sub),
+    .stElementContainer:has(.luxiz-sidebar-rodape),
+    .stElementContainer:has(.footer-luxiz){
+        margin-bottom:-1rem !important;
+    }
+
+    /* ---------- faixa de boas-vindas ---------- */
+    .lx-hero{
+        position:relative;
+        overflow:hidden;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:1.5rem;
+        flex-wrap:wrap;
+        padding:1.7rem 2.1rem;
+        border-radius:1.25rem;
+        background:__HERO_GRADIENTE__;
+        box-shadow:__HERO_SOMBRA__;
+    }
+    .lx-hero::after{
+        content:"";
+        position:absolute;
+        right:-70px;
+        top:-100px;
+        width:320px;
+        height:320px;
+        border-radius:50%;
+        background:radial-gradient(circle, rgba(255,255,255,.16), transparent 68%);
+        pointer-events:none;
+    }
+    .lx-hero-esq{
+        position:relative;
+        z-index:1;
+    }
+    .lx-hero-over{
+        font-size:.72rem;
+        font-weight:700;
+        letter-spacing:2px;
+        text-transform:uppercase;
+        color:__HERO_TEXTO_SUB__;
+    }
+    .lx-hero-nome{
+        font-size:2.05rem;
+        font-weight:800;
+        color:#ffffff;
+        line-height:1.15;
+        margin:.3rem 0 .8rem 0;
+    }
+    .lx-hero-chips{
+        display:flex;
+        flex-wrap:wrap;
+        gap:.5rem;
+    }
+    .lx-hero-chip{
+        background:rgba(255,255,255,.14);
+        border:1px solid rgba(255,255,255,.22);
+        color:#ffffff;
+        padding:.25rem .75rem;
+        border-radius:999px;
+        font-size:.78rem;
+        font-weight:600;
+    }
+    .lx-hero-data{
+        position:relative;
+        z-index:1;
+        text-align:center;
+        min-width:140px;
+        padding:.8rem 1.5rem;
+        border-radius:1rem;
+        background:rgba(255,255,255,.12);
+        border:1px solid rgba(255,255,255,.2);
+    }
+    .lx-hero-dia{
+        font-size:2.5rem;
+        font-weight:800;
+        line-height:1;
+        color:#ffffff;
+    }
+    .lx-hero-mes{
+        margin-top:.35rem;
+        font-size:.72rem;
+        font-weight:700;
+        letter-spacing:1.5px;
+        text-transform:uppercase;
+        color:__HERO_TEXTO_SUB__;
+    }
+    .lx-hero-sem{
+        font-size:.78rem;
+        text-transform:capitalize;
+        color:__HERO_TEXTO_SUB__;
+    }
+
+    /* ---------- barra de status (online, avisos, novidades) ---------- */
+    .lx-sync{
+        text-align:right;
+        font-size:.78rem;
+        opacity:.7;
+    }
+
+    /* ---------- indicadores ---------- */
+    .lx-kpi{
+        display:flex;
+        align-items:center;
+        gap:.9rem;
+        min-height:88px;
+        padding:.95rem 1.1rem;
+        border-radius:1rem;
+    }
+    .lx-kpi-ico{
+        flex-shrink:0;
+        width:44px;
+        height:44px;
+        border-radius:12px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:1.35rem;
+    }
+    .lx-kpi-txt{
+        min-width:0;
+    }
+    .lx-kpi-val{
+        font-size:1.5rem;
+        font-weight:800;
+        line-height:1.1;
+        white-space:nowrap;
+        overflow:hidden;
+        text-overflow:ellipsis;
+    }
+    .lx-kpi-rot{
+        font-size:.76rem;
+        opacity:.72;
+        margin-top:.2rem;
+    }
+
+    </style>
+    """
+
+    css_inicio = (
+        css_inicio
+        .replace("__HERO_GRADIENTE__", HERO_GRADIENTE)
+        .replace("__HERO_SOMBRA__", HERO_SOMBRA)
+        .replace("__HERO_TEXTO_SUB__", HERO_TEXTO_SUB)
+    )
+
+    st.markdown(css_inicio, unsafe_allow_html=True)
+
+    chip_armazem = (
+        f'<span class="lx-hero-chip">🏢 {_esc(nome_armazem_atual)}</span>'
+        if nome_armazem_atual else ""
+    )
 
     st.markdown(
-        f"""
-        <style>
-        @keyframes luxizHeroGradiente {{
-            0%   {{ background-position:0% 50%; }}
-            50%  {{ background-position:100% 50%; }}
-            100% {{ background-position:0% 50%; }}
-        }}
-        @keyframes luxizHeroSubir {{
-            from {{ opacity:0; transform:translateY(14px); }}
-            to   {{ opacity:1; transform:translateY(0); }}
-        }}
-        @keyframes luxizHeroBrilho {{
-            0%, 100% {{ opacity:.5; transform:scale(1); }}
-            50%      {{ opacity:.85; transform:scale(1.08); }}
-        }}
-        .luxiz-hero {{
-            position:relative;
-            overflow:hidden;
-            border-radius:1.4rem;
-            padding:1.8rem 2rem;
-            background:{HERO_GRADIENTE};
-            background-size:220% 220%;
-            animation:luxizHeroGradiente 14s ease infinite;
-            box-shadow:{HERO_SOMBRA};
-            margin-bottom:1.4rem;
-        }}
-        .luxiz-hero::before, .luxiz-hero::after {{
-            content:"";
-            position:absolute;
-            border-radius:50%;
-            background:rgba(255,255,255,.14);
-            filter:blur(6px);
-            animation:luxizHeroBrilho 5s ease-in-out infinite;
-            pointer-events:none;
-        }}
-        .luxiz-hero::before {{
-            width:220px;height:220px;
-            top:-90px; right:-60px;
-        }}
-        .luxiz-hero::after {{
-            width:140px;height:140px;
-            bottom:-70px; right:18%;
-            animation-delay:1.6s;
-        }}
-        .luxiz-hero-linha {{
-            position:relative;
-            z-index:1;
-            display:flex;
-            align-items:flex-start;
-            justify-content:space-between;
-            gap:1.2rem;
-            flex-wrap:wrap;
-            animation:luxizHeroSubir .5s ease;
-        }}
-        .luxiz-hero-saudacao {{
-            font-size:.95rem;
-            font-weight:700;
-            letter-spacing:.3px;
-            color:{HERO_TEXTO_SUB};
-            margin:0 0 .15rem 0;
-        }}
-        .luxiz-hero-nome {{
-            font-size:1.9rem;
-            font-weight:800;
-            color:#ffffff;
-            margin:0;
-            line-height:1.2;
-        }}
-        .luxiz-hero-sub {{
-            margin-top:.5rem;
-            display:flex;
-            align-items:center;
-            gap:.5rem;
-            flex-wrap:wrap;
-        }}
-        .luxiz-hero-chip {{
-            background:rgba(255,255,255,.16);
-            color:#fff;
-            padding:.22rem .7rem;
-            border-radius:999px;
-            font-size:.78rem;
-            font-weight:700;
-            backdrop-filter:blur(2px);
-            border:1px solid rgba(255,255,255,.22);
-        }}
-        .luxiz-hero-direita {{
-            text-align:right;
-            color:{HERO_TEXTO_SUB};
-            font-size:.8rem;
-        }}
-        </style>
-        <div class="luxiz-hero">
-            <div class="luxiz-hero-linha">
-                <div>
-                    <p class="luxiz-hero-saudacao">✨ {saudacao}</p>
-                    <p class="luxiz-hero-nome">{nome_exibicao}</p>
-                    <div class="luxiz-hero-sub">
-                        <span class="luxiz-hero-chip">{badge}</span>
-                        {f'<span class="luxiz-hero-chip">🏢 {nome_armazem_atual}</span>' if nome_armazem_atual else ''}
-                        <span class="luxiz-hero-chip">📅 {data_extenso}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        """,
+        f'<div class="lx-hero">'
+        f'<div class="lx-hero-esq">'
+        f'<div class="lx-hero-over">{saudacao}</div>'
+        f'<div class="lx-hero-nome">{_esc(nome_hero)}</div>'
+        f'<div class="lx-hero-chips">'
+        f'<span class="lx-hero-chip">{badge}</span>{chip_armazem}'
+        f'</div>'
+        f'</div>'
+        f'<div class="lx-hero-data">'
+        f'<div class="lx-hero-dia">{agora.day:02d}</div>'
+        f'<div class="lx-hero-mes">{mes_extenso} {agora.year}</div>'
+        f'<div class="lx-hero-sem">{dia_semana}</div>'
+        f'</div>'
+        f'</div>',
         unsafe_allow_html=True
     )
 
-    col1, col2 = st.columns([7, 2])
+    # ---------------- usuários online ----------------
 
-    with col1:
+    usuarios_armazem_hero = banco.listar_usuarios(armazem_id_atual)
 
-        modulos_visiveis_hero = {chave for chave, _, _ in NAV_ITENS}
+    perfis_armazem_hero = {
+        perfil["usuario"]: perfil
+        for perfil in banco.ler_perfis(armazem_id_atual)
+    }
 
-        kpis = []
+    usuarios_online_hero = []
 
-        kpis.append((
-            "🧩", "Módulos disponíveis",
-            str(len(NAV_ITENS) - 1), "#a855f7"
-        ))
+    for uid_hero, nome_usuario_hero, tipo_usuario_hero, ultimo_acesso_hero in usuarios_armazem_hero:
 
-        kpis.append((
-            "🔔", "Notificações pendentes",
-            str(notificacoes.contar_pendentes(usuario_atual, armazem_id_atual)),
-            "#ef4444"
-        ))
+        if not nome_usuario_hero or not ultimo_acesso_hero:
+            continue
 
-        if "nav_dashboard" in modulos_visiveis_hero:
+        segundos_desde_acesso_hero = (
+            datetime.now(timezone.utc)
+            - ultimo_acesso_hero.replace(tzinfo=timezone.utc)
+        ).total_seconds()
 
-            ruas_hero = banco.listar_ruas(armazem_id_atual)
-            notas_hero = banco.ler_notas(armazem_id_atual)
+        if segundos_desde_acesso_hero > 240:
+            continue
 
-            media_hero = (
-                round(sum(notas_hero.values()) / len(notas_hero), 1)
-                if notas_hero else 0
+        perfil_usuario_hero = perfis_armazem_hero.get(nome_usuario_hero)
+
+        nome_exibicao_hero = (
+            banco.nome_completo_perfil(perfil_usuario_hero)
+            if perfil_usuario_hero else
+            (
+                nome_usuario_hero.split(".", 1)[1].strip().title()
+                if "." in nome_usuario_hero
+                else nome_usuario_hero
             )
+        )
 
-            kpis.append((
-                "📍", "Ruas monitoradas", str(len(ruas_hero)), "#3b82f6"
-            ))
+        usuarios_online_hero.append(nome_exibicao_hero)
 
-            kpis.append((
-                "⭐", "Média geral", str(media_hero), "#22c55e"
-            ))
+    # ---------------- barra de status ----------------
 
-        else:
+    c_online, c_sino, c_nov, _c_vazio, c_sync = st.columns(
+        [1.35, 0.7, 2.1, 2.6, 3.0],
+        vertical_alignment="center"
+    )
 
-            kpis.append((
-                "🏢", "Armazém atual",
-                nome_armazem_atual or "—", "#0ea5e9"
-            ))
-
-            kpis.append((
-                "🕒", "Horário atual",
-                agora.strftime("%H:%M"), "#f59e0b"
-            ))
-
-        cols_kpi = st.columns(len(kpis))
-
-        for (icone_kpi, rotulo_kpi, valor_kpi, cor_kpi), col_kpi in zip(kpis, cols_kpi):
-
-            with col_kpi:
-
-                st.markdown(
-                    f"""
-                    <div style="
-                        background:{cor_kpi}14;
-                        border:1px solid {cor_kpi}40;
-                        border-radius:.9rem;
-                        padding:.7rem .9rem;
-                        text-align:center;
-                    ">
-                        <div style="font-size:1.3rem;">{icone_kpi}</div>
-                        <div style="font-size:1.15rem;font-weight:800;color:{cor_kpi};margin-top:.1rem;">
-                            {valor_kpi}
-                        </div>
-                        <div style="font-size:.72rem;opacity:.75;margin-top:.1rem;">
-                            {rotulo_kpi}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-    with col2:
-
-        usuarios_armazem_hero = banco.listar_usuarios(armazem_id_atual)
-
-        perfis_armazem_hero = {
-            perfil["usuario"]: perfil
-            for perfil in banco.ler_perfis(armazem_id_atual)
-        }
-
-        usuarios_online_hero = []
-
-        for uid_hero, nome_usuario_hero, tipo_usuario_hero, ultimo_acesso_hero in usuarios_armazem_hero:
-
-            if not nome_usuario_hero or not ultimo_acesso_hero:
-                continue
-
-            segundos_desde_acesso_hero = (
-                datetime.now(timezone.utc)
-                - ultimo_acesso_hero.replace(tzinfo=timezone.utc)
-            ).total_seconds()
-
-            if segundos_desde_acesso_hero > 240:
-                continue
-
-            perfil_usuario_hero = perfis_armazem_hero.get(nome_usuario_hero)
-
-            nome_exibicao_hero = (
-                banco.nome_completo_perfil(perfil_usuario_hero)
-                if perfil_usuario_hero else
-                (
-                    nome_usuario_hero.split(".", 1)[1].strip().title()
-                    if "." in nome_usuario_hero
-                    else nome_usuario_hero
-                )
-            )
-
-            usuarios_online_hero.append(nome_exibicao_hero)
+    with c_online:
 
         with st.popover(
             f"🟢 Online ({len(usuarios_online_hero)})",
@@ -1098,13 +1124,84 @@ def render_cabecalho_inicio():
 
                 st.caption("Ninguém online no momento.")
 
+    with c_sino:
+
         notificacoes.sino(usuario_atual, armazem_id_atual)
 
-        st.caption(
-            f"☁️ Sincronizado com o servidor\n\n"
-            f"Última atualização: "
-            f"{agora.strftime('%H:%M:%S')}"
+    with c_sync:
+
+        st.markdown(
+            f'<div class="lx-sync">☁️ Sincronizado com o servidor · '
+            f'atualizado às {agora.strftime("%H:%M:%S")}</div>',
+            unsafe_allow_html=True
         )
+
+    # ---------------- indicadores ----------------
+
+    modulos_visiveis_hero = {chave for chave, _, _ in NAV_ITENS}
+
+    kpis = []
+
+    kpis.append((
+        "🧩", "Módulos disponíveis",
+        str(len(NAV_ITENS) - 1), "#a855f7"
+    ))
+
+    kpis.append((
+        "🔔", "Notificações pendentes",
+        str(notificacoes.contar_pendentes(usuario_atual, armazem_id_atual)),
+        "#ef4444"
+    ))
+
+    if "nav_dashboard" in modulos_visiveis_hero:
+
+        ruas_hero = banco.listar_ruas(armazem_id_atual)
+        notas_hero = banco.ler_notas(armazem_id_atual)
+
+        media_hero = (
+            round(sum(notas_hero.values()) / len(notas_hero), 1)
+            if notas_hero else 0
+        )
+
+        kpis.append((
+            "📍", "Ruas monitoradas", str(len(ruas_hero)), "#3b82f6"
+        ))
+
+        kpis.append((
+            "⭐", "Média geral das ruas", str(media_hero), "#22c55e"
+        ))
+
+    else:
+
+        kpis.append((
+            "🏢", "Armazém atual",
+            nome_armazem_atual or "—", "#0ea5e9"
+        ))
+
+        kpis.append((
+            "🕒", "Horário atual",
+            agora.strftime("%H:%M"), "#f59e0b"
+        ))
+
+    cols_kpi = st.columns(len(kpis))
+
+    for (icone_kpi, rotulo_kpi, valor_kpi, cor_kpi), col_kpi in zip(kpis, cols_kpi):
+
+        with col_kpi:
+
+            st.markdown(
+                f'<div class="lx-kpi" style="background:{cor_kpi}12;'
+                f'border:1px solid {cor_kpi}33;border-left:4px solid {cor_kpi};">'
+                f'<div class="lx-kpi-ico" style="background:{cor_kpi}22;">{icone_kpi}</div>'
+                f'<div class="lx-kpi-txt">'
+                f'<div class="lx-kpi-val" style="color:{cor_kpi};">{_esc(str(valor_kpi))}</div>'
+                f'<div class="lx-kpi-rot">{rotulo_kpi}</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    # ---------------- seletor de armazém (Fundador) ----------------
 
     if tipo == "fundador" or eh_fundador_prefixo:
 
@@ -1119,12 +1216,16 @@ def render_cabecalho_inicio():
             else 0
         )
 
-        nome_escolhido = st.selectbox(
-            "📍 Visualizando dados de:",
-            nomes_armazens,
-            index=indice_atual,
-            key="seletor_armazem_fundador"
-        )
+        col_seletor_armazem, _col_seletor_vazio = st.columns([1.3, 3])
+
+        with col_seletor_armazem:
+
+            nome_escolhido = st.selectbox(
+                "📍 Visualizando dados de:",
+                nomes_armazens,
+                index=indice_atual,
+                key="seletor_armazem_fundador"
+            )
 
         indice_escolhido = nomes_armazens.index(nome_escolhido)
 
@@ -1134,7 +1235,7 @@ def render_cabecalho_inicio():
             st.session_state.armazem_visualizado_nome = nome_escolhido
             st.rerun()
 
-    with st.popover("🆕 Novidades da versão 1.0.5"):
+    with c_nov.popover("🆕 Novidades da versão 1.0.5"):
 
         st.markdown(
             """
@@ -1676,32 +1777,9 @@ aba_admin = st.session_state.aba_atual == "nav_administrativo"
 
 def render_conteudo_inicio():
 
-    st.markdown(
-        """
-        <style>
-        div[class*="st-key-home-mod-"]{
-            transition:transform .18s ease, box-shadow .18s ease;
-        }
-        div[class*="st-key-home-mod-"]:hover{
-            transform:translateY(-3px);
-        }
-        div[class*="st-key-home-ir-"] button{
-            width:100% !important;
-            border-radius:999px !important;
-            font-weight:700 !important;
-            font-size:.8rem !important;
-            padding:.25rem 0 !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    claro_inicio = st.session_state.tema == "claro"
 
-    st.subheader("🚀 Acesso Rápido")
-
-    st.caption(
-        "Clique em qualquer módulo abaixo para abrir direto, ou use a barra lateral."
-    )
+    COR_TEXTO_INICIO = "#0f172a" if claro_inicio else "#e2e8f0"
 
     DESCRICOES_MODULOS = {
         "nav_dashboard": "Notas de organização por rua, em tempo real.",
@@ -1717,6 +1795,7 @@ def render_conteudo_inicio():
         "nav_recordes": "Rankings do SAC, da Auditoria e Top 3 do Dashboard por mês.",
         "nav_loja": "Produtos, estoque, vendas e pagamentos a receber, com gráficos.",
         "nav_historico": "Gráficos do seu empenho e do que precisa melhorar.",
+        "nav_perfil": "Seus dados, foto e função dentro do sistema.",
         "nav_administrativo": "Gestão completa da operação em um só lugar.",
     }
 
@@ -1734,91 +1813,271 @@ def render_conteudo_inicio():
         "nav_recordes": "#eab308",
         "nav_loja": "#d946ef",
         "nav_historico": "#14b8a6",
+        "nav_perfil": "#8b5cf6",
         "nav_administrativo": "#64748b",
     }
 
-    modulos_disponiveis = [
-        (chave, icone, nome)
-        for chave, icone, nome in NAV_ITENS
-        if chave != "nav_inicio"
+    # Os módulos são mostrados em grupos, para a tela ficar organizada
+    # mesmo quando o perfil tem muitos acessos.
+    GRUPOS_MODULOS = [
+        ("Operação", [
+            "nav_dashboard", "nav_remanejamento", "nav_sac",
+            "nav_auditoria", "nav_rotativo",
+        ]),
+        ("Equipamentos e materiais", [
+            "nav_checklist", "nav_equipamentos", "nav_epi", "nav_estoque",
+        ]),
+        ("Pessoas e desempenho", [
+            "nav_solicitacoes", "nav_recordes", "nav_historico", "nav_perfil",
+        ]),
+        ("Gestão", [
+            "nav_administrativo", "nav_loja",
+        ]),
     ]
 
-    st.write("")
+    modulos_disponiveis = {
+        chave: (icone, nome)
+        for chave, icone, nome in NAV_ITENS
+        if chave != "nav_inicio"
+    }
 
-    for inicio_linha in range(0, len(modulos_disponiveis), 3):
+    grupos_visiveis = []
+    ja_agrupados = set()
 
-        linha = st.columns(3)
+    for titulo_grupo, chaves_grupo in GRUPOS_MODULOS:
 
-        for offset in range(3):
+        itens_grupo = [
+            (chave, modulos_disponiveis[chave][0], modulos_disponiveis[chave][1])
+            for chave in chaves_grupo
+            if chave in modulos_disponiveis
+        ]
 
-            indice = inicio_linha + offset
+        if itens_grupo:
+            grupos_visiveis.append((titulo_grupo, itens_grupo))
+            ja_agrupados.update(chave for chave, _, _ in itens_grupo)
 
-            if indice >= len(modulos_disponiveis):
-                continue
+    itens_restantes = [
+        (chave, icone, nome)
+        for chave, (icone, nome) in modulos_disponiveis.items()
+        if chave not in ja_agrupados
+    ]
 
-            chave, icone, nome = modulos_disponiveis[indice]
+    if itens_restantes:
+        grupos_visiveis.append(("Outros", itens_restantes))
 
-            cor = CORES_MODULOS.get(chave, "#3b82f6")
+    # ---------------- estilo da página ----------------
 
-            with linha[offset]:
-
-                chave_card_home = f"home-mod-{chave}"
-
-                st.markdown(
-                    f"""
-                    <style>
-                    .st-key-{chave_card_home}{{
-                        border:1px solid {cor}40 !important;
-                        background:{cor}0c !important;
-                        border-radius:1rem !important;
-                    }}
-                    .st-key-{chave_card_home}:hover{{
-                        border-color:{cor} !important;
-                        box-shadow:0 10px 24px {cor}33;
-                    }}
-                    </style>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-                with st.container(border=True, key=chave_card_home):
-
-                    st.markdown(
-                        f"""
-                        <div style="
-                            width:48px;height:48px;border-radius:12px;
-                            background:{cor}22;
-                            display:flex;align-items:center;justify-content:center;
-                            font-size:1.4rem;margin-bottom:.5rem;
-                        ">{icone}</div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-                    st.markdown(
-                        f"**{nome}**"
-                    )
-
-                    st.caption(
-                        DESCRICOES_MODULOS.get(chave, "")
-                    )
-
-                    st.write("")
-
-                    if st.button(
-                        "Abrir →",
-                        key=f"home-ir-{chave}",
-                        width='stretch'
-                    ):
-                        ir_para_aba(chave)
-
-    st.divider()
-
-    st.subheader(
-        "🔐 Permissões do Perfil"
+    css_cards_modulos = "".join(
+        f"""
+        .st-key-home-mod-{chave}{{
+            border:1px solid {CORES_MODULOS.get(chave, "#3b82f6")}33 !important;
+            background:{CORES_MODULOS.get(chave, "#3b82f6")}0a !important;
+            border-radius:1rem !important;
+            transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }}
+        .st-key-home-mod-{chave}:hover{{
+            border-color:{CORES_MODULOS.get(chave, "#3b82f6")}88 !important;
+            box-shadow:0 10px 26px {CORES_MODULOS.get(chave, "#3b82f6")}26;
+            transform:translateY(-2px);
+        }}
+        .st-key-home-ir-{chave} button{{
+            height:38px !important;
+            min-height:38px !important;
+            border-radius:10px !important;
+            background:transparent !important;
+            border:1px solid {CORES_MODULOS.get(chave, "#3b82f6")}55 !important;
+            color:{COR_TEXTO_INICIO} !important;
+            font-weight:700 !important;
+            font-size:.8rem !important;
+            box-shadow:none !important;
+        }}
+        .st-key-home-ir-{chave} button:hover{{
+            background:{CORES_MODULOS.get(chave, "#3b82f6")}1c !important;
+            border-color:{CORES_MODULOS.get(chave, "#3b82f6")} !important;
+            transform:none !important;
+        }}
+        """
+        for chave in modulos_disponiveis
     )
 
-    st.caption(
+    css_base_inicio = """
+    <style>
+    .lx-secao{
+        margin:1.8rem 0 .1rem 0;
+    }
+    .lx-secao-titulo{
+        font-size:1.35rem;
+        font-weight:800;
+        letter-spacing:.2px;
+    }
+    .lx-secao-sub{
+        font-size:.86rem;
+        opacity:.65;
+        margin-top:.15rem;
+    }
+    .lx-grupo{
+        display:flex;
+        align-items:center;
+        gap:.8rem;
+        margin:1.2rem 0 .1rem 0;
+    }
+    .lx-grupo span{
+        font-size:.7rem;
+        font-weight:800;
+        letter-spacing:1.6px;
+        text-transform:uppercase;
+        opacity:.6;
+        white-space:nowrap;
+    }
+    .lx-grupo i{
+        flex:1;
+        height:1px;
+        background:rgba(148,163,184,.28);
+    }
+    .lx-mod-topo{
+        display:flex;
+        align-items:center;
+        gap:.75rem;
+    }
+    .lx-mod-ico{
+        flex-shrink:0;
+        width:42px;
+        height:42px;
+        border-radius:12px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:1.3rem;
+    }
+    .lx-mod-nome{
+        font-weight:700;
+        font-size:1rem;
+        line-height:1.2;
+    }
+    .lx-mod-desc{
+        font-size:.8rem;
+        opacity:.7;
+        line-height:1.4;
+        margin:.6rem 0 .2rem 0;
+        min-height:3em;
+    }
+    .lx-perfil{
+        border-radius:1.1rem;
+        padding:1.3rem 1.5rem;
+    }
+    .lx-perfil-cab{
+        display:flex;
+        align-items:center;
+        gap:1rem;
+    }
+    .lx-perfil-ico{
+        flex-shrink:0;
+        width:50px;
+        height:50px;
+        border-radius:14px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:1.5rem;
+    }
+    .lx-perfil-titulo{
+        font-size:1.15rem;
+        font-weight:800;
+    }
+    .lx-perfil-desc{
+        font-size:.84rem;
+        opacity:.75;
+        margin-top:.1rem;
+    }
+    .lx-perfil-rotulo{
+        font-size:.68rem;
+        font-weight:800;
+        letter-spacing:1.4px;
+        text-transform:uppercase;
+        opacity:.55;
+        margin:1.1rem 0 .4rem 0;
+    }
+    .lx-chip{
+        display:inline-flex;
+        align-items:center;
+        gap:.4rem;
+        padding:.35rem .8rem;
+        border-radius:999px;
+        font-size:.8rem;
+        font-weight:600;
+        margin:.2rem .35rem .2rem 0;
+    }
+    </style>
+    """
+
+    st.markdown(
+        css_base_inicio + "<style>" + css_cards_modulos + "</style>",
+        unsafe_allow_html=True
+    )
+
+    def _titulo_secao(titulo, subtitulo):
+
+        st.markdown(
+            f'<div class="lx-secao">'
+            f'<div class="lx-secao-titulo">{titulo}</div>'
+            f'<div class="lx-secao-sub">{subtitulo}</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    # ---------------- acesso rápido ----------------
+
+    _titulo_secao(
+        "🚀 Acesso rápido",
+        "Clique em um módulo para abrir direto, ou use a barra lateral."
+    )
+
+    for titulo_grupo, itens_grupo in grupos_visiveis:
+
+        st.markdown(
+            f'<div class="lx-grupo"><span>{titulo_grupo}</span><i></i></div>',
+            unsafe_allow_html=True
+        )
+
+        for inicio_linha in range(0, len(itens_grupo), 3):
+
+            linha = st.columns(3)
+
+            for offset in range(3):
+
+                indice = inicio_linha + offset
+
+                if indice >= len(itens_grupo):
+                    continue
+
+                chave, icone, nome = itens_grupo[indice]
+
+                cor = CORES_MODULOS.get(chave, "#3b82f6")
+
+                with linha[offset]:
+
+                    with st.container(border=True, key=f"home-mod-{chave}"):
+
+                        st.markdown(
+                            f'<div class="lx-mod-topo">'
+                            f'<div class="lx-mod-ico" style="background:{cor}22;">{icone}</div>'
+                            f'<div class="lx-mod-nome">{nome}</div>'
+                            f'</div>'
+                            f'<div class="lx-mod-desc">{DESCRICOES_MODULOS.get(chave, "")}</div>',
+                            unsafe_allow_html=True
+                        )
+
+                        if st.button(
+                            "Abrir módulo →",
+                            key=f"home-ir-{chave}",
+                            width='stretch'
+                        ):
+                            ir_para_aba(chave)
+
+    # ---------------- permissões do perfil ----------------
+
+    _titulo_secao(
+        "🔐 Permissões do perfil",
         "O que o seu login pode ver e fazer dentro do Luxiz IA."
     )
 
@@ -1930,112 +2189,33 @@ def render_conteudo_inicio():
     )
 
     chips_permissoes_html = "".join(
-        f"""
-        <span style="
-            display:inline-flex;align-items:center;gap:.4rem;
-            background:{cor_perfil}16;
-            border:1px solid {cor_perfil}45;
-            padding:.4rem .85rem;
-            border-radius:999px;
-            font-size:.82rem;
-            font-weight:700;
-            margin:.25rem .4rem .25rem 0;
-        ">{emoji_p} {texto_p}</span>
-        """
+        f'<span class="lx-chip" style="background:{cor_perfil}14;'
+        f'border:1px solid {cor_perfil}40;">{emoji_p} {texto_p}</span>'
         for emoji_p, texto_p in lista_permissoes
     )
 
     st.markdown(
-        f"""
-        <style>
-        @keyframes luxizPerfilSubir {{
-            from {{ opacity:0; transform:translateY(10px); }}
-            to   {{ opacity:1; transform:translateY(0); }}
-        }}
-        .luxiz-perfil-card {{
-            position:relative;
-            overflow:hidden;
-            border-radius:1.2rem;
-            padding:1.5rem 1.7rem;
-            border:1px solid {cor_perfil}40;
-            background:linear-gradient(135deg, {cor_perfil}18, {cor_perfil}05 65%);
-            animation:luxizPerfilSubir .4s ease;
-        }}
-        .luxiz-perfil-card::before {{
-            content:"";
-            position:absolute;
-            width:200px;height:200px;
-            border-radius:50%;
-            background:{cor_perfil}14;
-            top:-90px; right:-60px;
-            pointer-events:none;
-        }}
-        .luxiz-perfil-cabecalho {{
-            display:flex;
-            align-items:center;
-            gap:1rem;
-            position:relative;
-            z-index:1;
-        }}
-        .luxiz-perfil-icone {{
-            flex-shrink:0;
-            width:56px;height:56px;
-            border-radius:16px;
-            background:{cor_perfil}25;
-            display:flex;align-items:center;justify-content:center;
-            font-size:1.7rem;
-            box-shadow:0 8px 18px {cor_perfil}35;
-        }}
-        .luxiz-perfil-titulo {{
-            font-size:1.3rem;
-            font-weight:800;
-            color:{cor_perfil};
-            margin:0;
-        }}
-        .luxiz-perfil-desc {{
-            font-size:.85rem;
-            opacity:.8;
-            margin:.15rem 0 0 0;
-        }}
-        .luxiz-perfil-rotulo-lista {{
-            font-size:.72rem;
-            font-weight:800;
-            letter-spacing:.5px;
-            text-transform:uppercase;
-            opacity:.6;
-            margin:1.2rem 0 .5rem 0;
-            position:relative;
-            z-index:1;
-        }}
-        .luxiz-perfil-permissoes {{
-            position:relative;
-            z-index:1;
-        }}
-        </style>
-        <div class="luxiz-perfil-card">
-            <div class="luxiz-perfil-cabecalho">
-                <div class="luxiz-perfil-icone">{icone_perfil}</div>
-                <div>
-                    <p class="luxiz-perfil-titulo">{titulo_perfil}</p>
-                    <p class="luxiz-perfil-desc">{desc_perfil}</p>
-                </div>
-            </div>
-            <p class="luxiz-perfil-rotulo-lista">✅ Acessos liberados</p>
-            <div class="luxiz-perfil-permissoes">{chips_permissoes_html}</div>
-        </div>
-        """,
+        f'<div class="lx-perfil" style="background:linear-gradient(90deg,{cor_perfil}16,{cor_perfil}05 70%);'
+        f'border:1px solid {cor_perfil}33;border-left:4px solid {cor_perfil};">'
+        f'<div class="lx-perfil-cab">'
+        f'<div class="lx-perfil-ico" style="background:{cor_perfil}25;">{icone_perfil}</div>'
+        f'<div>'
+        f'<div class="lx-perfil-titulo" style="color:{cor_perfil};">{titulo_perfil}</div>'
+        f'<div class="lx-perfil-desc">{desc_perfil}</div>'
+        f'</div>'
+        f'</div>'
+        f'<div class="lx-perfil-rotulo">✅ Acessos liberados</div>'
+        f'<div>{chips_permissoes_html}</div>'
+        f'</div>',
         unsafe_allow_html=True
     )
 
+    # ---------------- como cadastrar usuários ----------------
+
     if (tipo == "fundador" or eh_fundador_prefixo) or (tipo == "gestao" or eh_gestao_prefixo):
 
-        st.write("")
-
-        st.subheader(
-            "👥 Como Cadastrar Usuários"
-        )
-
-        st.caption(
+        _titulo_secao(
+            "👥 Como cadastrar usuários",
             "Guia rápido para tirar as dúvidas mais comuns na hora de criar um novo acesso."
         )
 
@@ -2100,13 +2280,10 @@ def render_conteudo_inicio():
                 "àquela pessoa e libera a visão certa para ela."
             )
 
-    st.divider()
+    # ---------------- modo de usar ----------------
 
-    st.subheader(
-        "📖 Modo de Usar"
-    )
-
-    st.caption(
+    _titulo_secao(
+        "📖 Modo de usar",
         "O que cada módulo faz e qual é o seu objetivo dentro da operação."
     )
 
@@ -2241,29 +2418,35 @@ def render_conteudo_inicio():
         "Administrativo": "nav_administrativo",
     }
 
-    for icone, nome, cor, como_usar, objetivo in MODO_DE_USAR:
+    itens_modo_de_usar = [
+        item for item in MODO_DE_USAR
+        if mapa_modo_de_usar.get(item[1]) in modulos_visiveis
+    ]
 
-        if mapa_modo_de_usar.get(nome) not in modulos_visiveis:
-            continue
+    col_modo_a, col_modo_b = st.columns(2)
 
-        with st.expander(f"{icone}  {nome}"):
+    for posicao, (icone, nome, cor, como_usar, objetivo) in enumerate(itens_modo_de_usar):
 
-            st.markdown(f"**🧭 Como usar:** {como_usar}")
+        with (col_modo_a if posicao % 2 == 0 else col_modo_b):
 
-            st.markdown(
-                f"""
-                <div style="
-                    background:{cor}18;
-                    border-left:4px solid {cor};
-                    padding:.5rem .7rem;
-                    border-radius:.4rem;
-                    margin-top:.4rem;
-                ">
-                🎯 <strong>Meta:</strong> {objetivo}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            with st.expander(f"{icone}  {nome}"):
+
+                st.markdown(f"**🧭 Como usar:** {como_usar}")
+
+                st.markdown(
+                    f"""
+                    <div style="
+                        background:{cor}18;
+                        border-left:4px solid {cor};
+                        padding:.5rem .7rem;
+                        border-radius:.4rem;
+                        margin-top:.4rem;
+                    ">
+                    🎯 <strong>Meta:</strong> {objetivo}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     st.divider()
 
