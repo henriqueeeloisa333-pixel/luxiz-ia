@@ -1,5 +1,6 @@
 import html
 import io
+import re
 from datetime import date, timedelta
 
 import pandas as pd
@@ -22,6 +23,19 @@ DIA_PREVISTO_CHECKLIST = 4
 # O controle de "não preenchido" só vale a partir de outubro/2026.
 # Sextas-feiras anteriores a esta data nunca contam como negativo.
 DATA_INICIO_CONTROLE = date(2026, 10, 1)
+
+def _html(texto):
+    """
+    Envia HTML ao Streamlit sem recuo nem linhas em branco: o Markdown
+    trata linhas com 4+ espaços (ou depois de uma linha vazia) como
+    bloco de código, o que quebrava os cartões.
+    """
+
+    st.markdown(
+        re.sub(r"\s*\n\s*", " ", texto.strip()),
+        unsafe_allow_html=True
+    )
+
 
 COR_TOTAL = "#6366f1"
 COR_CONFORME = "#22c55e"
@@ -292,15 +306,14 @@ def _titulo_secao(titulo, subtitulo=""):
         if subtitulo else ""
     )
 
-    st.markdown(
+    _html(
         f"""
         <div class="lxc-secao">
             <div class="lxc-secao-barra"></div>
             <div class="lxc-secao-titulo">{html.escape(titulo)}</div>
             {sub_html}
         </div>
-        """,
-        unsafe_allow_html=True
+        """
     )
 
 
@@ -327,10 +340,7 @@ def _mostrar_kpis(cartoes):
         for icone, rotulo, valor, cor, subtitulo in cartoes
     )
 
-    st.markdown(
-        f'<div class="lxc-kpis">{html_cartoes}</div>',
-        unsafe_allow_html=True
-    )
+    _html(f'<div class="lxc-kpis">{html_cartoes}</div>')
 
 
 def _mostrar_barra_conformidade(conformes, total):
@@ -340,7 +350,7 @@ def _mostrar_barra_conformidade(conformes, total):
 
     percentual = round(conformes / total * 100)
 
-    st.markdown(
+    _html(
         f"""
         <div class="lxc-barra-wrap">
             <div class="lxc-barra-linha">
@@ -351,8 +361,7 @@ def _mostrar_barra_conformidade(conformes, total):
                 <div class="lxc-barra-preenchida" style="width:{percentual}%;"></div>
             </div>
         </div>
-        """,
-        unsafe_allow_html=True
+        """
     )
 
 
@@ -476,7 +485,7 @@ def _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero):
     quando há muitas pendências.
     """
 
-    st.markdown(
+    _html(
         """
         <div class="lxc-aviso">
             🚫 <strong>Não preenchidos — ficará negativo em seu PDL.</strong>
@@ -484,8 +493,7 @@ def _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero):
             registrou na data prevista ficará negativo em seu PDL
             (vale a partir de outubro/2026).
         </div>
-        """,
-        unsafe_allow_html=True
+        """
     )
 
     grupos = {}
@@ -521,11 +529,11 @@ def _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero):
 
         with st.container(height=300):
 
-            st.markdown(html_grupos, unsafe_allow_html=True)
+            _html(html_grupos)
 
     else:
 
-        st.markdown(html_grupos, unsafe_allow_html=True)
+        _html(html_grupos)
 
 
 # =====================================================
