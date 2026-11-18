@@ -912,32 +912,80 @@ def renderizar_checklist(
 
     if funcao_enviar_manutencao and funcao_retornar_manutencao:
 
-        itens_em_manutencao = [
-            r for r in registros
-            if r.get("em_manutencao")
-        ]
+        # Cada checklist "Não Conforme" é um registro por data, então o
+        # mesmo colaborador + equipamento pode repetir várias vezes.
+        # Aqui tudo é agrupado por (nome, número): aparece UMA linha por
+        # item (com o registro mais recente), e as ações valem para
+        # todos os registros do grupo.
 
-        itens_nao_conformes = [
-            r for r in registros
-            if r["status"] == "Não Conforme" and not r.get("em_manutencao")
-        ]
+        def _chave_item(registro):
 
-        mostrar_envio = admin_master and bool(itens_nao_conformes)
+            return (
+                banco._normalizar_texto(registro["nome"]),
+                str(registro["numero"]).strip()
+            )
 
-        if itens_em_manutencao or mostrar_envio:
+        def _agrupar(lista_registros):
+
+            grupos = {}
+
+            for registro in lista_registros:
+                grupos.setdefault(_chave_item(registro), []).append(registro)
+
+            return grupos
+
+        # "registros" já vem ordenado do mais novo para o mais antigo
+        grupos_em_manutencao = _agrupar(
+            [r for r in registros if r.get("em_manutencao")]
+        )
+
+        ultimo_por_item = {}
+
+        for registro in registros:
+            ultimo_por_item.setdefault(_chave_item(registro), registro)
+
+        # Só entra na lista de "enviar" o item cujo checklist mais
+        # recente ainda é Não Conforme e que não está em manutenção.
+        grupos_para_enviar = {
+            chave: lista
+            for chave, lista in _agrupar(
+                [
+                    r for r in registros
+                    if r["status"] == "Não Conforme" and not r.get("em_manutencao")
+                ]
+            ).items()
+            if chave not in grupos_em_manutencao
+            and ultimo_por_item[chave]["status"] == "Não Conforme"
+        }
+
+        mostrar_envio = admin_master and bool(grupos_para_enviar)
+
+        def _datas_texto(lista):
+
+            datas = sorted(
+                {r["data_checklist"] for r in lista},
+                reverse=True
+            )
+
+            return ", ".join(d.strftime("%d/%m/%Y") for d in datas)
+
+        if grupos_em_manutencao or mostrar_envio:
 
             _titulo_secao("Manutenção")
 
             with st.expander(
-                f"🚧 Manutenção · {len(itens_em_manutencao)} em andamento",
-                expanded=bool(itens_em_manutencao)
+                f"🚧 Manutenção · {len(grupos_em_manutencao)} em andamento",
+                expanded=bool(grupos_em_manutencao)
             ):
 
-                if itens_em_manutencao:
+                if grupos_em_manutencao:
 
                     st.markdown("##### 🚧 Em manutenção")
 
-                    for item in itens_em_manutencao:
+                    for chave, lista in grupos_em_manutencao.items():
+
+                        item = lista[0]
+                        ids_grupo = [r["id"] for r in lista]
 
                         with st.container(border=True):
 
@@ -967,6 +1015,13 @@ def renderizar_checklist(
                                         f"em {enviado_em_local.strftime('%d/%m/%Y %H:%M')}"
                                     )
 
+                                if len(lista) > 1:
+
+                                    st.caption(
+                                        f"📎 {len(lista)} registros agrupados: "
+                                        f"{_datas_texto(lista)}"
+                                    )
+
                             if admin_master:
 
                                 with col_botoes:
@@ -977,7 +1032,7 @@ def renderizar_checklist(
 
                                         if funcao_concluir_manutencao and st.button(
                                             "✅",
-                                            key=f"concluir_manut_{prefixo_key}_{item['id']}",
+                                            key=f"concluir_manut_{prefixo_key}_{ids_grupo[0]}",
                                             help=(
                                                 f"Marcar manutenção de {item['nome']} "
                                                 f"({rotulo_numero} {item['numero']}) como concluída"
@@ -985,11 +1040,12 @@ def renderizar_checklist(
                                         ):
 
                                             with estilos.mostrar_processando("registrando manutenção concluída..."):
-                                                funcao_concluir_manutencao(
-                                                    item["id"],
-                                                    usuario_atual,
-                                                    armazem_id
-                                                )
+                                                for id_registro in ids_grupo:
+                                                    funcao_concluir_manutencao(
+                                                        id_registro,
+                                                        usuario_atual,
+                                                        armazem_id
+                                                    )
 
                                             estilos.notificar_sucesso(
                                                 f"✅ Manutenção de {item['nome']} concluída."
@@ -1000,7 +1056,7 @@ def renderizar_checklist(
 
                                         if st.button(
                                             "↩️",
-                                            key=f"retornar_manut_{prefixo_key}_{item['id']}",
+                                            key=f"retornar_manut_{prefixo_key}_{ids_grupo[0]}",
                                             help=(
                                                 f"Marcar {item['nome']} ({rotulo_numero} "
                                                 f"{item['numero']}) como retornado da manutenção, "
@@ -1009,11 +1065,12 @@ def renderizar_checklist(
                                         ):
 
                                             with estilos.mostrar_processando("registrando retorno..."):
-                                                funcao_retornar_manutencao(
-                                                    item["id"],
-                                                    usuario_atual,
-                                                    armazem_id
-                                                )
+                                                for id_registro in ids_grupo:
+                                                    funcao_retornar_manutencao(
+                                                        id_registro,
+                                                        usuario_atual,
+                                                        armazem_id
+                                                    )
 
                                             estilos.notificar_sucesso(f"↩️ {item['nome']} retornado da manutenção.")
                                             st.rerun(scope="fragment")
@@ -1024,22 +1081,27 @@ def renderizar_checklist(
 
                     st.markdown("##### 🔧 Enviar para manutenção")
 
-                    for item in itens_nao_conformes:
+                    for chave, lista in grupos_para_enviar.items():
+
+                        item = lista[0]
+                        ids_grupo = [r["id"] for r in lista]
 
                         col_texto, col_botao = st.columns([5, 1])
 
                         with col_texto:
 
-                            st.caption(
+                            texto_item = (
                                 f"**{item['nome']}** — {rotulo_numero}: {item['numero']} "
-                                f"({item['data_checklist'].strftime('%d/%m/%Y')})"
+                                f"({_datas_texto(lista)})"
                             )
+
+                            st.caption(texto_item)
 
                         with col_botao:
 
                             if st.button(
                                 "🔧",
-                                key=f"enviar_manut_{prefixo_key}_{item['id']}",
+                                key=f"enviar_manut_{prefixo_key}_{ids_grupo[0]}",
                                 help=(
                                     f"Enviar {item['nome']} ({rotulo_numero} "
                                     f"{item['numero']}) para manutenção"
@@ -1047,12 +1109,13 @@ def renderizar_checklist(
                             ):
 
                                 with estilos.mostrar_processando("enviando para manutenção..."):
-                                    funcao_enviar_manutencao(
-                                        item["id"],
-                                        item.get("descricao"),
-                                        usuario_atual,
-                                        armazem_id
-                                    )
+                                    for id_registro in ids_grupo:
+                                        funcao_enviar_manutencao(
+                                            id_registro,
+                                            item.get("descricao"),
+                                            usuario_atual,
+                                            armazem_id
+                                        )
 
                                 estilos.notificar_sucesso(f"🔧 {item['nome']} enviado para manutenção.")
                                 st.rerun(scope="fragment")
