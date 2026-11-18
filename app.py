@@ -834,13 +834,17 @@ def render_cabecalho_inicio():
     agora = estilos.agora_local()
 
     if agora.hour < 5:
-        saudacao = "Boa madrugada"
+        saudacao, emoji_saudacao = "Boa madrugada", "🌙"
+        frase_dia = "Operação silenciosa, atenção em dobro."
     elif agora.hour < 12:
-        saudacao = "Bom dia"
+        saudacao, emoji_saudacao = "Bom dia", "☀️"
+        frase_dia = "Vamos começar o dia com tudo em ordem."
     elif agora.hour < 18:
-        saudacao = "Boa tarde"
+        saudacao, emoji_saudacao = "Boa tarde", "🌤️"
+        frase_dia = "Acompanhe a operação em tempo real."
     else:
-        saudacao = "Boa noite"
+        saudacao, emoji_saudacao = "Boa noite", "🌆"
+        frase_dia = "Fechando o dia com a operação sob controle."
 
     nome_armazem_atual = (
         st.session_state.get("armazem_visualizado_nome")
@@ -867,22 +871,47 @@ def render_cabecalho_inicio():
         if perfil_hero_atual else nome_exibicao
     )
 
-    if st.session_state.tema == "claro":
-        HERO_GRADIENTE = "linear-gradient(135deg, #1d4ed8 0%, #4f46e5 55%, #7c3aed 100%)"
-        HERO_SOMBRA = "0 14px 34px rgba(79,70,229,.25)"
-        HERO_TEXTO_SUB = "rgba(255,255,255,.82)"
+    # Foto do perfil (se existir) ou logo do app dentro do banner
+    foto_hero = perfil_hero_atual.get("foto") if perfil_hero_atual else None
+
+    if foto_hero:
+        avatar_hero_html = f'<img src="{foto_hero}" alt="Perfil" style="width:100%;height:100%;object-fit:cover;border-radius:22px;">'
     else:
-        HERO_GRADIENTE = "linear-gradient(135deg, #0f1b3d 0%, #1e3a8a 55%, #5b21b6 100%)"
-        HERO_SOMBRA = "0 14px 34px rgba(0,0,0,.42)"
-        HERO_TEXTO_SUB = "rgba(226,232,240,.78)"
+        try:
+            avatar_hero_html = (
+                f'<img src="data:image/png;base64,{estilos._logo_base64()}" '
+                f'alt="Luxiz IA" style="height:46px;width:auto;">'
+            )
+        except Exception:
+            avatar_hero_html = "✨"
+
+    claro = st.session_state.tema == "claro"
+
+    if claro:
+        HERO_GRADIENTE = "linear-gradient(120deg, #1e40af 0%, #4f46e5 50%, #9333ea 100%)"
+        HERO_SOMBRA = "0 18px 40px rgba(79,70,229,.28)"
+        HERO_TEXTO_SUB = "rgba(255,255,255,.85)"
+        BARRA_BG = "rgba(255,255,255,.75)"
+        BARRA_BORDA = "rgba(15,23,42,.10)"
+        BOTAO_BG = "rgba(15,23,42,.04)"
+        BOTAO_BORDA = "rgba(15,23,42,.12)"
+        BOTAO_HOVER = "rgba(79,70,229,.10)"
+        BOTAO_TEXTO = "#0f172a"
+    else:
+        HERO_GRADIENTE = "linear-gradient(120deg, #0b1230 0%, #1e3a8a 50%, #6d28d9 100%)"
+        HERO_SOMBRA = "0 18px 40px rgba(0,0,0,.5)"
+        HERO_TEXTO_SUB = "rgba(226,232,240,.80)"
+        BARRA_BG = "rgba(15,23,42,.55)"
+        BARRA_BORDA = "rgba(255,255,255,.10)"
+        BOTAO_BG = "rgba(255,255,255,.05)"
+        BOTAO_BORDA = "rgba(255,255,255,.14)"
+        BOTAO_HOVER = "rgba(99,102,241,.22)"
+        BOTAO_TEXTO = "#e2e8f0"
 
     css_inicio = """
     <style>
 
-    /* ---------- remove o "vazio" no topo da página ----------
-       Cada bloco de CSS/estilo do app vira um elemento invisível que,
-       mesmo sem altura, ganha um espaçamento do Streamlit. Somados,
-       empurravam o conteúdo para baixo. */
+    /* ---------- remove o "vazio" no topo da página ---------- */
     .stElementContainer:has([data-testid="stMarkdownContainer"] > style):not(:has([data-testid="stMarkdownContainer"] > :not(style))),
     .stElementContainer:has(iframe[height="0"]){
         display:none !important;
@@ -895,48 +924,122 @@ def render_cabecalho_inicio():
         margin-bottom:-1rem !important;
     }
 
-    /* ---------- faixa de boas-vindas ---------- */
+    @keyframes lxFlutuar{
+        0%,100%{ transform:translate(0,0) scale(1); }
+        50%{ transform:translate(-30px,22px) scale(1.12); }
+    }
+    @keyframes lxBrilho{
+        0%{ transform:translateX(-120%) skewX(-20deg); }
+        60%,100%{ transform:translateX(320%) skewX(-20deg); }
+    }
+    @keyframes lxPulso{
+        0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,.55); }
+        50%{ box-shadow:0 0 0 7px rgba(34,197,94,0); }
+    }
+
+    /* ---------- banner ---------- */
     .lx-hero{
         position:relative;
+        isolation:isolate;
         overflow:hidden;
         display:flex;
         align-items:center;
         justify-content:space-between;
         gap:1.5rem;
         flex-wrap:wrap;
-        padding:1.7rem 2.1rem;
-        border-radius:1.25rem;
+        padding:2rem 2.4rem;
+        border-radius:1.6rem;
         background:__HERO_GRADIENTE__;
         box-shadow:__HERO_SOMBRA__;
+        border:1px solid rgba(255,255,255,.14);
     }
-    .lx-hero::after{
-        content:"";
+    .lx-hero-blob{
         position:absolute;
-        right:-70px;
-        top:-100px;
-        width:320px;
-        height:320px;
         border-radius:50%;
-        background:radial-gradient(circle, rgba(255,255,255,.16), transparent 68%);
+        filter:blur(46px);
+        opacity:.5;
+        z-index:0;
         pointer-events:none;
+    }
+    .lx-hero-b1{
+        width:280px; height:280px;
+        right:12%; top:-110px;
+        background:#22d3ee;
+        animation:lxFlutuar 10s ease-in-out infinite;
+    }
+    .lx-hero-b2{
+        width:320px; height:320px;
+        left:34%; bottom:-190px;
+        background:#d946ef;
+        animation:lxFlutuar 13s ease-in-out infinite reverse;
+    }
+    .lx-hero-grade{
+        position:absolute;
+        inset:0;
+        z-index:0;
+        pointer-events:none;
+        background-image:radial-gradient(rgba(255,255,255,.20) 1px, transparent 1px);
+        background-size:22px 22px;
+        -webkit-mask-image:linear-gradient(90deg, transparent 10%, #000 85%);
+        mask-image:linear-gradient(90deg, transparent 10%, #000 85%);
+    }
+    .lx-hero-brilho{
+        position:absolute;
+        top:0; left:0;
+        width:25%; height:100%;
+        z-index:0;
+        pointer-events:none;
+        background:linear-gradient(100deg, transparent, rgba(255,255,255,.12), transparent);
+        animation:lxBrilho 7s ease-in-out infinite;
     }
     .lx-hero-esq{
         position:relative;
         z-index:1;
+        display:flex;
+        align-items:center;
+        gap:1.4rem;
+        min-width:0;
+    }
+    .lx-hero-avatar{
+        flex-shrink:0;
+        width:84px;
+        height:84px;
+        border-radius:24px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:2rem;
+        background:rgba(255,255,255,.14);
+        border:1px solid rgba(255,255,255,.28);
+        backdrop-filter:blur(10px);
+        -webkit-backdrop-filter:blur(10px);
+        box-shadow:0 8px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.3);
     }
     .lx-hero-over{
-        font-size:.72rem;
+        display:inline-flex;
+        align-items:center;
+        gap:.5rem;
+        font-size:.74rem;
         font-weight:700;
-        letter-spacing:2px;
+        letter-spacing:2.2px;
         text-transform:uppercase;
         color:__HERO_TEXTO_SUB__;
     }
     .lx-hero-nome{
-        font-size:2.05rem;
+        font-size:2.7rem;
         font-weight:800;
-        color:#ffffff;
-        line-height:1.15;
-        margin:.3rem 0 .8rem 0;
+        line-height:1.1;
+        margin:.25rem 0 .35rem 0;
+        background:linear-gradient(90deg, #ffffff 30%, #a5f3fc 100%);
+        -webkit-background-clip:text;
+        background-clip:text;
+        -webkit-text-fill-color:transparent;
+        color:transparent;
+    }
+    .lx-hero-frase{
+        font-size:.9rem;
+        color:__HERO_TEXTO_SUB__;
+        margin-bottom:.85rem;
     }
     .lx-hero-chips{
         display:flex;
@@ -945,9 +1048,11 @@ def render_cabecalho_inicio():
     }
     .lx-hero-chip{
         background:rgba(255,255,255,.14);
-        border:1px solid rgba(255,255,255,.22);
+        border:1px solid rgba(255,255,255,.24);
+        backdrop-filter:blur(6px);
+        -webkit-backdrop-filter:blur(6px);
         color:#ffffff;
-        padding:.25rem .75rem;
+        padding:.28rem .85rem;
         border-radius:999px;
         font-size:.78rem;
         font-weight:600;
@@ -956,37 +1061,111 @@ def render_cabecalho_inicio():
         position:relative;
         z-index:1;
         text-align:center;
-        min-width:140px;
-        padding:.8rem 1.5rem;
-        border-radius:1rem;
-        background:rgba(255,255,255,.12);
-        border:1px solid rgba(255,255,255,.2);
+        min-width:170px;
+        overflow:hidden;
+        border-radius:1.2rem;
+        background:rgba(255,255,255,.13);
+        border:1px solid rgba(255,255,255,.26);
+        backdrop-filter:blur(12px);
+        -webkit-backdrop-filter:blur(12px);
+        box-shadow:0 10px 28px rgba(0,0,0,.22);
+    }
+    .lx-hero-data-topo{
+        padding:.35rem 1rem;
+        font-size:.7rem;
+        font-weight:800;
+        letter-spacing:1.8px;
+        text-transform:uppercase;
+        color:#ffffff;
+        background:rgba(255,255,255,.18);
     }
     .lx-hero-dia{
-        font-size:2.5rem;
+        font-size:3.6rem;
         font-weight:800;
         line-height:1;
+        padding:.7rem 1rem 0 1rem;
         color:#ffffff;
     }
     .lx-hero-mes{
-        margin-top:.35rem;
+        margin-top:.3rem;
         font-size:.72rem;
         font-weight:700;
-        letter-spacing:1.5px;
+        letter-spacing:1.6px;
         text-transform:uppercase;
         color:__HERO_TEXTO_SUB__;
     }
-    .lx-hero-sem{
-        font-size:.78rem;
-        text-transform:capitalize;
-        color:__HERO_TEXTO_SUB__;
+    .lx-hero-hora{
+        display:inline-flex;
+        align-items:center;
+        gap:.4rem;
+        margin:.55rem 0 .8rem 0;
+        padding:.2rem .7rem;
+        border-radius:999px;
+        font-size:.8rem;
+        font-weight:700;
+        color:#ffffff;
+        background:rgba(0,0,0,.2);
+    }
+    .lx-hero-hora b{
+        width:8px; height:8px;
+        border-radius:50%;
+        background:#22c55e;
+        display:inline-block;
+        animation:lxPulso 2s infinite;
     }
 
-    /* ---------- barra de status (online, avisos, novidades) ---------- */
+    @media (max-width: 760px){
+        .lx-hero{ padding:1.4rem 1.2rem; }
+        .lx-hero-nome{ font-size:2rem; }
+        .lx-hero-avatar{ width:64px; height:64px; border-radius:18px; }
+        .lx-hero-data{ width:100%; }
+    }
+
+    /* ---------- barra de status (online, sino, novidades) ---------- */
+    .st-key-lx-statusbar{
+        margin-top:.9rem;
+        padding:.45rem .7rem;
+        border-radius:1rem;
+        background:__BARRA_BG__;
+        border:1px solid __BARRA_BORDA__;
+        backdrop-filter:blur(10px);
+        -webkit-backdrop-filter:blur(10px);
+    }
+    .st-key-lx-statusbar [data-testid="stPopover"] button,
+    .st-key-lx-statusbar [data-testid="stPopover"] > div > button{
+        height:40px !important;
+        min-height:40px !important;
+        padding:0 1rem !important;
+        border-radius:999px !important;
+        background:__BOTAO_BG__ !important;
+        border:1px solid __BOTAO_BORDA__ !important;
+        color:__BOTAO_TEXTO__ !important;
+        font-weight:600 !important;
+        font-size:.85rem !important;
+        box-shadow:none !important;
+        white-space:nowrap;
+        transition:background .15s ease, transform .15s ease, border-color .15s ease;
+    }
+    .st-key-lx-statusbar [data-testid="stPopover"] button:hover{
+        background:__BOTAO_HOVER__ !important;
+        border-color:rgba(99,102,241,.6) !important;
+        transform:translateY(-1px);
+    }
     .lx-sync{
         text-align:right;
         font-size:.78rem;
-        opacity:.7;
+        opacity:.75;
+        white-space:nowrap;
+        overflow:hidden;
+        text-overflow:ellipsis;
+    }
+    .lx-sync b{
+        display:inline-block;
+        width:8px; height:8px;
+        margin-right:.4rem;
+        border-radius:50%;
+        background:#22c55e;
+        animation:lxPulso 2s infinite;
     }
 
     /* ---------- indicadores ---------- */
@@ -1033,6 +1212,12 @@ def render_cabecalho_inicio():
         .replace("__HERO_GRADIENTE__", HERO_GRADIENTE)
         .replace("__HERO_SOMBRA__", HERO_SOMBRA)
         .replace("__HERO_TEXTO_SUB__", HERO_TEXTO_SUB)
+        .replace("__BARRA_BG__", BARRA_BG)
+        .replace("__BARRA_BORDA__", BARRA_BORDA)
+        .replace("__BOTAO_BG__", BOTAO_BG)
+        .replace("__BOTAO_BORDA__", BOTAO_BORDA)
+        .replace("__BOTAO_HOVER__", BOTAO_HOVER)
+        .replace("__BOTAO_TEXTO__", BOTAO_TEXTO)
     )
 
     st.markdown(css_inicio, unsafe_allow_html=True)
@@ -1044,17 +1229,26 @@ def render_cabecalho_inicio():
 
     st.markdown(
         f'<div class="lx-hero">'
+        f'<div class="lx-hero-blob lx-hero-b1"></div>'
+        f'<div class="lx-hero-blob lx-hero-b2"></div>'
+        f'<div class="lx-hero-grade"></div>'
+        f'<div class="lx-hero-brilho"></div>'
         f'<div class="lx-hero-esq">'
-        f'<div class="lx-hero-over">{saudacao}</div>'
+        f'<div class="lx-hero-avatar">{avatar_hero_html}</div>'
+        f'<div>'
+        f'<div class="lx-hero-over">{emoji_saudacao} {saudacao}</div>'
         f'<div class="lx-hero-nome">{_esc(nome_hero)}</div>'
+        f'<div class="lx-hero-frase">{frase_dia}</div>'
         f'<div class="lx-hero-chips">'
         f'<span class="lx-hero-chip">{badge}</span>{chip_armazem}'
         f'</div>'
         f'</div>'
+        f'</div>'
         f'<div class="lx-hero-data">'
+        f'<div class="lx-hero-data-topo">{dia_semana}</div>'
         f'<div class="lx-hero-dia">{agora.day:02d}</div>'
         f'<div class="lx-hero-mes">{mes_extenso} {agora.year}</div>'
-        f'<div class="lx-hero-sem">{dia_semana}</div>'
+        f'<div class="lx-hero-hora"><b></b>{agora.strftime("%H:%M")}</div>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True
@@ -1099,42 +1293,47 @@ def render_cabecalho_inicio():
         usuarios_online_hero.append(nome_exibicao_hero)
 
     # ---------------- barra de status ----------------
+    # Tudo dentro de UMA barra de vidro: à esquerda os três botões
+    # lado a lado (mesma altura, mesmo formato), à direita a sincronização.
 
-    c_online, c_sino, c_nov, _c_vazio, c_sync = st.columns(
-        [1.35, 0.7, 2.1, 2.6, 3.0],
-        vertical_alignment="center"
-    )
+    with st.container(key="lx-statusbar"):
 
-    with c_online:
-
-        with st.popover(
-            f"🟢 Online ({len(usuarios_online_hero)})",
-            help="Online agora"
-        ):
-
-            st.caption("👥 Quem está online agora")
-
-            if usuarios_online_hero:
-
-                for nome_online_hero in sorted(usuarios_online_hero):
-
-                    st.markdown(f"🟢 {nome_online_hero}")
-
-            else:
-
-                st.caption("Ninguém online no momento.")
-
-    with c_sino:
-
-        notificacoes.sino(usuario_atual, armazem_id_atual)
-
-    with c_sync:
-
-        st.markdown(
-            f'<div class="lx-sync">☁️ Sincronizado com o servidor · '
-            f'atualizado às {agora.strftime("%H:%M:%S")}</div>',
-            unsafe_allow_html=True
+        c_online, c_sino, c_nov, c_sync = st.columns(
+            [1.5, 0.6, 2.5, 3.4],
+            vertical_alignment="center",
+            gap="small"
         )
+
+        with c_online:
+
+            with st.popover(
+                f"🟢 Online ({len(usuarios_online_hero)})",
+                help="Online agora"
+            ):
+
+                st.caption("👥 Quem está online agora")
+
+                if usuarios_online_hero:
+
+                    for nome_online_hero in sorted(usuarios_online_hero):
+
+                        st.markdown(f"🟢 {nome_online_hero}")
+
+                else:
+
+                    st.caption("Ninguém online no momento.")
+
+        with c_sino:
+
+            notificacoes.sino(usuario_atual, armazem_id_atual)
+
+        with c_sync:
+
+            st.markdown(
+                f'<div class="lx-sync"><b></b>Sincronizado com o servidor · '
+                f'atualizado às {agora.strftime("%H:%M:%S")}</div>',
+                unsafe_allow_html=True
+            )
 
     # ---------------- indicadores ----------------
 
