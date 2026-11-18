@@ -38,6 +38,13 @@ OPCOES_PERIODO = [
     "Tudo",
 ]
 
+# Lingerie (peças de fornecedor): comissão sobre o total vendido.
+# Até o limite (inclusive) vale o percentual baixo; acima dele, o
+# percentual alto — aplicado sobre o total inteiro.
+LINGERIE_LIMITE = 500.0
+LINGERIE_PCT_BAIXO = 30
+LINGERIE_PCT_ALTO = 40
+
 
 # =====================================================
 # ACESSO
@@ -216,6 +223,9 @@ def _limpar_cache():
     ler_produtos.clear()
     ler_vendas.clear()
     ler_entradas.clear()
+    ler_lingerie_abertas.clear()
+    ler_lingerie_acertos.clear()
+    ler_lingerie_pecas_fechadas.clear()
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -1597,6 +1607,472 @@ def _aba_vendas(armazem_id, vendas, hoje):
 
 
 # =====================================================
+# ABA: LINGERIE (peças de fornecedor, com comissão)
+# =====================================================
+# As peças vendidas vão sendo lançadas numa lista aberta (já salvas
+# no banco, então não se perdem se a página recarregar). O total
+# soma sozinho e a comissão depende dele:
+#
+#   total até R$ 500,00  → comissão de 30% sobre o total
+#   total acima de R$ 500,00 → comissão de 40% sobre o total
+#
+# Quando terminar a rodada com o fornecedor, "Fechar acerto" guarda
+# a lista no histórico (com total, comissão e quanto repassar ao
+# fornecedor) e começa uma lista nova.
+
+@st.cache_resource(show_spinner=False)
+def _garantir_schema_lingerie():
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS lingerie_acertos (
+            id BIGSERIAL PRIMARY KEY,
+            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
+            fornecedor TEXT,
+            data_acerto DATE NOT NULL,
+            total NUMERIC(12,2) NOT NULL,
+            percentual INTEGER NOT NULL,
+            comissao NUMERIC(12,2) NOT NULL,
+            repasse NUMERIC(12,2) NOT NULL,
+            criado_por TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS lingerie_pecas (
+            id BIGSERIAL PRIMARY KEY,
+            armazem_id BIGINT NOT NULL REFERENCES armazens(id),
+            acerto_id BIGINT REFERENCES lingerie_acertos(id) ON DELETE SET NULL,
+            descricao TEXT NOT NULL,
+            preco NUMERIC(12,2) NOT NULL,
+            criado_por TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lingerie_acertos_armazem ON lingerie_acertos (armazem_id, data_acerto DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lingerie_pecas_armazem ON lingerie_pecas (armazem_id, acerto_id)")
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+        banco.liberar(conn)
+
+    return True
+
+
+def _calcular_comissao(total):
+
+    total = round(float(total or 0), 2)
+
+    percentual = (
+        LINGERIE_PCT_ALTO if total > LINGERIE_LIMITE
+        else LINGERIE_PCT_BAIXO
+    )
+
+    comissao = round(total * percentual / 100, 2)
+    repasse = round(total - comissao, 2)
+
+    return percentual, comissao, repasse
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def ler_lingerie_abertas(armazem_id):
+
+    return _consultar("""
+    SELECT
+        id,
+        descricao,
+        preco::float AS preco
+    FROM lingerie_pecas
+    WHERE armazem_id = %s
+    AND acerto_id IS NULL
+    ORDER BY id
+    """, (armazem_id,))
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def ler_lingerie_acertos(armazem_id):
+
+    return _consultar("""
+    SELECT
+        a.id,
+        COALESCE(a.fornecedor, '') AS fornecedor,
+        a.data_acerto,
+        a.total::float AS total,
+        a.percentual,
+        a.comissao::float AS comissao,
+        a.repasse::float AS repasse,
+        (
+            SELECT COUNT(*) FROM lingerie_pecas p
+            WHERE p.acerto_id = a.id
+        )::int AS qtd
+    FROM lingerie_acertos a
+    WHERE a.armazem_id = %s
+    ORDER BY a.data_acerto DESC, a.id DESC
+    LIMIT 100
+    """, (armazem_id,))
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def ler_lingerie_pecas_fechadas(armazem_id):
+
+    return _consultar("""
+    SELECT
+        acerto_id,
+        descricao,
+        preco::float AS preco
+    FROM lingerie_pecas
+    WHERE armazem_id = %s
+    AND acerto_id IS NOT NULL
+    ORDER BY id
+    """, (armazem_id,))
+
+
+def adicionar_peca_lingerie(armazem_id, descricao, preco, usuario):
+
+    _executar("""
+    INSERT INTO lingerie_pecas
+        (armazem_id, descricao, preco, criado_por)
+    VALUES (%s, %s, %s, %s)
+    """, (armazem_id, descricao, preco, usuario))
+
+    _limpar_cache()
+
+
+def excluir_peca_lingerie(id_peca, armazem_id):
+
+    # Só remove peças da lista aberta; peças de acertos já fechados
+    # só mudam se o acerto for desfeito.
+    _executar("""
+    DELETE FROM lingerie_pecas
+    WHERE id = %s
+    AND armazem_id = %s
+    AND acerto_id IS NULL
+    """, (id_peca, armazem_id))
+
+    _limpar_cache()
+
+
+def fechar_acerto_lingerie(armazem_id, fornecedor, data_acerto, usuario):
+
+    conn = banco.conectar()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT id, preco
+        FROM lingerie_pecas
+        WHERE armazem_id = %s
+        AND acerto_id IS NULL
+        FOR UPDATE
+        """, (armazem_id,))
+
+        linhas = cursor.fetchall()
+
+        if not linhas:
+            conn.rollback()
+            raise ValueError("Não há peças na lista para fechar.")
+
+        total = round(sum(float(l[1]) for l in linhas), 2)
+
+        percentual, comissao, repasse = _calcular_comissao(total)
+
+        cursor.execute("""
+        INSERT INTO lingerie_acertos
+            (armazem_id, fornecedor, data_acerto, total,
+             percentual, comissao, repasse, criado_por)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """, (
+            armazem_id, fornecedor or None, data_acerto, total,
+            percentual, comissao, repasse, usuario
+        ))
+
+        acerto_id = cursor.fetchone()[0]
+
+        cursor.execute("""
+        UPDATE lingerie_pecas
+        SET acerto_id = %s
+        WHERE armazem_id = %s
+        AND acerto_id IS NULL
+        """, (acerto_id, armazem_id))
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+        banco.liberar(conn)
+
+    _limpar_cache()
+
+
+def desfazer_acerto_lingerie(id_acerto, armazem_id):
+
+    # As peças voltam para a lista aberta (ON DELETE SET NULL).
+    _executar("""
+    DELETE FROM lingerie_acertos
+    WHERE id = %s
+    AND armazem_id = %s
+    """, (id_acerto, armazem_id))
+
+    _limpar_cache()
+
+
+def _aba_lingerie(armazem_id, usuario, hoje):
+
+    pecas = ler_lingerie_abertas(armazem_id)
+
+    total = round(sum(p["preco"] for p in pecas), 2)
+
+    percentual, comissao, repasse = _calcular_comissao(total)
+
+    st.caption(
+        f"Lance cada peça vendida e o total vai somando sozinho. "
+        f"Total até {_brl(LINGERIE_LIMITE)}: comissão de {LINGERIE_PCT_BAIXO}%. "
+        f"Total acima de {_brl(LINGERIE_LIMITE)}: comissão de "
+        f"{LINGERIE_PCT_ALTO}% sobre o total."
+    )
+
+    with st.form("loja_form_lingerie", clear_on_submit=True):
+
+        col1, col2 = st.columns([3, 1.2])
+
+        with col1:
+            descricao = st.text_input(
+                "Peça vendida",
+                placeholder="Ex.: Conjunto de renda preto, tam. M"
+            )
+
+        with col2:
+            preco = st.number_input(
+                "Preço vendido — R$",
+                min_value=0.0,
+                step=1.0,
+                format="%.2f"
+            )
+
+        adicionar = st.form_submit_button("➕ Adicionar peça", width="stretch")
+
+    if adicionar:
+
+        descricao_limpa = (descricao or "").strip()
+
+        if not descricao_limpa:
+
+            st.error("Informe qual peça foi vendida.")
+
+        elif preco <= 0:
+
+            st.error("Informe o preço da venda (maior que zero).")
+
+        else:
+
+            with estilos.mostrar_processando("adicionando peça..."):
+                adicionar_peca_lingerie(
+                    armazem_id, descricao_limpa, preco, usuario
+                )
+
+            _recarregar()
+
+    _kpis([
+        ("🧾", f"Peças na lista ({len(pecas)})", _brl(total), "#3b82f6"),
+        ("💖", f"Sua comissão ({percentual}%)", _brl(comissao), "#22c55e"),
+        ("🏭", "Repassar ao fornecedor", _brl(repasse), "#f59e0b"),
+    ])
+
+    if pecas:
+
+        if total > LINGERIE_LIMITE:
+
+            st.success(
+                f"🎉 Total acima de {_brl(LINGERIE_LIMITE)}: comissão de "
+                f"**{LINGERIE_PCT_ALTO}%** sobre o total."
+            )
+
+        else:
+
+            st.info(
+                f"💡 Acima de {_brl(LINGERIE_LIMITE)} a comissão sobe para "
+                f"**{LINGERIE_PCT_ALTO}%** sobre o total. Você está a "
+                f"**{_brl(LINGERIE_LIMITE - total)}** desse valor."
+            )
+
+        st.markdown("##### 🛍️ Peças desta rodada")
+
+        for numero, peca in enumerate(pecas, start=1):
+
+            col_n, col_d, col_p, col_x = st.columns([0.6, 4, 1.8, 1])
+
+            with col_n:
+                st.markdown(f"**{numero}**")
+
+            with col_d:
+                st.markdown(peca["descricao"])
+
+            with col_p:
+                st.markdown(f"**{_brl(peca['preco'])}**")
+
+            with col_x:
+
+                if st.button("🗑️", key=f"loja_ling_del_{peca['id']}", help="Remover esta peça"):
+
+                    with estilos.mostrar_processando("removendo peça..."):
+                        excluir_peca_lingerie(peca["id"], armazem_id)
+
+                    _recarregar()
+
+        st.divider()
+
+        st.markdown("##### ✅ Fechar acerto")
+
+        st.caption(
+            "Use quando terminar a rodada: o total, a comissão e o valor do "
+            "fornecedor ficam guardados no histórico e a lista começa de novo."
+        )
+
+        col_f, col_d2 = st.columns([2, 1])
+
+        with col_f:
+            fornecedor = st.text_input(
+                "Fornecedor (opcional)",
+                key="loja_ling_fornecedor"
+            )
+
+        with col_d2:
+            data_acerto = st.date_input(
+                "Data do acerto",
+                value=hoje,
+                format="DD/MM/YYYY",
+                key="loja_ling_data"
+            )
+
+        if st.button("✅ Fechar acerto", type="primary", key="loja_ling_fechar"):
+
+            try:
+
+                with estilos.mostrar_processando("fechando acerto..."):
+                    fechar_acerto_lingerie(
+                        armazem_id, (fornecedor or "").strip(),
+                        data_acerto, usuario
+                    )
+
+                estilos.notificar_sucesso("acerto fechado e guardado no histórico.")
+                _recarregar()
+
+            except ValueError as erro:
+
+                st.error(str(erro))
+
+    else:
+
+        st.info("Nenhuma peça lançada ainda. Adicione a primeira acima.")
+
+    # ---------------- histórico ----------------
+
+    acertos = ler_lingerie_acertos(armazem_id)
+
+    if not acertos:
+        return
+
+    st.divider()
+
+    st.markdown("##### 📜 Acertos anteriores")
+
+    comissao_total = sum(a["comissao"] for a in acertos)
+
+    st.caption(
+        f"{len(acertos)} acerto(s)  ·  Comissão total: {_brl(comissao_total)}"
+    )
+
+    st.dataframe(
+        pd.DataFrame([
+            {
+                "Data": _data_br(pd.Timestamp(a["data_acerto"])),
+                "Fornecedor": a["fornecedor"] or "—",
+                "Peças": a["qtd"],
+                "Total vendido": _brl(a["total"]),
+                "Comissão": f'{a["percentual"]}%',
+                "Valor da comissão": _brl(a["comissao"]),
+                "Repassar ao fornecedor": _brl(a["repasse"]),
+            }
+            for a in acertos
+        ]),
+        width="stretch",
+        hide_index=True
+    )
+
+    with st.expander("🔍 Ver peças de um acerto ou desfazê-lo"):
+
+        mapa = {
+            a["id"]: (
+                f'{_data_br(pd.Timestamp(a["data_acerto"]))} · '
+                f'{a["fornecedor"] or "sem fornecedor"} · {_brl(a["total"])}'
+            )
+            for a in acertos
+        }
+
+        aid = st.selectbox(
+            "Acerto",
+            list(mapa.keys()),
+            format_func=lambda i: mapa[i],
+            key="loja_ling_ver_acerto"
+        )
+
+        pecas_fechadas = [
+            p for p in ler_lingerie_pecas_fechadas(armazem_id)
+            if p["acerto_id"] == aid
+        ]
+
+        if pecas_fechadas:
+
+            st.dataframe(
+                pd.DataFrame([
+                    {"Peça": p["descricao"], "Preço": _brl(p["preco"])}
+                    for p in pecas_fechadas
+                ]),
+                width="stretch",
+                hide_index=True
+            )
+
+        st.caption(
+            "Ao desfazer, as peças voltam para a lista da rodada atual."
+        )
+
+        confirma = st.checkbox(
+            "Confirmo que quero desfazer este acerto",
+            key=f"loja_ling_conf_desfazer_{aid}"
+        )
+
+        if st.button(
+            "↩️ Desfazer acerto",
+            disabled=not confirma,
+            key=f"loja_ling_btn_desfazer_{aid}"
+        ):
+
+            with estilos.mostrar_processando("desfazendo acerto..."):
+                desfazer_acerto_lingerie(aid, armazem_id)
+
+            estilos.notificar_sucesso("acerto desfeito.")
+            _recarregar()
+
+
+# =====================================================
 # TELA PRINCIPAL
 # =====================================================
 
@@ -1614,6 +2090,7 @@ def render():
         return
 
     _garantir_schema()
+    _garantir_schema_lingerie()
 
     armazem_id = st.session_state.get(
         "armazem_visualizado_id",
@@ -1634,13 +2111,17 @@ def render():
     produtos = ler_produtos(armazem_id)
     vendas = ler_vendas(armazem_id)
 
-    aba_painel, aba_produtos, aba_entrada, aba_venda, aba_receber, aba_historico = st.tabs([
+    (
+        aba_painel, aba_produtos, aba_entrada, aba_venda,
+        aba_receber, aba_historico, aba_lingerie
+    ) = st.tabs([
         "📊 Painel",
         "🏷️ Produtos",
         "📥 Entrada de estoque",
         "🛒 Nova venda",
         "💰 A receber",
         "📜 Vendas",
+        "👙 Lingerie",
     ])
 
     with aba_painel:
@@ -1660,3 +2141,6 @@ def render():
 
     with aba_historico:
         _aba_vendas(armazem_id, vendas, hoje)
+
+    with aba_lingerie:
+        _aba_lingerie(armazem_id, usuario, hoje)
