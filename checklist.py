@@ -23,6 +23,338 @@ DIA_PREVISTO_CHECKLIST = 4
 # Sextas-feiras anteriores a esta data nunca contam como negativo.
 DATA_INICIO_CONTROLE = date(2026, 10, 1)
 
+COR_TOTAL = "#6366f1"
+COR_CONFORME = "#22c55e"
+COR_NAO_CONFORME = "#f59e0b"
+COR_PENDENTE = "#ef4444"
+
+
+# =====================================================
+# VISUAL (CSS da aba, claro e escuro)
+# =====================================================
+
+def _css_checklist(tema):
+
+    if tema == "claro":
+        v = {
+            "__INPUT_BG__": "#ffffff",
+            "__INPUT_BORDER__": "rgba(15,23,42,.16)",
+            "__FORM_BG__": "rgba(99,102,241,.05)",
+            "__FORM_BORDER__": "rgba(99,102,241,.25)",
+            "__TAB_BG__": "rgba(15,23,42,.05)",
+            "__TAB_TXT__": "#334155",
+            "__MUTED__": "#64748b",
+        }
+    else:
+        v = {
+            "__INPUT_BG__": "#0f1a30",
+            "__INPUT_BORDER__": "rgba(148,163,184,.25)",
+            "__FORM_BG__": "rgba(99,102,241,.07)",
+            "__FORM_BORDER__": "rgba(129,140,248,.28)",
+            "__TAB_BG__": "rgba(255,255,255,.05)",
+            "__TAB_TXT__": "#cbd5e1",
+            "__MUTED__": "#94a3b8",
+        }
+
+    css = """
+    <style>
+
+    /* iframes de altura zero (scripts de rede/tema) não ocupam espaço */
+    iframe[height="0"]{ display:none !important; }
+    .stElementContainer:has(> iframe[height="0"]){ display:none !important; }
+
+    /* ---------- abas em formato de pílula ---------- */
+    div.stTabs [data-baseweb="tab-list"]{
+        gap:.5rem;
+        border-bottom:none !important;
+        padding-bottom:.3rem;
+    }
+    div.stTabs [data-baseweb="tab-highlight"],
+    div.stTabs [data-baseweb="tab-border"]{
+        display:none !important;
+    }
+    div.stTabs button[data-baseweb="tab"]{
+        height:auto;
+        padding:.5rem 1.15rem;
+        border-radius:999px;
+        background:__TAB_BG__;
+        border:1px solid transparent;
+        transition:background .2s ease, transform .15s ease;
+    }
+    div.stTabs button[data-baseweb="tab"] p{
+        font-size:.9rem;
+        font-weight:700;
+        color:__TAB_TXT__;
+    }
+    div.stTabs button[data-baseweb="tab"]:hover{
+        transform:translateY(-1px);
+    }
+    div.stTabs button[data-baseweb="tab"][aria-selected="true"]{
+        background:linear-gradient(135deg,#a855f7,#6366f1) !important;
+        box-shadow:0 6px 16px rgba(99,102,241,.35);
+    }
+    div.stTabs button[data-baseweb="tab"][aria-selected="true"] p{
+        color:#ffffff !important;
+    }
+
+    /* ---------- formulário em cartão ---------- */
+    div[data-testid="stForm"]{
+        border-radius:1.1rem !important;
+        border:1px solid __FORM_BORDER__ !important;
+        background:__FORM_BG__;
+        padding:1.1rem 1.2rem .9rem 1.2rem !important;
+    }
+    div[data-testid="stForm"] label p{
+        font-size:.78rem !important;
+        font-weight:700 !important;
+        letter-spacing:.3px;
+        color:__MUTED__ !important;
+    }
+    div[data-testid="stForm"] div[data-baseweb="input"],
+    div[data-testid="stForm"] div[data-baseweb="textarea"],
+    div[data-testid="stForm"] div[data-baseweb="select"] > div{
+        background:__INPUT_BG__ !important;
+        border:1px solid __INPUT_BORDER__ !important;
+        border-radius:11px !important;
+    }
+    div[data-testid="stForm"] div[data-baseweb="input"] > div,
+    div[data-testid="stForm"] div[data-baseweb="textarea"] > div,
+    div[data-testid="stForm"] textarea{
+        background:transparent !important;
+        border-color:transparent !important;
+    }
+    div[data-testid="stForm"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stForm"] div[data-baseweb="textarea"]:focus-within{
+        border-color:#818cf8 !important;
+        box-shadow:0 0 0 3px rgba(129,140,248,.18) !important;
+    }
+    div[data-testid="stForm"] button[kind="secondaryFormSubmit"],
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"],
+    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button{
+        height:44px;
+        border:none !important;
+        border-radius:12px !important;
+        color:#ffffff !important;
+        font-weight:700 !important;
+        background:linear-gradient(135deg,#a855f7,#6366f1) !important;
+        box-shadow:0 8px 20px rgba(99,102,241,.32);
+    }
+
+    /* ---------- títulos de seção ---------- */
+    .lxc-secao{
+        display:flex;
+        align-items:center;
+        gap:.6rem;
+        margin:1.3rem 0 .6rem 0;
+    }
+    .lxc-secao-barra{
+        width:5px;
+        height:22px;
+        border-radius:999px;
+        background:linear-gradient(180deg,#a855f7,#6366f1);
+    }
+    .lxc-secao-titulo{
+        font-size:1.05rem;
+        font-weight:800;
+        letter-spacing:.2px;
+    }
+    .lxc-secao-sub{
+        font-size:.78rem;
+        color:__MUTED__;
+        margin-left:.2rem;
+    }
+
+    /* ---------- cartões de indicadores ---------- */
+    .lxc-kpis{
+        display:grid;
+        grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+        gap:.8rem;
+        margin:.3rem 0 .9rem 0;
+    }
+    .lxc-kpi{
+        position:relative;
+        overflow:hidden;
+        border-radius:1rem;
+        padding:.85rem 1rem;
+    }
+    .lxc-kpi-topo{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+    }
+    .lxc-kpi-rotulo{
+        font-size:.7rem;
+        font-weight:800;
+        letter-spacing:.5px;
+        text-transform:uppercase;
+        opacity:.75;
+    }
+    .lxc-kpi-icone{ font-size:1.05rem; }
+    .lxc-kpi-valor{
+        font-size:1.9rem;
+        font-weight:800;
+        line-height:1.15;
+        margin-top:.15rem;
+    }
+    .lxc-kpi-sub{
+        font-size:.72rem;
+        opacity:.65;
+        margin-top:.1rem;
+    }
+
+    /* ---------- barra de conformidade ---------- */
+    .lxc-barra-wrap{ margin:.2rem 0 1rem 0; }
+    .lxc-barra-linha{
+        display:flex;
+        justify-content:space-between;
+        font-size:.76rem;
+        font-weight:700;
+        margin-bottom:.3rem;
+    }
+    .lxc-barra-fundo{
+        height:9px;
+        border-radius:999px;
+        background:rgba(127,127,127,.2);
+        overflow:hidden;
+    }
+    .lxc-barra-preenchida{
+        height:100%;
+        border-radius:999px;
+        background:linear-gradient(90deg,#22c55e,#16a34a);
+    }
+
+    /* ---------- não preenchidos ---------- */
+    .lxc-aviso{
+        border-radius:.9rem;
+        padding:.75rem 1rem;
+        margin-bottom:.7rem;
+        background:rgba(239,68,68,.09);
+        border:1px solid rgba(239,68,68,.3);
+        font-size:.82rem;
+    }
+    .lxc-aviso strong{ color:#ef4444; }
+    .lxc-grupo{
+        border-radius:.9rem;
+        padding:.65rem .9rem .5rem .9rem;
+        margin-bottom:.55rem;
+        background:rgba(127,127,127,.07);
+        border:1px solid rgba(127,127,127,.2);
+    }
+    .lxc-grupo-titulo{
+        font-size:.82rem;
+        font-weight:800;
+        margin-bottom:.3rem;
+    }
+    .lxc-grupo-titulo span{
+        font-weight:600;
+        color:__MUTED__;
+    }
+    .lxc-chip{
+        display:inline-flex;
+        align-items:center;
+        gap:.4rem;
+        background:rgba(239,68,68,.12);
+        border:1px solid rgba(239,68,68,.35);
+        border-radius:999px;
+        padding:.22rem .7rem;
+        font-size:.78rem;
+        font-weight:600;
+        margin:.18rem .3rem .18rem 0;
+    }
+    .lxc-chip b{
+        color:#ef4444;
+        font-weight:800;
+    }
+
+    /* ---------- tabelas e expanders ---------- */
+    div[data-testid="stExpander"]{
+        border-radius:1rem !important;
+        border:1px solid rgba(127,127,127,.25) !important;
+        overflow:hidden;
+    }
+    div[data-testid="stExpander"] summary{
+        font-weight:700;
+    }
+
+    </style>
+    """
+
+    for chave, valor in v.items():
+        css = css.replace(chave, valor)
+
+    return css
+
+
+def _titulo_secao(titulo, subtitulo=""):
+
+    sub_html = (
+        f'<span class="lxc-secao-sub">{html.escape(subtitulo)}</span>'
+        if subtitulo else ""
+    )
+
+    st.markdown(
+        f"""
+        <div class="lxc-secao">
+            <div class="lxc-secao-barra"></div>
+            <div class="lxc-secao-titulo">{html.escape(titulo)}</div>
+            {sub_html}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def _mostrar_kpis(cartoes):
+    """
+    cartoes: lista de (icone, rotulo, valor, cor, subtitulo)
+    """
+
+    html_cartoes = "".join(
+        f"""
+        <div class="lxc-kpi" style="
+            background:{cor}14;
+            border:1px solid {cor}45;
+            box-shadow:0 6px 18px {cor}12;
+        ">
+            <div class="lxc-kpi-topo">
+                <span class="lxc-kpi-rotulo">{html.escape(rotulo)}</span>
+                <span class="lxc-kpi-icone">{icone}</span>
+            </div>
+            <div class="lxc-kpi-valor" style="color:{cor};">{valor}</div>
+            <div class="lxc-kpi-sub">{html.escape(subtitulo)}</div>
+        </div>
+        """
+        for icone, rotulo, valor, cor, subtitulo in cartoes
+    )
+
+    st.markdown(
+        f'<div class="lxc-kpis">{html_cartoes}</div>',
+        unsafe_allow_html=True
+    )
+
+
+def _mostrar_barra_conformidade(conformes, total):
+
+    if not total:
+        return
+
+    percentual = round(conformes / total * 100)
+
+    st.markdown(
+        f"""
+        <div class="lxc-barra-wrap">
+            <div class="lxc-barra-linha">
+                <span>Taxa de conformidade</span>
+                <span style="color:{COR_CONFORME};">{percentual}%</span>
+            </div>
+            <div class="lxc-barra-fundo">
+                <div class="lxc-barra-preenchida" style="width:{percentual}%;"></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 # =====================================================
 # APOIO: MESES E "NÃO PREENCHIDOS"
@@ -138,44 +470,67 @@ def calcular_nao_preenchidos(responsaveis, registros):
 
 
 def _mostrar_nao_preenchidos(pendentes_mes, rotulo_numero):
+    """
+    Em vez de uma linha por pendência, agrupa por sexta-feira e mostra
+    cada pessoa como uma "etiqueta" compacta — fica muito mais limpo
+    quando há muitas pendências.
+    """
 
-    st.markdown("##### 🚫 Não preenchidos — ficará negativo em seu PDL")
-
-    st.caption(
-        "Checklist previsto para toda sexta-feira. Quem não registrou "
-        "na data prevista ficará negativo em seu PDL. Vale a partir de "
-        "outubro/2026."
+    st.markdown(
+        """
+        <div class="lxc-aviso">
+            🚫 <strong>Não preenchidos — ficará negativo em seu PDL.</strong>
+            O checklist é previsto para toda sexta-feira. Quem não
+            registrou na data prevista ficará negativo em seu PDL
+            (vale a partir de outubro/2026).
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    linhas_html = "".join(
-        f"""
-        <div style="
-            background:rgba(220,38,38,.14);
-            border-left:4px solid #dc2626;
-            padding:.4rem .7rem;
-            border-radius:.4rem;
-            margin-bottom:.35rem;
-            font-size:.85rem;
-        ">
-        🚫 <strong>{item['data'].strftime('%d/%m/%Y')}</strong> —
-        {html.escape(str(item['nome']))}
-        ({html.escape(rotulo_numero)}: {html.escape(item['numero'])})
-        — não preencheu o checklist e ficará negativo em seu PDL
+    grupos = {}
+
+    for item in pendentes_mes:
+        grupos.setdefault(item["data"], []).append(item)
+
+    rotulo_curto = rotulo_numero.replace("Número do ", "Nº ").replace("Número da ", "Nº ")
+
+    html_grupos = ""
+
+    for data_grupo in sorted(grupos, reverse=True):
+
+        itens = grupos[data_grupo]
+
+        chips = "".join(
+            f'<span class="lxc-chip">{html.escape(str(item["nome"]))} '
+            f'<b>{html.escape(rotulo_curto)} {html.escape(item["numero"])}</b></span>'
+            for item in itens
+        )
+
+        html_grupos += f"""
+        <div class="lxc-grupo">
+            <div class="lxc-grupo-titulo">
+                📅 {data_grupo.strftime('%d/%m/%Y')}
+                <span>· {len(itens)} pendente(s)</span>
+            </div>
+            {chips}
         </div>
         """
-        for item in pendentes_mes
-    )
 
-    if len(pendentes_mes) > 8:
+    if len(pendentes_mes) > 12:
 
-        with st.container(height=260):
+        with st.container(height=300):
 
-            st.markdown(linhas_html, unsafe_allow_html=True)
+            st.markdown(html_grupos, unsafe_allow_html=True)
 
     else:
 
-        st.markdown(linhas_html, unsafe_allow_html=True)
+        st.markdown(html_grupos, unsafe_allow_html=True)
 
+
+# =====================================================
+# CHECKLIST GENÉRICO (Hidráulicos, Carrinhos, Empilhadeira)
+# =====================================================
 
 def renderizar_checklist(
     titulo,
@@ -199,35 +554,34 @@ def renderizar_checklist(
     responsáveis cadastrados em Equipamentos (a partir de outubro/2026).
     """
 
-    st.subheader(
-        f"{icone} {titulo}"
-    )
+    _titulo_secao(f"{icone} {titulo}", "Preencha os campos e registre a inspeção")
 
     with st.form(
         f"form_{prefixo_key}",
         clear_on_submit=True
     ):
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3, col4 = st.columns([2, 1.3, 1.2, 1.3])
 
         with col1:
             nome = st.text_input(
                 "Nome",
+                placeholder="Quem fez a inspeção",
                 key=f"nome_{prefixo_key}"
             )
 
         with col2:
             numero = st.text_input(
                 rotulo_numero,
+                placeholder="Ex.: 04",
                 key=f"numero_{prefixo_key}"
             )
-
-        col3, col4 = st.columns(2)
 
         with col3:
             data_checklist = st.date_input(
                 "Data",
                 value=date.today(),
+                format="DD/MM/YYYY",
                 key=f"data_{prefixo_key}"
             )
 
@@ -240,11 +594,14 @@ def renderizar_checklist(
 
         descricao = st.text_area(
             "Descrição",
+            placeholder="Observações da inspeção (opcional)",
+            height=80,
             key=f"descricao_{prefixo_key}"
         )
 
         enviar = st.form_submit_button(
-            f"➕ Registrar {titulo}"
+            f"➕ Registrar {titulo}",
+            width="stretch"
         )
 
         if enviar:
@@ -267,7 +624,7 @@ def renderizar_checklist(
                     nome, armazem_id
                 )
 
-                with estilos.mostrar_processando(f"registrando checklist..."):
+                with estilos.mostrar_processando("registrando checklist..."):
                     funcao_adicionar(
                         nome_normalizado,
                         numero,
@@ -279,8 +636,6 @@ def renderizar_checklist(
 
                 estilos.notificar_sucesso("checklist registrado com sucesso.")
                 st.rerun(scope="fragment")
-
-    st.divider()
 
     registros = funcao_ler(armazem_id)
 
@@ -314,36 +669,35 @@ def renderizar_checklist(
 
     nao_conformes = len(registros) - conformes
 
-    colunas_metricas = st.columns(4 if controla_nao_preenchidos else 3)
+    # =====================================================
+    # VISÃO GERAL
+    # =====================================================
 
-    with colunas_metricas[0]:
-        st.metric("📋 Total", len(registros))
+    _titulo_secao("Visão geral")
 
-    with colunas_metricas[1]:
-        st.metric("✅ Conformes", conformes)
-
-    with colunas_metricas[2]:
-        st.metric("⚠️ Não Conformes", nao_conformes)
+    cartoes = [
+        ("📋", "Total", len(registros), COR_TOTAL, "registros no histórico"),
+        ("✅", "Conformes", conformes, COR_CONFORME, "sem problemas"),
+        ("⚠️", "Não conformes", nao_conformes, COR_NAO_CONFORME, "precisam de atenção"),
+    ]
 
     if controla_nao_preenchidos:
 
-        with colunas_metricas[3]:
-            st.metric(
-                "🚫 Não preenchidos",
-                len(nao_preenchidos),
-                help=(
-                    "Sextas-feiras já encerradas (a partir de outubro/2026) em "
-                    "que o responsável não registrou o checklist e ficará "
-                    "negativo em seu PDL."
-                )
-            )
+        cartoes.append((
+            "🚫", "Não preenchidos", len(nao_preenchidos), COR_PENDENTE,
+            "sextas sem registro"
+        ))
 
-    st.write("")
+    _mostrar_kpis(cartoes)
+
+    _mostrar_barra_conformidade(conformes, len(registros))
 
     # =====================================================
     # REGISTROS SEPARADOS POR MÊS
     # O mês mais recente já abre; os anteriores ficam fechados.
     # =====================================================
+
+    _titulo_secao("Registros por mês")
 
     registros_por_mes = {}
 
@@ -374,13 +728,13 @@ def renderizar_checklist(
         pendentes_mes = pendentes_por_mes.get(chave_mes, [])
 
         rotulo_expander = (
-            f"🗓️ {_rotulo_mes(chave_mes)} "
-            f"({len(registros_mes)} registro(s))"
+            f"🗓️ {_rotulo_mes(chave_mes)} · "
+            f"{len(registros_mes)} registro(s)"
         )
 
         if pendentes_mes:
 
-            rotulo_expander += f" • 🚫 {len(pendentes_mes)} não preenchido(s)"
+            rotulo_expander += f" · 🚫 {len(pendentes_mes)} não preenchido(s)"
 
         with st.expander(
             rotulo_expander,
@@ -419,13 +773,15 @@ def renderizar_checklist(
                 )
 
                 column_config = {
+                    "Nome": st.column_config.TextColumn(width="medium"),
                     "Situação": st.column_config.SelectboxColumn(
                         options=["Conforme", "Não Conforme"],
                         required=True
                     ),
                     "Data": st.column_config.DateColumn(
                         format="DD/MM/YYYY"
-                    )
+                    ),
+                    "Descrição": st.column_config.TextColumn(width="large")
                 }
 
                 df_editado = st.data_editor(
@@ -562,16 +918,16 @@ def renderizar_checklist(
 
         if itens_em_manutencao or mostrar_envio:
 
-            st.write("")
+            _titulo_secao("Manutenção")
 
             with st.expander(
-                f"🚧 Manutenção ({len(itens_em_manutencao)} em andamento)",
-                expanded=False
+                f"🚧 Manutenção · {len(itens_em_manutencao)} em andamento",
+                expanded=bool(itens_em_manutencao)
             ):
 
                 if itens_em_manutencao:
 
-                    st.markdown("##### 🚧 Em Manutenção")
+                    st.markdown("##### 🚧 Em manutenção")
 
                     for item in itens_em_manutencao:
 
@@ -693,8 +1049,6 @@ def renderizar_checklist(
                                 estilos.notificar_sucesso(f"🔧 {item['nome']} enviado para manutenção.")
                                 st.rerun(scope="fragment")
 
-    st.write("")
-
     # =====================================================
     # EXPORTAÇÃO (todos os meses)
     # =====================================================
@@ -767,6 +1121,8 @@ def renderizar_checklist(
                 sheet_name="Não preenchidos"
             )
 
+    _titulo_secao("Exportar")
+
     st.download_button(
         "📥 Exportar para Excel",
         data=buffer_excel.getvalue(),
@@ -775,6 +1131,10 @@ def renderizar_checklist(
         key=f"exportar_{prefixo_key}"
     )
 
+
+# =====================================================
+# CHECKLIST DE PIGMENTAÇÃO
+# =====================================================
 
 def renderizar_checklist_pigmentacao(
     funcao_adicionar,
@@ -788,20 +1148,19 @@ def renderizar_checklist_pigmentacao(
 
     titulo = "Checklist de Pigmentação"
 
-    st.subheader(
-        f"🎨 {titulo}"
-    )
+    _titulo_secao(f"🎨 {titulo}", "Preencha os campos e registre a inspeção")
 
     with st.form(
         f"form_{prefixo_key}",
         clear_on_submit=True
     ):
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns([2.4, 1.3, 1.3])
 
         with col1:
             nome = st.text_input(
                 "Nome",
+                placeholder="Quem fez a inspeção",
                 key=f"nome_{prefixo_key}"
             )
 
@@ -809,22 +1168,27 @@ def renderizar_checklist_pigmentacao(
             data_checklist = st.date_input(
                 "Data",
                 value=date.today(),
+                format="DD/MM/YYYY",
                 key=f"data_{prefixo_key}"
             )
 
-        status = st.selectbox(
-            "Situação",
-            ["Conforme", "Não Conforme"],
-            key=f"status_{prefixo_key}"
-        )
+        with col3:
+            status = st.selectbox(
+                "Situação",
+                ["Conforme", "Não Conforme"],
+                key=f"status_{prefixo_key}"
+            )
 
         descricao = st.text_area(
             "Descrição",
+            placeholder="Observações da inspeção (opcional)",
+            height=80,
             key=f"descricao_{prefixo_key}"
         )
 
         enviar = st.form_submit_button(
-            f"➕ Registrar {titulo}"
+            f"➕ Registrar {titulo}",
+            width="stretch"
         )
 
         if enviar:
@@ -856,8 +1220,6 @@ def renderizar_checklist_pigmentacao(
                 estilos.notificar_sucesso("checklist registrado com sucesso.")
                 st.rerun(scope="fragment")
 
-    st.divider()
-
     registros = funcao_ler(armazem_id)
 
     if not registros:
@@ -874,22 +1236,21 @@ def renderizar_checklist_pigmentacao(
 
     nao_conformes = len(registros) - conformes
 
-    c1, c2, c3 = st.columns(3)
+    _titulo_secao("Visão geral")
 
-    with c1:
-        st.metric("📋 Total", len(registros))
+    _mostrar_kpis([
+        ("📋", "Total", len(registros), COR_TOTAL, "registros no histórico"),
+        ("✅", "Conformes", conformes, COR_CONFORME, "sem problemas"),
+        ("⚠️", "Não conformes", nao_conformes, COR_NAO_CONFORME, "precisam de atenção"),
+    ])
 
-    with c2:
-        st.metric("✅ Conformes", conformes)
-
-    with c3:
-        st.metric("⚠️ Não Conformes", nao_conformes)
-
-    st.write("")
+    _mostrar_barra_conformidade(conformes, len(registros))
 
     # =====================================================
     # REGISTROS SEPARADOS POR MÊS
     # =====================================================
+
+    _titulo_secao("Registros por mês")
 
     registros_por_mes = {}
 
@@ -907,7 +1268,7 @@ def renderizar_checklist_pigmentacao(
         registros_mes = registros_por_mes[chave_mes]
 
         with st.expander(
-            f"🗓️ {_rotulo_mes(chave_mes)} ({len(registros_mes)} registro(s))",
+            f"🗓️ {_rotulo_mes(chave_mes)} · {len(registros_mes)} registro(s)",
             expanded=(indice_mes == 0)
         ):
 
@@ -930,13 +1291,15 @@ def renderizar_checklist_pigmentacao(
                 )
 
                 column_config = {
+                    "Nome": st.column_config.TextColumn(width="medium"),
                     "Situação": st.column_config.SelectboxColumn(
                         options=["Conforme", "Não Conforme"],
                         required=True
                     ),
                     "Data": st.column_config.DateColumn(
                         format="DD/MM/YYYY"
-                    )
+                    ),
+                    "Descrição": st.column_config.TextColumn(width="large")
                 }
 
                 df_editado = st.data_editor(
@@ -1028,8 +1391,6 @@ def renderizar_checklist_pigmentacao(
                     )
                     st.rerun(scope="fragment")
 
-    st.write("")
-
     df_total = pd.DataFrame(registros).rename(columns={
         "nome": "Nome",
         "data_checklist": "Data",
@@ -1046,6 +1407,8 @@ def renderizar_checklist_pigmentacao(
             sheet_name=titulo[:31]
         )
 
+    _titulo_secao("Exportar")
+
     st.download_button(
         "📥 Exportar para Excel",
         data=buffer_excel.getvalue(),
@@ -1055,9 +1418,18 @@ def renderizar_checklist_pigmentacao(
     )
 
 
+# =====================================================
+# PÁGINA
+# =====================================================
+
 def render():
 
     estilos.exibir_notificacao_pendente()
+
+    st.markdown(
+        _css_checklist(st.session_state.get("tema", "escuro")),
+        unsafe_allow_html=True
+    )
 
     estilos.cabecalho_pagina(
         "✅",
@@ -1066,7 +1438,7 @@ def render():
         cor="#a855f7"
     )
 
-    st.divider()
+    st.write("")
 
     armazem_id_atual = st.session_state.get(
         "armazem_visualizado_id",
@@ -1148,7 +1520,7 @@ def render():
             funcao_excluir=banco.excluir_checklist_pigmentacao
         )
 
-    st.divider()
+    st.write("")
 
     st.caption(
         "Luxiz IA • Checklist de Equipamentos"
