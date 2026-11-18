@@ -127,6 +127,241 @@ PREFIXOS_SAC = ("Separador.", "Conferente.")
 
 
 # ==================================================
+# VISUAL (CSS, banner, notas)
+# ==================================================
+
+_CSS_RECORDES = """
+<style>
+
+@keyframes rcFlutuar{
+    0%,100%{ transform:translate(0,0) scale(1); }
+    50%{ transform:translate(-26px,18px) scale(1.12); }
+}
+
+/* ---------- banner ---------- */
+.rc-hero{
+    position:relative;
+    isolation:isolate;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1.4rem;
+    flex-wrap:wrap;
+    padding:1.6rem 2rem;
+    border-radius:1.4rem;
+    background:linear-gradient(120deg, #0b1230 0%, #1e3a8a 52%, #6d28d9 100%);
+    border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 16px 36px rgba(0,0,0,.35);
+    margin-bottom:1.1rem;
+}
+.rc-hero-blob{
+    position:absolute;
+    border-radius:50%;
+    filter:blur(48px);
+    opacity:.55;
+    z-index:0;
+    pointer-events:none;
+}
+.rc-hero-b1{
+    width:260px; height:260px;
+    right:6%; top:-110px;
+    background:#f59e0b;
+    animation:rcFlutuar 11s ease-in-out infinite;
+}
+.rc-hero-b2{
+    width:260px; height:260px;
+    left:38%; bottom:-170px;
+    background:#22d3ee;
+    animation:rcFlutuar 14s ease-in-out infinite reverse;
+}
+.rc-hero-grade{
+    position:absolute;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    background-image:radial-gradient(rgba(255,255,255,.18) 1px, transparent 1px);
+    background-size:22px 22px;
+    -webkit-mask-image:linear-gradient(90deg, transparent 10%, #000 90%);
+    mask-image:linear-gradient(90deg, transparent 10%, #000 90%);
+}
+.rc-hero-esq{
+    position:relative;
+    z-index:1;
+    display:flex;
+    align-items:center;
+    gap:1.2rem;
+    min-width:0;
+}
+.rc-hero-ico{
+    flex-shrink:0;
+    width:76px;
+    height:76px;
+    border-radius:22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.28);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    box-shadow:0 8px 22px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.rc-hero-over{
+    font-size:.72rem;
+    font-weight:700;
+    letter-spacing:2.2px;
+    text-transform:uppercase;
+    color:rgba(226,232,240,.8);
+}
+.rc-hero-titulo{
+    font-size:2.2rem;
+    font-weight:800;
+    line-height:1.1;
+    margin:.2rem 0 .3rem 0;
+    background:linear-gradient(90deg, #ffffff 30%, #fde68a 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    -webkit-text-fill-color:transparent;
+    color:transparent;
+}
+.rc-hero-sub{
+    font-size:.88rem;
+    color:rgba(226,232,240,.82);
+}
+.rc-hero-dir{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-wrap:wrap;
+    gap:.5rem;
+    justify-content:flex-end;
+}
+.rc-hero-chip{
+    background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.24);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    color:#ffffff;
+    padding:.3rem .85rem;
+    border-radius:999px;
+    font-size:.78rem;
+    font-weight:600;
+    white-space:nowrap;
+}
+
+/* ---------- abas em formato de pílula ---------- */
+.st-key-recordes-raiz [data-baseweb="tab-list"]{
+    gap:.35rem;
+    padding:.3rem;
+    width:fit-content;
+    max-width:100%;
+    border-radius:1rem;
+    background:rgba(148,163,184,.12);
+    border:1px solid rgba(148,163,184,.18);
+}
+.st-key-recordes-raiz [data-baseweb="tab"]{
+    height:auto;
+    padding:.5rem 1.1rem;
+    border-radius:.75rem;
+    transition:background .15s ease;
+}
+.st-key-recordes-raiz [data-baseweb="tab"]:hover{
+    background:rgba(148,163,184,.16);
+}
+.st-key-recordes-raiz [data-baseweb="tab"][aria-selected="true"]{
+    background:linear-gradient(135deg,#00c8ff,#a855f7);
+    box-shadow:0 4px 14px rgba(124,58,237,.30);
+}
+.st-key-recordes-raiz [data-baseweb="tab"][aria-selected="true"] p{
+    color:#ffffff !important;
+    font-weight:700;
+}
+.st-key-recordes-raiz [data-baseweb="tab-highlight"],
+.st-key-recordes-raiz [data-baseweb="tab-border"]{
+    display:none !important;
+}
+
+/* ---------- nota explicativa ---------- */
+.rc-nota{
+    display:flex;
+    gap:.75rem;
+    align-items:flex-start;
+    margin:.9rem 0 1rem 0;
+    padding:.75rem 1rem;
+    border-radius:.9rem;
+    background:rgba(59,130,246,.08);
+    border:1px solid rgba(59,130,246,.22);
+    border-left:4px solid #3b82f6;
+    font-size:.86rem;
+    line-height:1.5;
+}
+.rc-nota-ico{
+    flex-shrink:0;
+    font-size:1.1rem;
+    line-height:1.4;
+}
+
+/* ---------- listas ---------- */
+.rc-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));
+    gap:.55rem;
+}
+.rc-grid > div{
+    margin-bottom:0 !important;
+}
+
+@media (max-width: 760px){
+    .rc-hero{ padding:1.2rem 1.1rem; }
+    .rc-hero-titulo{ font-size:1.7rem; }
+    .rc-hero-ico{ width:60px; height:60px; border-radius:18px; }
+    .rc-hero-dir{ justify-content:flex-start; }
+    .rc-grid{ grid-template-columns:1fr; }
+}
+
+</style>
+"""
+
+
+def _hero_html(armazem_nome, mes_texto):
+
+    chips = f'<span class="rc-hero-chip">📅 {html.escape(mes_texto)}</span>'
+
+    if armazem_nome:
+        chips = f'<span class="rc-hero-chip">🏢 {html.escape(armazem_nome)}</span>' + chips
+
+    return (
+        '<div class="rc-hero">'
+        '<div class="rc-hero-blob rc-hero-b1"></div>'
+        '<div class="rc-hero-blob rc-hero-b2"></div>'
+        '<div class="rc-hero-grade"></div>'
+        '<div class="rc-hero-esq">'
+        f'<div class="rc-hero-ico">{_taca_html(54)}</div>'
+        '<div>'
+        '<div class="rc-hero-over">Reconhecimento</div>'
+        '<div class="rc-hero-titulo">Recordes</div>'
+        '<div class="rc-hero-sub">Os destaques da operação: quem mais se empenha aparece no topo.</div>'
+        '</div>'
+        '</div>'
+        f'<div class="rc-hero-dir">{chips}</div>'
+        '</div>'
+    )
+
+
+def _nota(icone, texto_html):
+    """Faixa explicativa no topo de cada aba (aceita <b> no texto)."""
+
+    st.markdown(
+        '<div class="rc-nota">'
+        f'<div class="rc-nota-ico">{icone}</div>'
+        f'<div>{texto_html}</div>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+
+# ==================================================
 # APOIO
 # ==================================================
 
@@ -311,7 +546,7 @@ def _avatar_html(nome, foto, tamanho=44):
         f'<div style="width:{tamanho}px;height:{tamanho}px;border-radius:50%;'
         'flex-shrink:0;background:linear-gradient(135deg,#3b82f6,#a855f7);'
         'display:flex;align-items:center;justify-content:center;color:white;'
-        f'font-weight:800;font-size:.85rem;">{html.escape(iniciais)}</div>'
+        f'font-weight:800;font-size:{max(tamanho * 0.32, 11):.0f}px;">{html.escape(iniciais)}</div>'
     )
 
 
@@ -324,9 +559,49 @@ def _chip(texto, cor):
     )
 
 
-def _linha_ranking(posicao, nome, foto, subtitulo, chips, e_voce):
+def _linha_ranking(posicao, nome, foto, subtitulo, chips, e_voce, mostrar_selo=True):
+    """
+    mostrar_selo=True: linha com a medalha/posição à esquerda (usada no
+    quadro de medalhas). mostrar_selo=False: linha compacta, para as
+    listas agrupadas por posição (o selo fica no cabeçalho do grupo).
+    """
 
     cor = CORES_POSICAO.get(posicao, COR_NEUTRA)
+
+    marca_voce = (
+        ' <span style="background:#00c8ff22;color:#00c8ff;border:1px solid #00c8ff66;'
+        'padding:.05rem .5rem;border-radius:999px;font-size:.68rem;'
+        'font-weight:800;margin-left:.3rem;">Você</span>'
+        if e_voce else ""
+    )
+
+    destaque = "box-shadow:0 0 0 2px #00c8ff55;" if e_voce else ""
+
+    bloco_texto = (
+        '<div style="min-width:0;">'
+        f'<div style="font-weight:800;font-size:.96rem;overflow:hidden;'
+        f'text-overflow:ellipsis;white-space:nowrap;">{html.escape(nome)}{marca_voce}</div>'
+        f'<div style="font-size:.74rem;opacity:.65;margin-top:.1rem;">{html.escape(subtitulo)}</div>'
+        '</div>'
+    )
+
+    bloco_chips = (
+        '<div style="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;">'
+        f'{"".join(chips)}'
+        '</div>'
+    )
+
+    if not mostrar_selo:
+
+        return (
+            f'<div style="display:grid;grid-template-columns:44px minmax(0,1fr) auto;'
+            f'align-items:center;gap:.8rem;background:{cor}0d;border:1px solid {cor}33;'
+            f'border-radius:.95rem;padding:.6rem .95rem;margin-bottom:.5rem;{destaque}">'
+            f'{_avatar_html(nome, foto, 42)}'
+            f'{bloco_texto}'
+            f'{bloco_chips}'
+            '</div>'
+        )
 
     if posicao in MEDALHAS:
         selo = (
@@ -339,42 +614,94 @@ def _linha_ranking(posicao, nome, foto, subtitulo, chips, e_voce):
             f'opacity:.75;">{posicao}º</div>'
         )
 
-    marca_voce = (
-        ' <span style="background:#00c8ff22;color:#00c8ff;border:1px solid #00c8ff66;'
-        'padding:.05rem .5rem;border-radius:999px;font-size:.68rem;'
-        'font-weight:800;margin-left:.3rem;">Você</span>'
-        if e_voce else ""
-    )
-
-    destaque = "box-shadow:0 0 0 2px #00c8ff55;" if e_voce else ""
-
     return (
         f'<div style="display:grid;grid-template-columns:50px 46px minmax(0,1fr) auto;'
         f'align-items:center;gap:.9rem;background:{cor}10;border:1px solid {cor}40;'
         f'border-radius:1rem;padding:.7rem 1rem;margin-bottom:.5rem;{destaque}">'
         f'{selo}'
         f'{_avatar_html(nome, foto)}'
-        '<div style="min-width:0;">'
-        f'<div style="font-weight:800;font-size:.98rem;overflow:hidden;'
-        f'text-overflow:ellipsis;white-space:nowrap;">{html.escape(nome)}{marca_voce}</div>'
-        f'<div style="font-size:.74rem;opacity:.65;margin-top:.1rem;">{html.escape(subtitulo)}</div>'
-        '</div>'
-        '<div style="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;">'
-        f'{"".join(chips)}'
-        '</div>'
+        f'{bloco_texto}'
+        f'{bloco_chips}'
         '</div>'
     )
+
+
+def _cabecalho_nivel(posicao, quantidade):
+    """Título de cada grupo de posição (🥇 1º lugar · 10 colaboradores)."""
+
+    cor = CORES_POSICAO.get(posicao, COR_NEUTRA)
+
+    if posicao in MEDALHAS:
+        selo = _medalha_html(posicao, 38)
+    else:
+        selo = (
+            f'<div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;'
+            f'background:{cor}22;border:2px solid {cor};display:flex;'
+            f'align-items:center;justify-content:center;font-weight:800;'
+            f'font-size:.8rem;color:{cor};">{posicao}º</div>'
+        )
+
+    rotulo_qtd = "colaborador" if quantidade == 1 else "colaboradores"
+
+    return (
+        '<div style="display:flex;align-items:center;gap:.75rem;'
+        'margin:1.3rem 0 .6rem 0;">'
+        f'{selo}'
+        f'<span style="font-weight:800;font-size:1.05rem;color:{cor};">{posicao}º lugar</span>'
+        f'<span style="font-size:.76rem;opacity:.6;font-weight:600;">'
+        f'{quantidade} {rotulo_qtd}</span>'
+        f'<i style="flex:1;height:1px;background:{cor}40;"></i>'
+        '</div>'
+    )
+
+
+def _render_lista_agrupada(ranking, e_voce_de, montar_linha):
+    """
+    Agrupa o ranking por posição: um cabeçalho com a medalha e, embaixo,
+    quem ocupa aquele lugar. Quando muita gente empata (4 ou mais), os
+    cartões ficam em duas colunas para a tela não virar uma lista
+    interminável.
+    """
+
+    grupos = {}
+
+    for posicao, pessoa in ranking:
+        grupos.setdefault(posicao, []).append(pessoa)
+
+    blocos = []
+
+    for posicao in sorted(grupos):
+
+        pessoas = grupos[posicao]
+
+        linhas = "".join(
+            montar_linha(posicao, pessoa, e_voce_de(pessoa))
+            for pessoa in pessoas
+        )
+
+        classe = "rc-grid" if len(pessoas) >= 4 else "rc-lista"
+
+        blocos.append(
+            _cabecalho_nivel(posicao, len(pessoas))
+            + f'<div class="{classe}">{linhas}</div>'
+        )
+
+    st.markdown("".join(blocos), unsafe_allow_html=True)
 
 
 def _kpi(icone, rotulo, valor, cor):
 
     return (
-        f'<div style="background:{cor}14;border:1px solid {cor}40;'
-        'border-radius:.9rem;padding:.7rem .9rem;text-align:center;">'
-        f'<div style="font-size:1.3rem;">{icone}</div>'
-        f'<div style="font-size:1.25rem;font-weight:800;color:{cor};'
-        f'margin-top:.1rem;">{valor}</div>'
-        f'<div style="font-size:.72rem;opacity:.75;margin-top:.1rem;">{rotulo}</div>'
+        f'<div style="display:flex;align-items:center;gap:.9rem;'
+        f'background:{cor}12;border:1px solid {cor}33;border-left:4px solid {cor};'
+        'border-radius:1rem;padding:.85rem 1.05rem;min-height:84px;">'
+        f'<div style="flex-shrink:0;width:46px;height:46px;border-radius:13px;'
+        f'background:{cor}22;display:flex;align-items:center;justify-content:center;'
+        f'font-size:1.4rem;">{icone}</div>'
+        '<div style="min-width:0;">'
+        f'<div style="font-size:1.55rem;font-weight:800;color:{cor};line-height:1.1;">{valor}</div>'
+        f'<div style="font-size:.76rem;opacity:.72;margin-top:.2rem;">{rotulo}</div>'
+        '</div>'
         '</div>'
     )
 
@@ -460,13 +787,13 @@ def _render_minha_posicao(ranking, usuario, armazem_id, mensagem_sem_posicao):
 
     st.markdown(
         f'<div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;'
-        f'background:{cor}12;border:1px solid {cor}55;border-radius:1.2rem;'
-        f'padding:1.5rem 1.8rem;margin-top:.5rem;">'
+        f'background:linear-gradient(120deg,{cor}1c,{cor}08);border:1px solid {cor}55;'
+        f'border-radius:1.3rem;padding:1.5rem 1.9rem;margin-top:.5rem;">'
         f'{selo}'
         '<div>'
-        '<div style="font-size:.72rem;font-weight:800;letter-spacing:.5px;'
+        '<div style="font-size:.72rem;font-weight:800;letter-spacing:1.4px;'
         'text-transform:uppercase;opacity:.65;">Sua posição</div>'
-        f'<div style="font-size:2.2rem;font-weight:800;color:{cor};line-height:1.15;">'
+        f'<div style="font-size:2.3rem;font-weight:800;color:{cor};line-height:1.15;">'
         f'{minha}º lugar</div>'
         '<div style="font-size:1rem;margin-top:.45rem;">'
         f'👆 <b>{_plural(acima, "colaborador", "colaboradores")}</b> acima de você'
@@ -556,7 +883,7 @@ def calcular_ranking_sac(armazem_id, periodo):
     return list(zip(posicoes, ordenados)), len(chamados)
 
 
-def _linha_sac(posicao, pessoa, e_voce, detalhado):
+def _linha_sac(posicao, pessoa, e_voce, detalhado, mostrar_selo=True):
     """
     detalhado=True (Gestão/Fundador, ou a própria pessoa): mostra a
     situação de chamados. Para os demais, aparece SÓ a posição e o
@@ -589,15 +916,17 @@ def _linha_sac(posicao, pessoa, e_voce, detalhado):
         pessoa["foto"],
         subtitulo,
         chips,
-        e_voce
+        e_voce,
+        mostrar_selo
     )
 
 
 def _render_sac(armazem_id, usuario, ve_tudo):
 
-    st.caption(
+    _nota(
+        "😊",
         "Pontuação = chamados da Análise Técnica vinculados ao nome da "
-        "pessoa. **Quanto menos, melhor.** Quem não tem nenhum fica em 1º "
+        "pessoa. <b>Quanto menos, melhor.</b> Quem não tem nenhum fica em 1º "
         "lugar e vai descendo conforme chamados entram no nome."
     )
 
@@ -635,17 +964,14 @@ def _render_sac(armazem_id, usuario, ve_tudo):
         _kpi("📋", "Chamados no período", str(total_chamados), "#f59e0b"),
     ])
 
-    st.markdown(
-        "".join(
-            _linha_sac(
-                posicao,
-                pessoa,
-                banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id),
-                detalhado=True
-            )
-            for posicao, pessoa in ranking
+    _render_lista_agrupada(
+        ranking,
+        lambda pessoa: banco.pessoa_pertence_ao_usuario(
+            pessoa["nome"], usuario, armazem_id
         ),
-        unsafe_allow_html=True
+        lambda posicao, pessoa, e_voce: _linha_sac(
+            posicao, pessoa, e_voce, detalhado=True, mostrar_selo=False
+        )
     )
 
 
@@ -716,7 +1042,7 @@ def calcular_ranking_auditoria(armazem_id, periodo, funcao):
     return list(zip(posicoes, ordenados))
 
 
-def _linha_auditoria(posicao, pessoa, e_voce, detalhado):
+def _linha_auditoria(posicao, pessoa, e_voce, detalhado, mostrar_selo=True):
     """
     detalhado=True (Gestão/Fundador, ou a própria pessoa): mostra
     acertos, erros, aproveitamento e pontos. Para os demais, só
@@ -737,16 +1063,18 @@ def _linha_auditoria(posicao, pessoa, e_voce, detalhado):
         pessoa["foto"],
         pessoa["funcao"],
         chips,
-        e_voce
+        e_voce,
+        mostrar_selo
     )
 
 
 def _render_auditoria(armazem_id, usuario, ve_tudo):
 
-    st.caption(
+    _nota(
+        "🎯",
         "Pontuação = acertos − erros. Quem acerta mais e erra menos fica "
         "na frente; em caso de empate, vence quem tem menos erros. A "
-        "auditoria é por **trimestre** — as medalhas de cada trimestre "
+        "auditoria é por <b>trimestre</b> — as medalhas de cada trimestre "
         "ficam guardadas mesmo depois que os registros são apagados."
     )
 
@@ -797,17 +1125,14 @@ def _render_auditoria(armazem_id, usuario, ve_tudo):
         _kpi("❌", "Erros no período", str(total_erros), "#ef4444"),
     ])
 
-    st.markdown(
-        "".join(
-            _linha_auditoria(
-                posicao,
-                pessoa,
-                banco.pessoa_pertence_ao_usuario(pessoa["nome"], usuario, armazem_id),
-                detalhado=True
-            )
-            for posicao, pessoa in ranking
+    _render_lista_agrupada(
+        ranking,
+        lambda pessoa: banco.pessoa_pertence_ao_usuario(
+            pessoa["nome"], usuario, armazem_id
         ),
-        unsafe_allow_html=True
+        lambda posicao, pessoa, e_voce: _linha_auditoria(
+            posicao, pessoa, e_voce, detalhado=True, mostrar_selo=False
+        )
     )
 
 
@@ -961,7 +1286,11 @@ def _avatares_dupla(pessoas, cor):
     )
 
 
-def _card_podio(posicao, item, armazem_id):
+def _card_podio(posicao, item, armazem_id, deslocar=False):
+    """
+    `deslocar=True` empurra o cartão para baixo, para o 1º lugar ficar
+    mais alto que o 2º e o 3º (formato de pódio).
+    """
 
     cor = CORES_POSICAO[posicao]
 
@@ -985,17 +1314,24 @@ def _card_podio(posicao, item, armazem_id):
             f'{_medalha_html(posicao, 92)}</div>'
         )
 
+    sombra = f"box-shadow:0 14px 34px {cor}33;" if posicao == 1 else ""
+
+    margem = "2.2rem" if deslocar else "0"
+
     return (
-        f'<div style="background:{cor}14;border:1px solid {cor}55;'
-        'border-radius:1.1rem;padding:1.3rem 1rem;text-align:center;height:100%;">'
+        f'<div style="margin-top:{margem};">'
+        f'<div style="background:linear-gradient(180deg,{cor}1f,{cor}0a);'
+        f'border:1px solid {cor}55;{sombra}'
+        'border-radius:1.2rem;padding:1.4rem 1rem;text-align:center;">'
         f'{topo}'
         f'<div style="font-weight:800;font-size:1.1rem;margin-top:.6rem;">'
         f'{html.escape(item["rua"])}</div>'
-        f'<div style="font-size:2.2rem;font-weight:800;color:{cor};'
+        f'<div style="font-size:2.3rem;font-weight:800;color:{cor};'
         f'margin-top:.2rem;line-height:1.1;">{item["nota"]:.1f}</div>'
         f'{_avatares_dupla(pessoas, cor)}'
         f'<div style="font-size:.82rem;opacity:.8;margin-top:.5rem;font-weight:600;">'
         f'{nomes}</div>'
+        '</div>'
         '</div>'
     )
 
@@ -1004,7 +1340,8 @@ def _render_dashboard(armazem_id):
 
     meses = _meses_disponiveis_dashboard(armazem_id)
 
-    st.caption(
+    _nota(
+        "📊",
         "As 3 ruas com as melhores notas no fechamento do mês. Por "
         "padrão aparece o último mês fechado — use a busca para ver "
         "os meses anteriores."
@@ -1032,14 +1369,25 @@ def _render_dashboard(armazem_id):
         st.info("Não há notas registradas no Dashboard até o fechamento desse mês.")
         return
 
-    colunas = st.columns(3)
+    # Com 3 ruas, o 1º lugar fica no meio e mais alto (2º · 1º · 3º).
+    if len(top3) == 3:
+        ordem = [1, 0, 2]
+    else:
+        ordem = list(range(len(top3)))
 
-    for indice, item in enumerate(top3):
+    colunas = st.columns(len(ordem))
 
-        with colunas[indice]:
+    for coluna, indice in zip(colunas, ordem):
+
+        with coluna:
 
             st.markdown(
-                _card_podio(indice + 1, item, armazem_id),
+                _card_podio(
+                    indice + 1,
+                    top3[indice],
+                    armazem_id,
+                    deslocar=(len(top3) == 3 and indice != 0)
+                ),
                 unsafe_allow_html=True
             )
 
@@ -1612,7 +1960,9 @@ def _render_minhas_medalhas(pessoas, usuario, armazem_id):
     total_medalhas = sum(minha["total"].values())
 
     blocos = "".join(
-        '<div style="text-align:center;min-width:92px;">'
+        f'<div style="text-align:center;min-width:104px;padding:.9rem .6rem;'
+        f'background:{CORES_POSICAO[posicao]}12;border:1px solid {CORES_POSICAO[posicao]}40;'
+        f'border-radius:1rem;">'
         f'{_medalha_html(posicao, 84)}'
         f'<div style="font-size:1.9rem;font-weight:800;color:{CORES_POSICAO[posicao]};'
         f'line-height:1.1;margin-top:.2rem;">×{minha["total"][posicao]}</div>'
@@ -1622,11 +1972,12 @@ def _render_minhas_medalhas(pessoas, usuario, armazem_id):
     )
 
     st.markdown(
-        '<div style="background:#f59e0b12;border:1px solid #f59e0b45;'
-        'border-radius:1.2rem;padding:1.4rem 1.6rem;margin-top:.4rem;">'
-        '<div style="font-size:.72rem;font-weight:800;letter-spacing:.5px;'
+        '<div style="background:linear-gradient(120deg,#f59e0b18,#f59e0b06);'
+        'border:1px solid #f59e0b45;'
+        'border-radius:1.3rem;padding:1.4rem 1.6rem;margin-top:.4rem;">'
+        '<div style="font-size:.72rem;font-weight:800;letter-spacing:1.4px;'
         'text-transform:uppercase;opacity:.65;text-align:center;">Suas medalhas</div>'
-        '<div style="display:flex;justify-content:center;gap:2.2rem;flex-wrap:wrap;'
+        '<div style="display:flex;justify-content:center;gap:1.2rem;flex-wrap:wrap;'
         f'margin-top:.8rem;">{blocos}</div>'
         '<div style="text-align:center;margin-top:.9rem;font-size:.95rem;font-weight:700;">'
         f'Total: {_plural(total_medalhas, "medalha", "medalhas")}</div>'
@@ -1836,7 +2187,8 @@ def _render_quadro_completo(pessoas, usuario, armazem_id):
 
 def _render_medalhas(armazem_id, usuario, ve_tudo):
 
-    st.caption(
+    _nota(
+        "🏅",
         "No fechamento de cada período, quem fica em 1º, 2º e 3º lugar ganha "
         "🥇, 🥈 e 🥉: por mês no SAC e no Top 3 do Dashboard (para a dupla "
         "da rua) e por trimestre na Auditoria. O período em andamento só "
@@ -1864,6 +2216,12 @@ def render():
         st.session_state.get("armazem_id")
     )
 
+    armazem_nome = (
+        st.session_state.get("armazem_visualizado_nome")
+        or st.session_state.get("armazem_nome")
+        or ""
+    )
+
     usuario = st.session_state.get("usuario", "")
     tipo_usuario = st.session_state.get("tipo_usuario", "usuario")
 
@@ -1875,27 +2233,30 @@ def render():
         or usuario.startswith(("Fundador.", "Gestao."))
     )
 
-    st.subheader("🏆 Recordes")
+    with st.container(key="recordes-raiz"):
 
-    st.caption(
-        "Os destaques da operação: quem mais se empenha aparece no topo."
-    )
+        st.markdown(_CSS_RECORDES, unsafe_allow_html=True)
 
-    aba_sac, aba_auditoria, aba_dashboard, aba_medalhas = st.tabs([
-        "😊 SAC",
-        "🎯 Auditoria",
-        "📊 Dashboard",
-        "🏅 Medalhas",
-    ])
+        st.markdown(
+            _hero_html(armazem_nome, _rotulo_mes(*_mes_atual())),
+            unsafe_allow_html=True
+        )
 
-    with aba_sac:
-        _render_sac(armazem_id, usuario, ve_tudo)
+        aba_sac, aba_auditoria, aba_dashboard, aba_medalhas = st.tabs([
+            "😊 SAC",
+            "🎯 Auditoria",
+            "📊 Dashboard",
+            "🏅 Medalhas",
+        ])
 
-    with aba_auditoria:
-        _render_auditoria(armazem_id, usuario, ve_tudo)
+        with aba_sac:
+            _render_sac(armazem_id, usuario, ve_tudo)
 
-    with aba_dashboard:
-        _render_dashboard(armazem_id)
+        with aba_auditoria:
+            _render_auditoria(armazem_id, usuario, ve_tudo)
 
-    with aba_medalhas:
-        _render_medalhas(armazem_id, usuario, ve_tudo)
+        with aba_dashboard:
+            _render_dashboard(armazem_id)
+
+        with aba_medalhas:
+            _render_medalhas(armazem_id, usuario, ve_tudo)
