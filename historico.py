@@ -1,3 +1,4 @@
+import html
 import re
 from datetime import timedelta
 
@@ -286,6 +287,23 @@ ROTULOS_FUNCAO = {
     "Assistente.": "🧑‍💼 Assistente Logístico",
 }
 
+# Módulos que aparecem em cada cartão: (coluna, rótulo, ícone)
+MODULOS_RANKING = [
+    ("SAC", "SAC", "😊"),
+    ("Dashboard", "Dashboard", "📊"),
+    ("Checklist", "Checklist", "✅"),
+    ("Auditoria", "Auditoria", "🎯"),
+    ("EPI", "EPI", "🦺"),
+]
+
+MEDALHAS_RANKING = {1: "🥇", 2: "🥈", 3: "🥉"}
+CORES_PODIO = {1: "#f59e0b", 2: "#94a3b8", 3: "#f97316"}
+
+COLUNAS_RANKING = [
+    "Pessoa", "Função", "Geral", "SAC", "Dashboard",
+    "Checklist", "Auditoria", "EPI", "Usuario"
+]
+
 
 def _rotulo_funcao(usuario):
 
@@ -334,21 +352,356 @@ def _montar_ranking(armazem_id, dias):
             "Checklist": pontuacao["checklist"]["pct"],
             "Auditoria": pontuacao["auditoria"]["pct"],
             "EPI": pontuacao["epi"]["pct"],
+            "Usuario": usuario,
         })
 
-    return pd.DataFrame(
-        linhas,
-        columns=["Pessoa", "Função", "Geral", "SAC", "Dashboard", "Checklist", "Auditoria", "EPI"]
+    return pd.DataFrame(linhas, columns=COLUNAS_RANKING)
+
+
+_CSS_RANKING = """
+<style>
+
+/* ---------- nota explicativa ---------- */
+.hp-nota{
+    display:flex;
+    gap:.75rem;
+    align-items:flex-start;
+    margin:.4rem 0 1rem 0;
+    padding:.75rem 1rem;
+    border-radius:.9rem;
+    background:rgba(20,184,166,.08);
+    border:1px solid rgba(20,184,166,.25);
+    border-left:4px solid #14b8a6;
+    font-size:.86rem;
+    line-height:1.5;
+}
+.hp-nota-ico{ flex-shrink:0; font-size:1.1rem; line-height:1.4; }
+
+/* ---------- título de seção ---------- */
+.hp-secao{
+    display:flex;
+    align-items:center;
+    gap:.8rem;
+    margin:1.6rem 0 .8rem 0;
+}
+.hp-secao span{
+    font-size:.74rem;
+    font-weight:800;
+    letter-spacing:1.6px;
+    text-transform:uppercase;
+    opacity:.7;
+    white-space:nowrap;
+}
+.hp-secao i{
+    flex:1;
+    height:1px;
+    background:rgba(148,163,184,.28);
+}
+
+/* ---------- cartão de cada pessoa ---------- */
+.hp-card{
+    border-radius:1.1rem;
+    padding:.95rem 1.15rem 1rem 1.15rem;
+    margin-bottom:.65rem;
+    transition:transform .15s ease, box-shadow .15s ease;
+}
+.hp-card:hover{
+    transform:translateY(-1px);
+    box-shadow:0 8px 22px rgba(0,0,0,.18);
+}
+.hp-topo{
+    display:grid;
+    grid-template-columns:46px 46px minmax(0,1fr) auto;
+    align-items:center;
+    gap:.85rem;
+}
+.hp-pos{
+    text-align:center;
+    font-weight:800;
+    font-size:1.05rem;
+    opacity:.8;
+}
+.hp-pos.hp-medalha{
+    font-size:1.7rem;
+    opacity:1;
+}
+.hp-nome{
+    font-weight:800;
+    font-size:1rem;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+.hp-funcao{
+    font-size:.76rem;
+    opacity:.65;
+    margin-top:.1rem;
+}
+.hp-nota-geral{
+    text-align:right;
+    line-height:1.1;
+}
+.hp-nota-geral b{
+    display:block;
+    font-size:1.6rem;
+    font-weight:800;
+}
+.hp-nota-geral small{
+    font-size:.66rem;
+    font-weight:700;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    opacity:.6;
+}
+.hp-barra{
+    height:8px;
+    border-radius:999px;
+    margin:.8rem 0 .85rem 0;
+    overflow:hidden;
+}
+.hp-barra div{
+    height:100%;
+    border-radius:999px;
+}
+.hp-modulos{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(118px, 1fr));
+    gap:.7rem;
+}
+.hp-mod-topo{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:.72rem;
+    font-weight:700;
+    margin-bottom:.3rem;
+}
+.hp-mod-topo span:first-child{ opacity:.75; }
+.hp-mini{
+    height:5px;
+    border-radius:999px;
+    overflow:hidden;
+}
+.hp-mini div{
+    height:100%;
+    border-radius:999px;
+}
+
+/* ---------- pódio ---------- */
+.hp-podio{
+    text-align:center;
+    border-radius:1.2rem;
+    padding:1.3rem .9rem 1.2rem .9rem;
+}
+.hp-podio-medalha{ font-size:2.6rem; line-height:1; }
+.hp-podio-nome{
+    font-weight:800;
+    font-size:1.02rem;
+    margin-top:.55rem;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+.hp-podio-funcao{ font-size:.75rem; opacity:.65; margin-top:.1rem; }
+.hp-podio-nota{
+    font-size:2.2rem;
+    font-weight:800;
+    line-height:1.1;
+    margin-top:.5rem;
+}
+
+/* ---------- pessoas que precisam de apoio ---------- */
+.hp-apoio{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    flex-wrap:wrap;
+    padding:.8rem 1.1rem;
+    margin-bottom:.55rem;
+    border-radius:1rem;
+    background:rgba(239,68,68,.08);
+    border:1px solid rgba(239,68,68,.3);
+    border-left:4px solid #ef4444;
+}
+.hp-apoio-nome{ font-weight:800; font-size:.95rem; }
+.hp-apoio-sub{ font-size:.76rem; opacity:.7; margin-top:.1rem; }
+.hp-chip{
+    display:inline-block;
+    padding:.18rem .65rem;
+    margin:.1rem .25rem .1rem 0;
+    border-radius:999px;
+    font-size:.74rem;
+    font-weight:800;
+    background:rgba(239,68,68,.14);
+    color:#ef4444;
+    border:1px solid rgba(239,68,68,.4);
+    white-space:nowrap;
+}
+
+@media (max-width: 760px){
+    .hp-topo{ grid-template-columns:34px 40px minmax(0,1fr) auto; gap:.55rem; }
+}
+
+</style>
+"""
+
+
+def _vazio(valor):
+
+    return valor is None or pd.isna(valor)
+
+
+def _pct_ou_none(valor):
+
+    return None if _vazio(valor) else float(valor)
+
+
+def _avatar_ranking(nome, foto, tamanho=44):
+
+    if foto:
+
+        return (
+            f'<img src="{foto}" style="width:{tamanho}px;height:{tamanho}px;'
+            'border-radius:50%;object-fit:cover;flex-shrink:0;">'
+        )
+
+    iniciais = "".join(p[0].upper() for p in nome.split()[:2]) or "?"
+
+    return (
+        f'<div style="width:{tamanho}px;height:{tamanho}px;border-radius:50%;'
+        'flex-shrink:0;background:linear-gradient(135deg,#14b8a6,#6366f1);'
+        'display:flex;align-items:center;justify-content:center;color:white;'
+        f'font-weight:800;font-size:{max(tamanho * 0.32, 11):.0f}px;">'
+        f'{html.escape(iniciais)}</div>'
+    )
+
+
+def _kpi_ranking(icone, rotulo, valor, cor):
+
+    return (
+        f'<div style="display:flex;align-items:center;gap:.9rem;'
+        f'background:{cor}12;border:1px solid {cor}33;border-left:4px solid {cor};'
+        'border-radius:1rem;padding:.85rem 1.05rem;min-height:84px;">'
+        f'<div style="flex-shrink:0;width:46px;height:46px;border-radius:13px;'
+        f'background:{cor}22;display:flex;align-items:center;justify-content:center;'
+        f'font-size:1.4rem;">{icone}</div>'
+        '<div style="min-width:0;">'
+        f'<div style="font-size:1.55rem;font-weight:800;color:{cor};line-height:1.1;">{valor}</div>'
+        f'<div style="font-size:.76rem;opacity:.72;margin-top:.2rem;">{rotulo}</div>'
+        '</div>'
+        '</div>'
+    )
+
+
+def _titulo_secao_ranking(texto):
+
+    st.markdown(
+        f'<div class="hp-secao"><span>{texto}</span><i></i></div>',
+        unsafe_allow_html=True
+    )
+
+
+def _card_podio(posicao, linha, foto):
+
+    cor = CORES_PODIO[posicao]
+    nome = linha["Pessoa"]
+
+    return (
+        f'<div class="hp-podio" style="background:linear-gradient(180deg,{cor}1f,{cor}0a);'
+        f'border:1px solid {cor}55;'
+        f'{"box-shadow:0 14px 34px " + cor + "33;" if posicao == 1 else ""}">'
+        f'<div class="hp-podio-medalha">{MEDALHAS_RANKING[posicao]}</div>'
+        f'<div style="display:flex;justify-content:center;margin-top:.7rem;">'
+        f'<div style="border:3px solid {cor};border-radius:50%;line-height:0;">'
+        f'{_avatar_ranking(nome, foto, 64)}</div></div>'
+        f'<div class="hp-podio-nome">{html.escape(nome)}</div>'
+        f'<div class="hp-podio-funcao">{html.escape(linha["Função"])}</div>'
+        f'<div class="hp-podio-nota" style="color:{cor};">{round(linha["Geral"])}%</div>'
+        '</div>'
+    )
+
+
+def _card_pessoa(posicao, linha, foto):
+
+    geral = _pct_ou_none(linha["Geral"])
+    cor = _cor(geral)
+
+    nome = linha["Pessoa"]
+
+    if geral is not None and posicao in MEDALHAS_RANKING:
+        selo = f'<div class="hp-pos hp-medalha">{MEDALHAS_RANKING[posicao]}</div>'
+    else:
+        selo = f'<div class="hp-pos">{posicao}º</div>'
+
+    if geral is None:
+        nota_html = (
+            '<div class="hp-nota-geral"><b style="color:#64748b;">—</b>'
+            '<small>Sem nota</small></div>'
+        )
+        barra = ""
+    else:
+        nota_html = (
+            f'<div class="hp-nota-geral"><b style="color:{cor};">{round(geral)}%</b>'
+            '<small>Nota geral</small></div>'
+        )
+        barra = (
+            f'<div class="hp-barra" style="background:{cor}22;">'
+            f'<div style="width:{max(0, min(100, geral)):.0f}%;background:{cor};"></div>'
+            '</div>'
+        )
+
+    modulos = []
+
+    for chave, rotulo, icone in MODULOS_RANKING:
+
+        valor = _pct_ou_none(linha[chave])
+        cor_mod = _cor(valor)
+        texto = "—" if valor is None else f"{round(valor)}%"
+        largura = 0 if valor is None else max(0, min(100, valor))
+
+        modulos.append(
+            '<div>'
+            '<div class="hp-mod-topo">'
+            f'<span>{icone} {rotulo}</span>'
+            f'<span style="color:{cor_mod};">{texto}</span>'
+            '</div>'
+            f'<div class="hp-mini" style="background:{cor_mod}22;">'
+            f'<div style="width:{largura:.0f}%;background:{cor_mod};"></div>'
+            '</div>'
+            '</div>'
+        )
+
+    return (
+        f'<div class="hp-card" style="background:{cor}0c;border:1px solid {cor}33;'
+        f'border-left:4px solid {cor};">'
+        '<div class="hp-topo">'
+        f'{selo}'
+        f'{_avatar_ranking(nome, foto, 44)}'
+        '<div style="min-width:0;">'
+        f'<div class="hp-nome">{html.escape(nome)}</div>'
+        f'<div class="hp-funcao">{html.escape(linha["Função"])}</div>'
+        '</div>'
+        f'{nota_html}'
+        '</div>'
+        f'{barra}'
+        f'<div class="hp-modulos">{"".join(modulos)}</div>'
+        '</div>'
     )
 
 
 def _render_ranking(armazem_id, dias):
 
-    st.subheader("🏅 Ranking da equipe")
+    st.markdown(_CSS_RANKING, unsafe_allow_html=True)
 
-    st.caption(
-        "Ordenado da nota geral mais alta para a mais baixa. Quem não tem "
-        "dados em nenhum módulo aparece no final, sem nota."
+    st.markdown(
+        '<div class="hp-nota">'
+        '<div class="hp-nota-ico">🏅</div>'
+        '<div>Ranking ordenado da <b>nota geral</b> mais alta para a mais baixa. '
+        'A nota geral é a média dos módulos que a pessoa tem dados. Quem não '
+        'tem dados em nenhum módulo aparece no final, sem nota.</div>'
+        '</div>',
+        unsafe_allow_html=True
     )
 
     with estilos.mostrar_processando("calculando ranking..."):
@@ -358,8 +711,18 @@ def _render_ranking(armazem_id, dias):
         st.info("Nenhum usuário operacional cadastrado ainda.")
         return
 
-    com_nota = tabela[tabela["Geral"].notna()].sort_values("Geral", ascending=False)
-    sem_nota = tabela[tabela["Geral"].isna()]
+    com_nota = tabela[tabela["Geral"].notna()].sort_values(
+        ["Geral", "Pessoa"], ascending=[False, True]
+    )
+    sem_nota = tabela[tabela["Geral"].isna()].sort_values("Pessoa")
+
+    ordenada = pd.concat([com_nota, sem_nota], ignore_index=True)
+    ordenada.insert(0, "Posição", range(1, len(ordenada) + 1))
+
+    fotos = {
+        perfil["usuario"]: perfil.get("foto")
+        for perfil in banco.ler_perfis(armazem_id)
+    }
 
     # ------------- resumo -------------
 
@@ -368,55 +731,90 @@ def _render_ranking(armazem_id, dias):
     atencao = int(((com_nota["Geral"] >= 50) & (com_nota["Geral"] < 80)).sum())
     criticos = int((com_nota["Geral"] < 50).sum())
 
-    c1, c2, c3, c4 = st.columns(4)
+    kpis = [
+        _kpi_ranking("👥", "Pessoas no ranking", str(total), "#3b82f6"),
+        _kpi_ranking("🟢", "Saudáveis (80%+)", str(saudaveis), "#22c55e"),
+        _kpi_ranking("🟡", "Em atenção (50–79%)", str(atencao), "#f59e0b"),
+        _kpi_ranking("🔴", "Precisam de apoio", str(criticos), "#ef4444"),
+    ]
 
-    with c1:
-        st.metric("👥 Pessoas", total)
-    with c2:
-        st.metric("🟢 Saudáveis", saudaveis)
-    with c3:
-        st.metric("🟡 Atenção", atencao)
-    with c4:
-        st.metric("🔴 Precisam de apoio", criticos)
+    for coluna, kpi in zip(st.columns(4), kpis):
 
-    st.divider()
+        with coluna:
+            st.markdown(kpi, unsafe_allow_html=True)
 
-    # ------------- gráfico -------------
+    # ------------- pódio -------------
 
-    if not com_nota.empty:
+    if len(com_nota) >= 3:
 
-        st.markdown("##### 📊 Nota geral por pessoa")
+        _titulo_secao_ranking("🏆 Destaques da equipe")
 
-        st.bar_chart(
-            com_nota.set_index("Pessoa")["Geral"],
-            horizontal=True
+        podio = [ordenada.iloc[i] for i in range(3)]
+
+        # 2º · 1º · 3º, com o 1º lugar no centro
+        colunas_podio = st.columns(3)
+
+        for coluna, posicao in zip(colunas_podio, (2, 1, 3)):
+
+            linha = podio[posicao - 1]
+
+            with coluna:
+
+                st.markdown(
+                    f'<div style="margin-top:{"0" if posicao == 1 else "1.8rem"};">'
+                    f'{_card_podio(posicao, linha, fotos.get(linha["Usuario"]))}'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+    # ------------- filtros -------------
+
+    _titulo_secao_ranking("📋 Classificação completa")
+
+    col_busca, col_funcao = st.columns([2, 1])
+
+    with col_busca:
+        busca = st.text_input(
+            "Buscar pessoa",
+            placeholder="Digite um nome...",
+            key="hist_rank_busca"
         )
 
-    # ------------- tabela detalhada -------------
+    with col_funcao:
+        funcoes = sorted(ordenada["Função"].unique())
+        funcao_escolhida = st.selectbox(
+            "Função",
+            ["Todas"] + funcoes,
+            key="hist_rank_funcao"
+        )
 
-    st.markdown("##### 📋 Detalhe por módulo")
+    visiveis = ordenada
 
-    ordenada = pd.concat([com_nota, sem_nota], ignore_index=True)
+    if busca.strip():
+        visiveis = visiveis[
+            visiveis["Pessoa"].str.contains(busca.strip(), case=False, na=False)
+        ]
 
-    ordenada.insert(0, "Posição", range(1, len(ordenada) + 1))
+    if funcao_escolhida != "Todas":
+        visiveis = visiveis[visiveis["Função"] == funcao_escolhida]
 
-    config_barra = st.column_config.ProgressColumn(
-        min_value=0, max_value=100, format="%d%%"
-    )
+    if visiveis.empty:
 
-    st.dataframe(
-        ordenada,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Geral": config_barra,
-            "SAC": config_barra,
-            "Dashboard": config_barra,
-            "Checklist": config_barra,
-            "Auditoria": config_barra,
-            "EPI": config_barra,
-        }
-    )
+        st.info("Nenhuma pessoa encontrada com esse filtro.")
+
+    else:
+
+        st.markdown(
+            "".join(
+                _card_pessoa(
+                    int(linha["Posição"]),
+                    linha,
+                    fotos.get(linha["Usuario"])
+                )
+                for _, linha in visiveis.iterrows()
+            ),
+            unsafe_allow_html=True
+        )
 
     # ------------- quem precisa de atenção -------------
 
@@ -424,20 +822,68 @@ def _render_ranking(armazem_id, dias):
 
     if not precisam.empty:
 
-        st.markdown("##### 🔴 Pessoas que precisam de apoio")
+        _titulo_secao_ranking("🔴 Pessoas que precisam de apoio")
+
+        blocos = []
 
         for _, linha in precisam.sort_values("Geral").iterrows():
 
             fracos = [
-                modulo for modulo in ["SAC", "Dashboard", "Checklist", "Auditoria", "EPI"]
-                if pd.notna(linha[modulo]) and linha[modulo] < 80
+                rotulo for chave, rotulo, _ in MODULOS_RANKING
+                if pd.notna(linha[chave]) and linha[chave] < 80
             ]
 
-            st.warning(
-                f"**{linha['Pessoa']}** ({linha['Função']}) — nota geral "
-                f"{round(linha['Geral'])}%. Pontos de atenção: "
-                f"{', '.join(fracos) if fracos else '—'}."
+            chips = "".join(
+                f'<span class="hp-chip">{html.escape(f)}</span>' for f in fracos
+            ) or "—"
+
+            blocos.append(
+                '<div class="hp-apoio">'
+                '<div>'
+                f'<div class="hp-apoio-nome">{html.escape(linha["Pessoa"])}</div>'
+                f'<div class="hp-apoio-sub">{html.escape(linha["Função"])} · '
+                f'nota geral {round(linha["Geral"])}%</div>'
+                '</div>'
+                f'<div><span style="font-size:.72rem;opacity:.7;margin-right:.4rem;">'
+                f'Pontos de atenção:</span>{chips}</div>'
+                '</div>'
             )
+
+        st.markdown("".join(blocos), unsafe_allow_html=True)
+
+    # ------------- tabela detalhada (para consulta e exportação) -------------
+
+    st.write("")
+
+    with st.expander("📑 Tabela detalhada por módulo"):
+
+        config_barra = st.column_config.ProgressColumn(
+            min_value=0, max_value=100, format="%d%%"
+        )
+
+        tabela_exibida = ordenada.drop(columns=["Usuario"])
+
+        st.dataframe(
+            tabela_exibida,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Geral": config_barra,
+                "SAC": config_barra,
+                "Dashboard": config_barra,
+                "Checklist": config_barra,
+                "Auditoria": config_barra,
+                "EPI": config_barra,
+            }
+        )
+
+        st.download_button(
+            "📥 Baixar ranking (CSV)",
+            data=tabela_exibida.to_csv(index=False).encode("utf-8-sig"),
+            file_name="ranking_equipe.csv",
+            mime="text/csv",
+            key="hist_rank_download"
+        )
 
 
 # =====================================================
